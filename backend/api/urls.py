@@ -1,0 +1,31 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('upload/', views.upload_file, name='upload_file'),
+    path('pr/scan/', views.pr_scan, name='pr_scan'),
+    path('pr/', views.create_pr, name='create_pr'),
+    path('pr/list/', views.pr_list, name='pr_list'),
+    path('pr/<int:pr_id>/items/', views.pr_items_view, name='pr_items'),
+    path('pr/<int:pr_id>/items/categories/', views.pr_items_assign_categories, name='pr_items_assign_categories'),
+    path('pr/<int:pr_id>/supplier-match/', views.pr_supplier_match, name='pr_supplier_match'),
+    path('pr/<int:pr_id>/status/', views.pr_update_status, name='pr_update_status'),
+    path('pr/<int:pr_id>/', views.pr_delete, name='pr_delete'),
+    path('health/', views.health, name='health'),
+    path('roles/', views.get_roles, name='get_roles'),
+    path('categories/', views.categories_view, name='categories'),
+    path('register/', views.register, name='register'),
+    path('login/', views.login_view, name='login'),
+    path('suppliers/', views.supplier_list_create, name='supplier_list_create'),
+    path('suppliers/register', views.supplier_register, name='supplier_register'),
+    path('suppliers/<int:supplier_id>/status/', views.supplier_update_status, name='supplier_update_status'),
+    # Supplier Portal Endpoints
+    path('suppliers/<int:supplier_id>/opportunities/', views.supplier_matching_opportunities, name='supplier_opportunities'),
+    path('suppliers/<int:supplier_id>/dashboard/', views.supplier_dashboard_summary, name='supplier_dashboard'),
+    path('suppliers/<int:supplier_id>/quotations/', views.supplier_quotations, name='supplier_quotations'),
+    path('suppliers/<int:supplier_id>/profile/', views.supplier_profile, name='supplier_profile'),
+    path('suppliers/<int:supplier_id>/notifications/', views.supplier_notifications, name='supplier_notifications'),
+    path('notifications/<int:notification_id>/read/', views.supplier_mark_notification_read, name='mark_notification_read'),
+    path('pr/<int:pr_id>/details/', views.purchase_request_details, name='pr_details'),
+    path('verify-recaptcha/', views.verify_recaptcha, name='verify_recaptcha'),
+]

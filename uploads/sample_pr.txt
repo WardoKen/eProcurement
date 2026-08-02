@@ -1,0 +1,14 @@
+Entity Name: State University
+Fund Cluster: 101
+Office/Section: Procurement Office
+PR No: 2026-06-010
+Date: 06/15/2026
+Responsibility Center Code: RCC-01
+Purpose:
+Purchase of office supplies including pens, paper, and ink cartridges.
+Requested By: John Doe
+Designation: Procurement Officer
+Budget Officer: Jane Smith
+Budget Officer Designation: Budget Officer
+Approved By: Dr. Alice Director
+Approved By Designation: Campus Director
