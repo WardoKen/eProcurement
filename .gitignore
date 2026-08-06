@@ -49,3 +49,5 @@ debug/
 
 # Virtual environments
 .venv/
+
+backend/staticfiles/
