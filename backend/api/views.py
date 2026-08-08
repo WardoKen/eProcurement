@@ -390,11 +390,15 @@ OPPORTUNITY_CATEGORIES = [
 
 @require_GET
 def categories_view(request):
-    categories = list(Category.objects.filter(is_active=True).order_by('name'))
-    if not categories:
-        for name in OPPORTUNITY_CATEGORIES:
-            Category.objects.get_or_create(name=name, defaults={'description': name})
-        categories = list(Category.objects.filter(is_active=True).order_by('name'))
+    for name in OPPORTUNITY_CATEGORIES:
+    Category.objects.get_or_create(
+        name=name,
+        defaults={'description': name}
+    )
+
+categories = list(
+    Category.objects.filter(is_active=True).order_by('name')
+)
 
     result = []
     for category in categories:
