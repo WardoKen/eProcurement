@@ -1,55 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
+import { useEffect, useRef, useState } from 'react'
 import {
-  Eye,
   FileText,
-  LoaderCircle,
   Plus,
   Save,
+  LoaderCircle,
+  CheckCircle,
   Search,
   Trash2,
   Upload,
-  ZoomIn,
-  ZoomOut,
 } from 'lucide-react'
 
-try {
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
-} catch {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
-}
-
-class PdfRenderErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false, message: '' }
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, message: error?.message || 'Unable to render PDF preview.' }
-  }
-
-  componentDidCatch(error) {
-    if (this.props.onError) {
-      this.props.onError(error)
-    }
-  }
-
-  componentDidUpdate(prevProps) {
-    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false, message: '' })
-    }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback(this.state.message)
-    }
-    return this.props.children
-  }
-}
-
 const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '').trim()
+
+const getCurrentDate = () => {
+  const date = new Date()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+const PR_NUMBER_PATTERN = /^\d{4}-\d{2}-\d{3}$/
 
 const FieldShell = ({
   id,
@@ -60,13 +30,11 @@ const FieldShell = ({
   helper,
   full,
   isTextarea,
-  modifiedByOCR,
   editedByUser,
 }) => {
   const wrapperClass = [
     'floating-field',
     full ? 'full' : '',
-    modifiedByOCR ? 'ocr-modified' : '',
     editedByUser ? 'manual-edited' : '',
   ]
     .filter(Boolean)
@@ -81,9 +49,8 @@ const FieldShell = ({
       )}
       <label htmlFor={id}>{label}</label>
       {helper && <small>{helper}</small>}
-      {(modifiedByOCR || editedByUser) && (
+      {editedByUser && (
         <div className="field-flags" aria-label="Field indicators">
-          {modifiedByOCR && <span className="field-flag ocr">OCR</span>}
           {editedByUser && <span className="field-flag manual">Edited</span>}
         </div>
       )}
@@ -91,7 +58,7 @@ const FieldShell = ({
   )
 }
 
-const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys, ocrFieldKeys }) => (
+const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys }) => (
   <section className="signature-card">
     <h4>{title}</h4>
     <FieldShell
@@ -99,7 +66,6 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
       label="Designation"
       value={fields[designationKey]}
       onChange={(value) => onFieldChange(designationKey, value)}
-      modifiedByOCR={ocrFieldKeys.has(designationKey)}
       editedByUser={editedFieldKeys.has(designationKey)}
     />
     <FieldShell
@@ -107,67 +73,51 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
       label="Name"
       value={fields[nameKey]}
       onChange={(value) => onFieldChange(nameKey, value)}
-      modifiedByOCR={ocrFieldKeys.has(nameKey)}
       editedByUser={editedFieldKeys.has(nameKey)}
     />
   </section>
 )
 
-export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'), onSaved = null }) {
+export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'), onSaved = null, reviewOnly = false, submittedBy = '' }) {
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState(null)
-  const [previewUrl, setPreviewUrl] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploadMessage, setUploadMessage] = useState('')
   const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [uploadSuccessModalOpen, setUploadSuccessModalOpen] = useState(false)
   const [fields, setFields] = useState({})
   const [rawText, setRawText] = useState('')
-  const [documentViewUrl, setDocumentViewUrl] = useState('')
-  const [pdfPageCount, setPdfPageCount] = useState(0)
-  const [pdfError, setPdfError] = useState('')
-  const [pdfLoading, setPdfLoading] = useState(false)
-  const [viewerWidth, setViewerWidth] = useState(640)
-  const [renderWidth, setRenderWidth] = useState(640)
-  const [pdfZoom, setPdfZoom] = useState(1.1)
   const [editedFieldKeys, setEditedFieldKeys] = useState(new Set())
-  const [ocrFieldKeys, setOcrFieldKeys] = useState(new Set())
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [numberingMode, setNumberingMode] = useState('automatic')
+  const [suggestedPrNumber, setSuggestedPrNumber] = useState('')
+  const [customPrNumber, setCustomPrNumber] = useState('')
+  const [numberError, setNumberError] = useState('')
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [pendingDeleteIndex, setPendingDeleteIndex] = useState(null)
   const [removingRowIndex, setRemovingRowIndex] = useState(null)
 
   const fileInputRef = useRef(null)
-  const viewerContainerRef = useRef(null)
 
   useEffect(() => {
-    if (!viewerContainerRef.current) return undefined
+    let cancelled = false
+    fetch(`${apiBase.replace(/\/$/, '')}/api/pr/next-number/`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Unable to load PR number preview')
+        return res.json()
+      })
+      .then((data) => {
+        if (!cancelled) setSuggestedPrNumber(data?.pr_no || '')
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestedPrNumber('')
+      })
 
-    const target = viewerContainerRef.current
-    const updateWidth = () => {
-      const width = Math.max(320, Math.floor(target.clientWidth - 40))
-      setViewerWidth(width)
+    return () => {
+      cancelled = true
     }
-
-    updateWidth()
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateWidth)
-      return () => window.removeEventListener('resize', updateWidth)
-    }
-
-    const observer = new ResizeObserver(() => updateWidth())
-    observer.observe(target)
-
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setRenderWidth(viewerWidth)
-    }, 120)
-    return () => window.clearTimeout(timer)
-  }, [viewerWidth])
+  }, [apiBase])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return undefined
@@ -180,12 +130,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
-
-  const isPdfDocument = Boolean(documentViewUrl) && /\.pdf($|\?)/i.test(documentViewUrl)
-
-  function isImageFile(nextFile) {
-    return nextFile.type.startsWith('image/')
-  }
 
   function markEditedField(key) {
     setEditedFieldKeys((prev) => {
@@ -258,26 +202,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     setFile(nextFile)
     setFields({})
     setRawText('')
-    setDocumentViewUrl('')
     setUploadMessage('')
     setUploadSuccess(false)
-    setPdfPageCount(0)
-    setPdfError('')
-    setPdfLoading(false)
+    setUploadSuccessModalOpen(false)
     setEditedFieldKeys(new Set())
-    setOcrFieldKeys(new Set())
     setHasUnsavedChanges(false)
+    setCustomPrNumber('')
+    setNumberError('')
 
-    try {
-      if (isImageFile(nextFile)) {
-        const objectUrl = URL.createObjectURL(nextFile)
-        setPreviewUrl(objectUrl)
-      } else {
-        setPreviewUrl('')
-      }
-    } catch {
-      setPreviewUrl('')
-    }
   }
 
   function onChooseClick() {
@@ -313,6 +245,10 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
 
       const data = await res.json()
       const incoming = data?.fields || {}
+      const extractedFields = {
+        ...incoming,
+        date: incoming.date || getCurrentDate(),
+      }
       const requested = (incoming.requested_items || []).map((item) => ({
         stockPropertyNumber: item.stock_no || '',
         unit: item.unit || '',
@@ -322,33 +258,13 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         totalCost: normalizeNumberInput(item.total_cost),
       }))
 
-      setFields({ ...incoming, lineItems: normalizeLineItems(requested) })
-      setOcrFieldKeys(new Set([...Object.keys(incoming), 'lineItems']))
+      setFields({ ...extractedFields, sourceFilename: data?.filename || '', lineItems: normalizeLineItems(requested) })
       setRawText(data?.rawText || '')
       setUploadMessage(`Uploaded: ${data?.filename || nextFile.name}`)
 
-      const resolvedFileUrl = data?.fileUrl || (data?.filename ? `${apiBase.replace(/\/$/, '')}/uploads/${data.filename}` : '')
-      if (resolvedFileUrl) {
-        setDocumentViewUrl(resolvedFileUrl)
-        setPdfError('')
-        if (/\.pdf($|\?)/i.test(resolvedFileUrl)) {
-          setPdfLoading(true)
-        }
-      }
-
       setUploadSuccess(true)
+      setUploadSuccessModalOpen(true)
       setHasUnsavedChanges(false)
-
-      if (resolvedFileUrl) {
-        if (previewUrl && previewUrl.startsWith('blob:')) {
-          try {
-            URL.revokeObjectURL(previewUrl)
-          } catch {
-            // Ignore cleanup errors for stale object URLs.
-          }
-        }
-        setPreviewUrl(resolvedFileUrl)
-      }
     } catch (err) {
       setUploadMessage(err?.message || 'Upload failed')
       setUploadSuccess(false)
@@ -361,60 +277,21 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     setFile(null)
     setFields({})
     setRawText('')
-    setDocumentViewUrl('')
     setUploadMessage('')
     setUploadSuccess(false)
-    setPdfPageCount(0)
-    setPdfError('')
-    setPdfLoading(false)
+    setUploadSuccessModalOpen(false)
     setEditedFieldKeys(new Set())
-    setOcrFieldKeys(new Set())
     setHasUnsavedChanges(false)
 
     if (fileInputRef.current) fileInputRef.current.value = ''
-    if (previewUrl && previewUrl.startsWith('blob:')) {
-      try {
-        URL.revokeObjectURL(previewUrl)
-      } catch {
-        // Ignore cleanup errors for stale object URLs.
-      }
-    }
-    setPreviewUrl('')
-  }
-
-  function onPdfLoadSuccess(info) {
-    setPdfLoading(false)
-    setPdfError('')
-    setPdfPageCount(info?.numPages || 0)
-  }
-
-  function onPdfLoadError(err) {
-    setPdfLoading(false)
-    setPdfPageCount(0)
-    setPdfError(err?.message || 'Unable to render PDF document.')
-  }
-
-  function onPdfPageRenderError(err) {
-    setPdfError(err?.message || 'Unable to render one or more PDF pages.')
-  }
-
-  function zoomOutPdf() {
-    setPdfZoom((prev) => Math.max(0.8, Number((prev - 0.1).toFixed(2))))
-  }
-
-  function zoomInPdf() {
-    setPdfZoom((prev) => Math.min(2.2, Number((prev + 0.1).toFixed(2))))
-  }
-
-  function resetPdfZoom() {
-    setPdfZoom(1.0)
-  }
-
-  function renderPdfError(message) {
-    return <div className="alert alert-error">{message || 'Unable to render PDF document.'}</div>
   }
 
   async function savePurchaseRequest() {
+    if (numberingMode === 'custom' && !PR_NUMBER_PATTERN.test(customPrNumber.trim())) {
+      setNumberError('Use the format YYYY-MM-NNN.')
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -437,6 +314,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       const payload = {
         fields: {
           ...fields,
+          prNumberMode: numberingMode,
+          prNumber: numberingMode === 'custom' ? customPrNumber.trim() : '',
+          reviewOnly,
+          sourceFilename: fields.sourceFilename || '',
+          submittedBy,
           requested_items: items,
           grand_total: grand.toFixed(2),
         },
@@ -455,7 +337,9 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       }
 
       const result = await res.json()
+      setFields((prev) => ({ ...prev, prNumber: result.pr_no || prev.prNumber }))
       setHasUnsavedChanges(false)
+      setNumberError('')
       if (typeof onSaved === 'function') {
         onSaved(result.id)
       } else {
@@ -468,8 +352,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       setSaving(false)
     }
   }
-
-  const zoomLabel = `${Math.round(pdfZoom * 100)}%`
 
   return (
     <div className="pr-upload-page">
@@ -555,79 +437,99 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         )}
       </div>
 
-      <div className="pr-upload-grid">
-        <section className="card document-panel sticky-panel">
-          <header className="panel-header">
-            <h3>
-              <Eye size={18} />
-              Document Viewer
-            </h3>
-            <div className="zoom-controls" role="group" aria-label="PDF zoom controls">
-              <button type="button" className="btn btn-outline btn-icon" onClick={zoomOutPdf} title="Zoom out">
-                <ZoomOut size={16} />
+      {uploadSuccessModalOpen && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="upload-success-title"
+          onClick={() => setUploadSuccessModalOpen(false)}
+        >
+          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="upload-success-title">Purchase Request Uploaded</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setUploadSuccessModalOpen(false)}
+                aria-label="Close upload success message"
+              >
+                ×
               </button>
-              <span>{zoomLabel}</span>
-              <button type="button" className="btn btn-outline btn-icon" onClick={zoomInPdf} title="Zoom in">
-                <ZoomIn size={16} />
-              </button>
-              <button type="button" className="btn btn-outline" onClick={resetPdfZoom}>Fit Width</button>
             </div>
-          </header>
 
-          <div ref={viewerContainerRef} className="document-scroller">
-            {documentViewUrl ? (
-              isPdfDocument ? (
-                <div className="pdf-viewer-wrap">
-                  {pdfLoading && (
-                    <div className="skeleton-stack" aria-label="Loading PDF preview">
-                      <div className="skeleton-line tall" />
-                      <div className="skeleton-line tall" />
-                    </div>
-                  )}
+            <div className="modal-body upload-success-modal-body">
+              <CheckCircle size={42} aria-hidden="true" />
+              <p>Your Purchase Request was uploaded and its details were extracted successfully.</p>
+              <p className="helper-text">Review the extracted fields below before saving the Purchase Request.</p>
+            </div>
 
-                  {pdfError && renderPdfError(pdfError)}
-
-                  <PdfRenderErrorBoundary
-                    resetKey={documentViewUrl}
-                    onError={onPdfLoadError}
-                    fallback={renderPdfError}
-                  >
-                    <Document
-                      file={documentViewUrl}
-                      loading={null}
-                      onLoadSuccess={onPdfLoadSuccess}
-                      onLoadError={onPdfLoadError}
-                      onSourceError={onPdfLoadError}
-                      options={{ cMapPacked: true }}
-                    >
-                      {Array.from({ length: pdfPageCount || 0 }, (_, idx) => (
-                        <div key={`pdf-page-${idx + 1}`} className="pdf-page-card">
-                          <Page
-                            pageNumber={idx + 1}
-                            width={Math.max(320, Math.floor(renderWidth * pdfZoom))}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                            devicePixelRatio={Math.min(1.75, window.devicePixelRatio || 1)}
-                            onRenderError={onPdfPageRenderError}
-                          />
-                          <p>Page {idx + 1}</p>
-                        </div>
-                      ))}
-                    </Document>
-                  </PdfRenderErrorBoundary>
-                </div>
-              ) : (
-                <img src={documentViewUrl} alt="Uploaded document" className="doc-image-preview" />
-              )
-            ) : (
-              <div className="viewer-empty-state">
-                <FileText size={40} />
-                <strong>No document preview yet</strong>
-                <span>Upload a PR to keep the document visible while editing details.</span>
-              </div>
-            )}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-success" onClick={() => setUploadSuccessModalOpen(false)}>
+                Continue Reviewing
+              </button>
+            </div>
           </div>
-        </section>
+        </div>
+      )}
+
+      <div className="pr-upload-grid">
+        {!reviewOnly && <section className="card form-panel pr-numbering-section">
+          <header className="panel-header">
+            <h3>PR Numbering</h3>
+          </header>
+          <div className="numbering-options">
+            <label>
+              <input
+                type="radio"
+                name="pr-numbering-mode"
+                value="automatic"
+                checked={numberingMode === 'automatic'}
+                onChange={() => {
+                  setNumberingMode('automatic')
+                  setNumberError('')
+                }}
+              />
+              Automatic
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="pr-numbering-mode"
+                value="custom"
+                checked={numberingMode === 'custom'}
+                onChange={() => {
+                  setNumberingMode('custom')
+                  setNumberError('')
+                }}
+              />
+              Custom
+            </label>
+          </div>
+          {numberingMode === 'automatic' ? (
+            <div className="number-preview" aria-live="polite">
+              <span>Suggested PR Number</span>
+              <strong>{suggestedPrNumber || 'Loading...'}</strong>
+              <small>This is a preview. The final number is assigned when you save.</small>
+            </div>
+          ) : (
+            <div className="custom-number-field">
+              <label htmlFor="custom-pr-number">PR Number</label>
+              <input
+                id="custom-pr-number"
+                value={customPrNumber}
+                onChange={(event) => {
+                  setCustomPrNumber(event.target.value)
+                  setNumberError('')
+                }}
+                placeholder="YYYY-MM-NNN"
+                inputMode="numeric"
+              />
+              <small>Use the format YYYY-MM-NNN.</small>
+            </div>
+          )}
+          {numberError && <div className="field-error">{numberError}</div>}
+        </section>}
 
         <section className="card form-panel">
           <header className="panel-header">
@@ -635,7 +537,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               <Search size={18} />
               Purchase Request Details
             </h3>
-            <span className="helper-pill">Fields auto-filled by OCR are tagged</span>
           </header>
 
           <div className="floating-grid">
@@ -645,7 +546,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.entityName}
               onChange={(value) => onFieldChange('entityName', value)}
               full
-              modifiedByOCR={ocrFieldKeys.has('entityName')}
               editedByUser={editedFieldKeys.has('entityName')}
             />
 
@@ -654,7 +554,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               label="Fund Cluster"
               value={fields.fundCluster}
               onChange={(value) => onFieldChange('fundCluster', value)}
-              modifiedByOCR={ocrFieldKeys.has('fundCluster')}
               editedByUser={editedFieldKeys.has('fundCluster')}
             />
 
@@ -663,18 +562,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               label="Office / Section"
               value={fields.officeSection}
               onChange={(value) => onFieldChange('officeSection', value)}
-              modifiedByOCR={ocrFieldKeys.has('officeSection')}
               editedByUser={editedFieldKeys.has('officeSection')}
-            />
-
-            <FieldShell
-              id="prNumber"
-              label="PR Number"
-              value={fields.prNumber}
-              onChange={(value) => onFieldChange('prNumber', value)}
-              helper="Format: YYYY-MM-NNN"
-              modifiedByOCR={ocrFieldKeys.has('prNumber')}
-              editedByUser={editedFieldKeys.has('prNumber')}
             />
 
             <FieldShell
@@ -683,7 +571,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.date}
               onChange={(value) => onFieldChange('date', value)}
               type="date"
-              modifiedByOCR={ocrFieldKeys.has('date')}
               editedByUser={editedFieldKeys.has('date')}
             />
 
@@ -693,7 +580,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.responsibilityCenterCode}
               onChange={(value) => onFieldChange('responsibilityCenterCode', value)}
               full
-              modifiedByOCR={ocrFieldKeys.has('responsibilityCenterCode')}
               editedByUser={editedFieldKeys.has('responsibilityCenterCode')}
             />
 
@@ -704,7 +590,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('purpose', value)}
               full
               isTextarea
-              modifiedByOCR={ocrFieldKeys.has('purpose')}
               editedByUser={editedFieldKeys.has('purpose')}
             />
           </div>
@@ -717,7 +602,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
-              ocrFieldKeys={ocrFieldKeys}
             />
             <SignatureBlock
               title="Funds Available"
@@ -726,7 +610,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
-              ocrFieldKeys={ocrFieldKeys}
             />
             <SignatureBlock
               title="Approved By"
@@ -735,7 +618,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
-              ocrFieldKeys={ocrFieldKeys}
             />
             <SignatureBlock
               title="Technical Working Group"
@@ -744,7 +626,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
-              ocrFieldKeys={ocrFieldKeys}
             />
           </div>
 
@@ -778,16 +659,16 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             </div>
 
             <div className="table-shell">
-              <table className="enterprise-table items-table">
+              <table className="enterprise-table items-table requested-items-table">
                 <thead>
                   <tr>
                     <th style={{ width: '70px' }}>Item No.</th>
-                    <th>Stock/Property No.</th>
-                    <th>Unit</th>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Unit Cost</th>
-                    <th>Total</th>
+                    <th style={{ width: '15%' }}>Stock/Property No.</th>
+                    <th style={{ width: '8%' }}>Unit</th>
+                    <th style={{ width: '48%' }}>Description</th>
+                    <th style={{ width: '7%' }}>Qty</th>
+                    <th style={{ width: '10%' }}>Unit Cost</th>
+                    <th style={{ width: '10%' }}>Total</th>
                     <th style={{ width: '70px' }}>Actions</th>
                   </tr>
                 </thead>
@@ -818,14 +699,15 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                             aria-label={`Unit for item ${idx + 1}`}
                           />
                         </td>
-                        <td>
-                          <input
+                        <td className="requested-item-description-cell">
+                          <textarea
                             value={item.description || ''}
                             onChange={(e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], description: e.target.value }
                               setLineItems(updated)
                             }}
+                            className="requested-item-description"
                             aria-label={`Description for item ${idx + 1}`}
                           />
                         </td>

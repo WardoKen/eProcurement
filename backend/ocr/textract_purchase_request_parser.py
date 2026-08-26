@@ -312,6 +312,7 @@ def reconstruct_table_rows(cells: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def find_header_map(row: Dict[str, Any]) -> Dict[str, int]:
     aliases = {
+        "item_no": {"item no", "item no."},
         "stock_no": {"stock property no", "stock no", "stock property number"},
         "unit": {"unit"},
         "description": {"item description", "description"},
@@ -329,15 +330,20 @@ def find_header_map(row: Dict[str, Any]) -> Dict[str, int]:
     return header_map
 
 
-def get_cell_value(row: Dict[str, Any], column_index: int) -> Tuple[str, float]:
+def get_cell_value(row: Dict[str, Any], column_index: int, preserve_newlines: bool = False) -> Tuple[str, float]:
     for cell in row.get("cells", []):
         if int(cell.get("column_index", 0) or 0) == column_index:
-            return normalize_space(str(cell.get("text") or "")), float(cell.get("confidence") or 0.0)
+            text = str(cell.get("text") or "")
+            if preserve_newlines:
+                text = "\n".join(normalize_space(line) for line in text.splitlines() if normalize_space(line))
+            else:
+                text = normalize_space(text)
+            return text, float(cell.get("confidence") or 0.0)
     return "", 0.0
 
 
 def parse_item_row(row: Dict[str, Any], header_map: Dict[str, int]) -> Optional[ParsedItem]:
-    description, description_conf = get_cell_value(row, header_map.get("description", -1))
+    description, description_conf = get_cell_value(row, header_map.get("description", -1), preserve_newlines=True)
     if not description:
         return None
 
@@ -379,6 +385,68 @@ def parse_item_row(row: Dict[str, Any], header_map: Dict[str, int]) -> Optional[
     )
 
 
+def is_item_value_row(row: Dict[str, Any], header_map: Dict[str, int]) -> bool:
+    quantity, _ = get_cell_value(row, header_map.get("quantity", -1))
+    unit_cost, _ = get_cell_value(row, header_map.get("unit_cost", -1))
+    total_cost, _ = get_cell_value(row, header_map.get("total_cost", -1))
+    return all(safe_float(value) is not None for value in [quantity, unit_cost, total_cost])
+
+
+def has_new_item_marker(row: Dict[str, Any], header_map: Dict[str, int]) -> bool:
+    item_no, _ = get_cell_value(row, header_map.get("item_no", -1))
+    stock_no, _ = get_cell_value(row, header_map.get("stock_no", -1))
+    return bool(item_no or stock_no)
+
+
+def merge_item_description_rows(
+    description_rows: List[Dict[str, Any]],
+    value_row: Dict[str, Any],
+    header_map: Dict[str, int],
+) -> Optional[Dict[str, Any]]:
+    description_column = header_map.get("description", -1)
+    description_values = [
+        get_cell_value(row, description_column)[0]
+        for row in [*description_rows, value_row]
+    ]
+    description_values = [value for value in description_values if value]
+    if not description_values:
+        return None
+
+    merged_row = {
+        **value_row,
+        "cells": [dict(cell) for cell in value_row.get("cells", [])],
+    }
+    for cell in merged_row["cells"]:
+        if int(cell.get("column_index", 0) or 0) == description_column:
+            cell["text"] = "\n".join(description_values)
+            confidences = [get_cell_value(row, description_column)[1] for row in [*description_rows, value_row]]
+            cell["confidence"] = mean([confidence for confidence in confidences if confidence > 0]) if confidences else 0.0
+            break
+    return merged_row
+
+
+def reconstruct_item_rows(rows: List[Dict[str, Any]], header_map: Dict[str, int]) -> List[Dict[str, Any]]:
+    """Combine wrapped description rows with the row containing their numeric values."""
+    reconstructed: List[Dict[str, Any]] = []
+    description_rows: List[Dict[str, Any]] = []
+
+    for row in rows:
+        description, _ = get_cell_value(row, header_map.get("description", -1))
+        if any(re.search(r"nothing\s+follows", str(cell.get("text") or ""), re.I) for cell in row.get("cells", [])):
+            break
+        if has_new_item_marker(row, header_map) and description_rows and not is_item_value_row(row, header_map):
+            description_rows = []
+        if is_item_value_row(row, header_map):
+            merged = merge_item_description_rows(description_rows, row, header_map)
+            if merged:
+                reconstructed.append(merged)
+            description_rows = []
+        elif description:
+            description_rows.append(row)
+
+    return reconstructed
+
+
 def parse_tables(blocks: List[Dict[str, Any]]) -> Tuple[List[ParsedItem], List[Dict[str, Any]]]:
     """Parse TABLE/CELL/MERGED_CELL into line items and table diagnostics."""
     block_map = index_blocks(blocks)
@@ -415,7 +483,10 @@ def parse_tables(blocks: List[Dict[str, Any]]) -> Tuple[List[ParsedItem], List[D
 
         row_count = 0
         if header_map:
-            for row in rows:
+            for row in reconstruct_item_rows(
+                [row for row in rows if int(row.get("row_index", 0) or 0) > header_row_index],
+                header_map,
+            ):
                 logger.info("TABLE %s ROW %s", table_idx, row.get("row_index"))
                 for cell in row.get("cells", []):
                     logger.info(
@@ -428,8 +499,6 @@ def parse_tables(blocks: List[Dict[str, Any]]) -> Tuple[List[ParsedItem], List[D
                         cell.get("id", ""),
                     )
 
-                if int(row.get("row_index", 0) or 0) <= header_row_index:
-                    continue
                 item = parse_item_row(row, header_map)
                 if item is None:
                     continue

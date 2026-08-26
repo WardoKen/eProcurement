@@ -4,14 +4,16 @@ import re
 import secrets
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from django.http import JsonResponse
+from django.core.mail import EmailMessage
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.utils import timezone
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef
 from django.conf import settings
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -34,7 +36,7 @@ except ImportError:  # pragma: no cover
     from backend.ocr.debug_utils import write_debug_json
 
 from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory
-from .models import PurchaseRequest, PurchaseRequestItem, Quotation, Notification
+from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quotation, Notification, RFQ
 from .supplier_registration import (
     REQUIRED_UPLOAD_KEYS,
     OPTIONAL_UPLOAD_KEYS,
@@ -138,6 +140,45 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 def json_error(message: str, status: int = 400):
     return JsonResponse({'success': False, 'message': message}, status=status)
+
+
+PR_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{3}$')
+
+
+def next_pr_number(today=None, lock=False):
+    today = today or timezone.localdate()
+    prefix = f'{today:%Y-%m}-'
+    if lock:
+        PRNumberSequence.objects.select_for_update().get(key='global')
+
+    highest = 0
+    valid_number = re.compile(rf'^{re.escape(prefix)}(\d{{3}})$')
+    for value in PurchaseRequest.objects.filter(pr_no__startswith=prefix).values_list('pr_no', flat=True):
+        match = valid_number.fullmatch(value or '')
+        if match:
+            highest = max(highest, int(match.group(1)))
+
+    return f'{prefix}{highest + 1:03d}'
+
+
+def generate_pr_number():
+    return next_pr_number(lock=True)
+
+
+def validate_custom_pr_number(value):
+    number = str(value or '').strip()
+    if not PR_NUMBER_PATTERN.fullmatch(number):
+        return None
+    try:
+        datetime.strptime(number[:7], '%Y-%m')
+    except ValueError:
+        return None
+    return number
+
+
+@require_GET
+def next_pr_number_preview(request):
+    return JsonResponse({'pr_no': next_pr_number()})
 
 
 @csrf_exempt
@@ -251,14 +292,33 @@ def create_pr(request):
         return json_error('entityName is required', 400)
 
     items = fields.get('requested_items') or fields.get('line_items') or fields.get('items') or []
+    numbering_mode = str(fields.get('prNumberMode') or fields.get('pr_number_mode') or 'automatic').lower()
+    review_only = bool(fields.get('reviewOnly') or fields.get('review_only'))
+    custom_pr_number = validate_custom_pr_number(fields.get('prNumber') or fields.get('pr_no'))
+    if review_only:
+        assigned_pr_number = None
+    elif numbering_mode == 'custom':
+        if not custom_pr_number:
+            return json_error('Custom PR number must use YYYY-MM-NNN format', 400)
+        if PurchaseRequest.objects.filter(pr_no=custom_pr_number).exists():
+            return json_error('PR number is already assigned', 409)
+    elif numbering_mode != 'automatic':
+        return json_error('Invalid PR numbering mode', 400)
+
     try:
         with transaction.atomic():
+            if not review_only:
+                assigned_pr_number = custom_pr_number if numbering_mode == 'custom' else generate_pr_number()
             pr = PurchaseRequest.objects.create(
                 entity_name=entity,
+                category=normalize_text(fields.get('category') or fields.get('pr_category') or '') or None,
                 fund_cluster=normalize_text(fields.get('fundCluster') or fields.get('fund_cluster') or ''),
                 office_section=normalize_text(fields.get('officeSection') or fields.get('office_section') or ''),
-                pr_no=normalize_text(fields.get('prNumber') or fields.get('pr_no') or ''),
+                pr_no=assigned_pr_number,
+                source_filename=normalize_text(fields.get('sourceFilename') or fields.get('source_filename') or ''),
+                submitted_by=normalize_text(fields.get('submittedBy') or fields.get('submitted_by') or ''),
                 responsibility_center_code=normalize_text(fields.get('responsibilityCenterCode') or fields.get('responsibility_center_code') or ''),
+                date=fields.get('date') or None,
                 purpose=fields.get('purpose') or '',
                 requested_by=fields.get('requested_by_name') or fields.get('requestedBy') or '',
                 funds_available_by=fields.get('funds_available_name') or '',
@@ -292,10 +352,12 @@ def create_pr(request):
                     unit_cost=unit_cost_d,
                     total_cost=total_cost_d,
                 )
+    except IntegrityError:
+        return json_error('PR number is already assigned', 409)
     except Exception as exc:
         return json_error('Failed to save Purchase Request', 500)
 
-    return JsonResponse({'success': True, 'id': pr.id}, status=201)
+    return JsonResponse({'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status}, status=201)
 
 
 @require_GET
@@ -409,12 +471,16 @@ def get_roles(request):
 @require_GET
 def pr_list(request):
     category = request.GET.get('category', '').strip()
+    submitted_by = request.GET.get('submitted_by', '').strip()
     qs = (
         PurchaseRequest.objects.order_by('-created_at')
         .annotate(items_count=Count('line_items'))
+        .annotate(has_quotation=Exists(Quotation.objects.filter(purchase_request_id=OuterRef('pk'))))
     )
     if category:
         qs = qs.filter(category=category)
+    if submitted_by:
+        qs = qs.filter(submitted_by=submitted_by)
     prs = qs.values(
             'id',
             'entity_name',
@@ -428,6 +494,7 @@ def pr_list(request):
             'grand_total',
             'created_at',
             'items_count',
+            'has_quotation',
         )
     return JsonResponse(list(prs), safe=False)
 
@@ -453,6 +520,84 @@ def pr_update_status(request, pr_id: int):
 
 
 @csrf_exempt
+@require_http_methods(["PATCH"])
+def pr_update(request, pr_id: int):
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    try:
+        pr = PurchaseRequest.objects.get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
+        return json_error('Purchase Request not found', 404)
+
+    entity_name = str(payload.get('entity_name') or '').strip()
+    if not entity_name:
+        return json_error('Entity name is required', 400)
+
+    items = payload.get('items', [])
+    if not isinstance(items, list):
+        return json_error('Items must be a list', 400)
+
+    try:
+        from decimal import Decimal
+        with transaction.atomic():
+            finalize_review = bool(payload.get('finalize_review'))
+            numbering_mode = str(payload.get('pr_number_mode') or 'automatic').lower()
+            if finalize_review and not pr.pr_no:
+                if numbering_mode == 'custom':
+                    assigned_number = validate_custom_pr_number(payload.get('custom_pr_number'))
+                    if not assigned_number:
+                        return json_error('Custom PR number must use YYYY-MM-NNN format', 400)
+                    if PurchaseRequest.objects.filter(pr_no=assigned_number).exclude(id=pr.id).exists():
+                        return json_error('PR number is already assigned', 409)
+                else:
+                    assigned_number = generate_pr_number()
+                pr.pr_no = assigned_number
+            if finalize_review:
+                pr.status = PurchaseRequest.STATUS_MATCHED
+            pr.entity_name = entity_name
+            pr.source_filename = str(payload.get('source_filename') or pr.source_filename or '').strip()
+            pr.category = str(payload.get('category') or '').strip() or None
+            pr.fund_cluster = str(payload.get('fund_cluster') or '').strip()
+            pr.office_section = str(payload.get('office_section') or '').strip()
+            pr.responsibility_center_code = str(payload.get('responsibility_center_code') or '').strip()
+            pr.date = payload.get('date') or None
+            pr.purpose = str(payload.get('purpose') or '').strip()
+            pr.requested_by = str(payload.get('requested_by') or '').strip()
+            pr.funds_available_by = str(payload.get('funds_available_by') or '').strip()
+            pr.approved_by = str(payload.get('approved_by') or '').strip()
+            pr.twg_verified_by = str(payload.get('twg_verified_by') or '').strip()
+            pr.grand_total = sum(
+                Decimal(str(item.get('quantity') or 0)) * Decimal(str(item.get('unit_cost') or 0))
+                for item in items
+            )
+            update_fields = ['entity_name', 'source_filename', 'category', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose', 'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'grand_total']
+            if finalize_review:
+                update_fields.extend(['pr_no', 'status'])
+            pr.save(update_fields=update_fields)
+            pr.line_items.all().delete()
+            for item in items:
+                quantity = Decimal(str(item.get('quantity') or 0))
+                unit_cost = Decimal(str(item.get('unit_cost') or 0))
+                PurchaseRequestItem.objects.create(
+                    purchase_request=pr,
+                    stock_property_no=str(item.get('stock_property_no') or '').strip(),
+                    unit=str(item.get('unit') or '').strip(),
+                    item_description=str(item.get('item_description') or '').strip(),
+                    quantity=quantity,
+                    unit_cost=unit_cost,
+                    total_cost=quantity * unit_cost,
+                    category=str(item.get('category') or '').strip() or None,
+                )
+    except (ArithmeticError, ValueError, TypeError):
+        return json_error('Invalid Purchase Request values', 400)
+
+    return JsonResponse({'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status, 'grand_total': float(pr.grand_total)})
+
+
+@csrf_exempt
 @require_http_methods(["DELETE"])
 def pr_delete(request, pr_id: int):
     deleted, _ = PurchaseRequest.objects.filter(id=pr_id).delete()
@@ -473,6 +618,8 @@ def register(request):
     password = data.get('password', '').strip()
     role_name = data.get('role', 'buyer')
     full_name = data.get('fullName', '').strip()
+    email = data.get('email', '').strip()
+    unit_office = data.get('unitOffice', '').strip()
 
     if not username or not password:
         return json_error('Username and password are required', 400)
@@ -491,6 +638,8 @@ def register(request):
                 username=username,
                 password_hash=password_hash,
                 full_name=full_name,
+                email=email,
+                unit_office=unit_office,
                 role=role,
                 is_active=True,
             )
@@ -551,6 +700,9 @@ def login_view(request):
             'id': user.id,
             'username': user.username,
             'role': user.role.name,
+            'full_name': user.full_name,
+            'email': user.email,
+            'unit_office': user.unit_office,
             **(supplier_payload or {}),
         },
     })
@@ -599,10 +751,50 @@ def supplier_list_create(request):
     return JsonResponse({'id': supplier.id}, status=201)
 
 
+@require_GET
+def admin_dashboard_summary(request):
+    """Return live summary counts for the BAC administrator dashboard."""
+    return JsonResponse({
+        'pending_suppliers': Supplier.objects.filter(status__in=['Pending', 'Pending Review']).count(),
+        'under_review_suppliers': Supplier.objects.filter(status='In Review').count(),
+        'action_required_suppliers': Supplier.objects.filter(status='For Compliance').count(),
+        'total_suppliers': Supplier.objects.count(),
+        'total_purchase_requests': PurchaseRequest.objects.count(),
+        'pending_purchase_requests': PurchaseRequest.objects.filter(status__in=['uploaded', 'in_review', 'matched']).count(),
+        'approved_purchase_requests': PurchaseRequest.objects.filter(status='approved').count(),
+    })
+
+
 @csrf_exempt
 def supplier_register(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Method not allowed'}, status=405)
+
+    submitted_category_ids = request.POST.getlist('category_ids')
+    selected_category_ids = []
+    invalid_category_ids = []
+    for value in submitted_category_ids:
+        try:
+            category_id = int(value)
+        except (TypeError, ValueError):
+            invalid_category_ids.append(value)
+            continue
+        if category_id not in selected_category_ids:
+            selected_category_ids.append(category_id)
+
+    active_categories = {
+        category.id: category
+        for category in Category.objects.filter(id__in=selected_category_ids, is_active=True)
+    }
+    invalid_category_ids.extend(
+        str(category_id) for category_id in selected_category_ids if category_id not in active_categories
+    )
+    selected_category_objects = [
+        active_categories[category_id]
+        for category_id in selected_category_ids
+        if category_id in active_categories
+    ]
+    legacy_category_names = request.POST.getlist('categories') or request.POST.getlist('category') or []
 
     payload = {
         'companyName': request.POST.get('companyName', ''),
@@ -613,7 +805,7 @@ def supplier_register(request):
         'contactNumber': request.POST.get('contactNumber', ''),
         'email': request.POST.get('email', ''),
         'productsServices': request.POST.get('productsServices', ''),
-        'categories': request.POST.getlist('categories') or request.POST.getlist('category') or [],
+        'categories': [category.name for category in selected_category_objects] if submitted_category_ids else legacy_category_names,
         'username': request.POST.get('username', ''),
         'password': request.POST.get('password', ''),
         'confirmPassword': request.POST.get('confirmPassword', ''),
@@ -631,6 +823,8 @@ def supplier_register(request):
             files[key] = request.FILES.getlist('otherEligibilityFiles')
 
     errors = validate_supplier_payload(payload, files=files, categories=list(Category.objects.filter(is_active=True).values_list('name', flat=True)))
+    if invalid_category_ids:
+        errors.append('One or more selected supplier categories are invalid or inactive.')
     if errors:
         return JsonResponse({'success': False, 'message': 'Please correct the highlighted issues.', 'errors': errors}, status=400)
 
@@ -671,9 +865,14 @@ def supplier_register(request):
                 status='Pending Review',
             )
 
-            for category_name in selected_category_names:
-                category_obj, _ = Category.objects.get_or_create(name=category_name, defaults={'description': category_name})
-                SupplierCategory.objects.get_or_create(supplier=supplier, category=category_obj)
+            if submitted_category_ids:
+                for category_obj in selected_category_objects:
+                    SupplierCategory.objects.get_or_create(supplier=supplier, category=category_obj)
+            else:
+                for category_name in selected_category_names:
+                    category_obj = Category.objects.filter(name=category_name, is_active=True).first()
+                    if category_obj:
+                        SupplierCategory.objects.get_or_create(supplier=supplier, category=category_obj)
 
             for key in REQUIRED_UPLOAD_KEYS + OPTIONAL_UPLOAD_KEYS + [business_document_key]:
                 if not key:
@@ -781,11 +980,10 @@ def supplier_matching_opportunities(request, supplier_id):
     if supplier.status != 'Approved':
         return JsonResponse({'opportunities': []})
 
-    # Extract supplier's keywords from goods_services and nature_of_business
-    supplier_keywords = (supplier.goods_services or '') + ' ' + (supplier.nature_of_business or '')
-    supplier_keywords = supplier_keywords.lower().strip()
-
-    if not supplier_keywords:
+    supplier_category_ids = set(
+        SupplierCategory.objects.filter(supplier=supplier, category__is_active=True).values_list('category_id', flat=True)
+    )
+    if not supplier_category_ids:
         return JsonResponse({'opportunities': []})
 
     # Get all approved/matched PRs with assigned categories
@@ -796,49 +994,36 @@ def supplier_matching_opportunities(request, supplier_id):
     matching_opportunities = []
 
     for pr in prs:
-        # Check if any of the PR's item categories match supplier's goods/services
+        # Resolve reviewed item category names to the active Category master.
+        pr_category_ids = set()
         pr_categories = set()
         for item in pr.line_items.all():
             if item.category:
-                pr_categories.add(item.category.lower())
+                category = Category.objects.filter(name=item.category, is_active=True).first()
+                if category:
+                    pr_category_ids.add(category.id)
+                    pr_categories.add(category.name)
 
-        if not pr_categories:
+        if not supplier_category_ids.intersection(pr_category_ids):
             continue
 
-        # Simple keyword matching - check if any supplier keyword overlaps
-        supplier_words = set(supplier_keywords.split())
-        match_score = 0
-        for category in pr_categories:
-            category_words = set(category.split())
-            # Calculate match percentage
-            common = len(supplier_words & category_words)
-            if common > 0:
-                match_score += common
+        # Check if supplier already submitted quotation.
+        existing_quotation = pr.quotations.filter(supplier=supplier).first()
+        quotation_status = existing_quotation.status if existing_quotation else None
 
-        if match_score > 0 or any(
-            keyword in supplier_keywords
-            for category in pr_categories
-            for keyword in category.split()
-        ):
-            # Check if supplier already submitted quotation
-            existing_quotation = pr.quotations.filter(supplier=supplier).first()
-            quotation_status = None
-            if existing_quotation:
-                quotation_status = existing_quotation.status
-
-            matching_opportunities.append({
-                'id': pr.id,
-                'pr_no': pr.pr_no,
-                'entity_name': pr.entity_name,
-                'office_section': pr.office_section,
-                'purpose': pr.purpose,
-                'category': pr.category or ', '.join(pr_categories),
-                'grand_total': float(pr.grand_total),
-                'status': pr.status,
-                'created_at': pr.created_at.isoformat(),
-                'quotation_status': quotation_status,
-                'items_count': pr.line_items.count(),
-            })
+        matching_opportunities.append({
+            'id': pr.id,
+            'pr_no': pr.pr_no,
+            'entity_name': pr.entity_name,
+            'office_section': pr.office_section,
+            'purpose': pr.purpose,
+            'category': pr.category or ', '.join(pr_categories),
+            'grand_total': float(pr.grand_total),
+            'status': pr.status,
+            'created_at': pr.created_at.isoformat(),
+            'quotation_status': quotation_status,
+            'items_count': pr.line_items.count(),
+        })
 
     return JsonResponse({'opportunities': matching_opportunities})
 
@@ -851,9 +1036,9 @@ def supplier_dashboard_summary(request, supplier_id):
     except Supplier.DoesNotExist:
         return JsonResponse({'error': 'Supplier not found'}, status=404)
 
-    # Count matching opportunities
-    supplier_keywords = (supplier.goods_services or '') + ' ' + (supplier.nature_of_business or '')
-    supplier_keywords_set = set(supplier_keywords.lower().split())
+    supplier_category_ids = set(
+        SupplierCategory.objects.filter(supplier=supplier, category__is_active=True).values_list('category_id', flat=True)
+    )
 
     prs = PurchaseRequest.objects.filter(
         status__in=['matched', 'approved']
@@ -861,17 +1046,14 @@ def supplier_dashboard_summary(request, supplier_id):
 
     matching_count = 0
     for pr in prs:
-        pr_categories = set()
+        pr_category_ids = set()
         for item in pr.line_items.all():
             if item.category:
-                pr_categories.add(item.category.lower())
+                category = Category.objects.filter(name=item.category, is_active=True).first()
+                if category:
+                    pr_category_ids.add(category.id)
 
-        # Check if any supplier keyword overlaps with categories
-        if pr_categories and any(
-            keyword in supplier_keywords
-            for category in pr_categories
-            for keyword in category.split()
-        ):
+        if supplier_category_ids.intersection(pr_category_ids):
             matching_count += 1
 
     quotations = Quotation.objects.filter(supplier=supplier)
@@ -921,6 +1103,7 @@ def supplier_quotations(request, supplier_id):
         try:
             data = json.loads(request.body)
             pr_id = data.get('purchase_request_id')
+            rfq_id = data.get('rfq_id')
             quoted_amount = data.get('quoted_amount')
             estimated_delivery_days = data.get('estimated_delivery_days')
             warranty_months = data.get('warranty_months')
@@ -936,6 +1119,10 @@ def supplier_quotations(request, supplier_id):
             except PurchaseRequest.DoesNotExist:
                 return JsonResponse({'error': 'Purchase Request not found'}, status=404)
 
+            rfq = RFQ.objects.filter(id=rfq_id, supplier=supplier, purchase_request=pr, status=RFQ.STATUS_SENT).first() if rfq_id else None
+            if rfq_id and not rfq:
+                return JsonResponse({'error': 'RFQ not found or no longer accepting quotations'}, status=400)
+
             # Check if quotation already exists
             existing = Quotation.objects.filter(supplier=supplier, purchase_request=pr).first()
             if existing and existing.status != 'draft':
@@ -949,6 +1136,8 @@ def supplier_quotations(request, supplier_id):
                 existing.estimated_delivery_days = estimated_delivery_days
                 existing.warranty_months = warranty_months
                 existing.remarks = remarks
+                if rfq:
+                    existing.rfq = rfq
                 existing.status = 'submitted'
                 existing.save()
                 quotation = existing
@@ -957,12 +1146,17 @@ def supplier_quotations(request, supplier_id):
                 quotation = Quotation.objects.create(
                     supplier=supplier,
                     purchase_request=pr,
+                    rfq=rfq,
                     quoted_amount=quoted_amount,
                     estimated_delivery_days=estimated_delivery_days,
                     warranty_months=warranty_months,
                     remarks=remarks,
                     status='submitted'
                 )
+
+            if rfq:
+                rfq.status = RFQ.STATUS_QUOTATION_RECEIVED
+                rfq.save(update_fields=['status', 'updated_at'])
 
             # Create notification
             Notification.objects.create(
@@ -1004,6 +1198,7 @@ def supplier_notifications(request, supplier_id):
             'message': n.message,
             'is_read': n.is_read,
             'related_pr_id': n.related_pr_id,
+            'related_rfq_id': n.related_rfq_id,
             'created_at': n.created_at.isoformat(),
         })
 
@@ -1046,6 +1241,9 @@ def supplier_profile(request, supplier_id):
         categories = list(
             SupplierCategory.objects.filter(supplier=supplier).select_related('category').values_list('category__name', flat=True)
         )
+        category_ids = list(
+            SupplierCategory.objects.filter(supplier=supplier).values_list('category_id', flat=True)
+        )
         return JsonResponse({
             'id': supplier.id,
             'company_name': supplier.company_name,
@@ -1062,6 +1260,7 @@ def supplier_profile(request, supplier_id):
             'status': supplier.status,
             'review_remarks': supplier.review_remarks,
             'categories': categories,
+            'category_ids': category_ids,
             'created_at': supplier.created_at.isoformat(),
             'documents': documents,
         })
@@ -1069,6 +1268,18 @@ def supplier_profile(request, supplier_id):
     elif request.method == 'PATCH':
         try:
             data = json.loads(request.body)
+            selected_categories = None
+            if 'category_ids' in data:
+                category_ids = data.get('category_ids')
+                if not isinstance(category_ids, list):
+                    return JsonResponse({'error': 'category_ids must be a list'}, status=400)
+                try:
+                    normalized_ids = list(dict.fromkeys(int(category_id) for category_id in category_ids))
+                except (TypeError, ValueError):
+                    return JsonResponse({'error': 'Category IDs must be valid integers'}, status=400)
+                selected_categories = list(Category.objects.filter(id__in=normalized_ids, is_active=True))
+                if len(selected_categories) != len(normalized_ids):
+                    return JsonResponse({'error': 'One or more selected categories are invalid or inactive'}, status=400)
 
             # Only allow updating specific fields
             allowed_fields = [
@@ -1080,7 +1291,17 @@ def supplier_profile(request, supplier_id):
                 if field in data:
                     setattr(supplier, field, data[field])
 
-            supplier.save()
+            with transaction.atomic():
+                supplier.save()
+                if selected_categories is not None:
+                    selected_ids = [category.id for category in selected_categories]
+                    SupplierCategory.objects.filter(supplier=supplier).exclude(category_id__in=selected_ids).delete()
+                    for category in selected_categories:
+                        SupplierCategory.objects.get_or_create(supplier=supplier, category=category)
+
+            updated_categories = list(
+                SupplierCategory.objects.filter(supplier=supplier).select_related('category').values_list('category__name', flat=True)
+            )
             return JsonResponse({'success': True, 'supplier': {
                 'id': supplier.id,
                 'company_name': supplier.company_name,
@@ -1090,6 +1311,8 @@ def supplier_profile(request, supplier_id):
                 'nature_of_business': supplier.nature_of_business,
                 'goods_services': supplier.goods_services,
                 'email': supplier.email,
+                'categories': updated_categories,
+                'category_ids': list(SupplierCategory.objects.filter(supplier=supplier).values_list('category_id', flat=True)),
             }})
 
         except json.JSONDecodeError:
@@ -1110,6 +1333,7 @@ def purchase_request_details(request, pr_id):
     for item in pr.line_items.all():
         items.append({
             'id': item.id,
+            'stock_property_no': item.stock_property_no,
             'item_description': item.item_description,
             'quantity': float(item.quantity),
             'unit': item.unit,
@@ -1121,9 +1345,18 @@ def purchase_request_details(request, pr_id):
     return JsonResponse({
         'id': pr.id,
         'pr_no': pr.pr_no,
+        'source_filename': pr.source_filename,
+        'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
         'entity_name': pr.entity_name,
+        'fund_cluster': pr.fund_cluster,
         'office_section': pr.office_section,
+        'responsibility_center_code': pr.responsibility_center_code,
+        'date': pr.date.isoformat() if pr.date else '',
         'purpose': pr.purpose,
+        'requested_by': pr.requested_by,
+        'funds_available_by': pr.funds_available_by,
+        'approved_by': pr.approved_by,
+        'twg_verified_by': pr.twg_verified_by,
         'category': pr.category,
         'grand_total': float(pr.grand_total),
         'status': pr.status,
@@ -1190,45 +1423,221 @@ def pr_items_assign_categories(request, pr_id):
 def pr_supplier_match(request, pr_id):
     """Return suppliers matched by the item categories assigned to a PR."""
     try:
-        PurchaseRequest.objects.get(id=pr_id)
+        pr = PurchaseRequest.objects.get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
         return json_error('Purchase Request not found', 404)
 
-    categories = list(
+    item_categories = list(
         PurchaseRequestItem.objects
         .filter(purchase_request_id=pr_id)
         .exclude(category__isnull=True).exclude(category='')
         .values_list('category', flat=True)
         .distinct()
     )
+    categories = list(dict.fromkeys(([pr.category] if pr.category else []) + item_categories))
 
-    all_suppliers = list(Supplier.objects.values(
+    matching_supplier_ids = set(
+        SupplierCategory.objects
+        .filter(category__name__in=categories)
+        .values_list('supplier_id', flat=True)
+    )
+    all_suppliers = list(Supplier.objects.filter(id__in=matching_supplier_ids).values(
         'id', 'company_name', 'email', 'contact_person', 'contact_phone',
         'business_address', 'goods_services', 'nature_of_business', 'status',
     ))
 
     results = []
     for cat in categories:
-        cat_lower = cat.lower()
-        keywords = [w for w in cat_lower.split() if len(w) > 3]
-
-        scored = []
-        for s in all_suppliers:
-            combined = (
-                (s.get('goods_services') or '').lower() + ' ' +
-                (s.get('nature_of_business') or '').lower()
-            )
-            score = sum(2 for kw in keywords if kw in combined)
-            if score > 0:
-                scored.append({**s, 'match_score': score})
-
-        scored.sort(key=lambda x: x['match_score'], reverse=True)
-        matched = scored[:5]
-
-        # Fallback: include first 3 suppliers even with zero score
-        if not matched:
-            matched = [{**s, 'match_score': 0} for s in all_suppliers[:3]]
+        category_supplier_ids = set(
+            SupplierCategory.objects
+            .filter(category__name=cat)
+            .values_list('supplier_id', flat=True)
+        )
+        matched = [{**supplier, 'match_score': 1} for supplier in all_suppliers if supplier['id'] in category_supplier_ids]
 
         results.append({'category': cat, 'suppliers': matched})
 
     return JsonResponse(results, safe=False)
+
+
+@require_GET
+def pr_unmatched_list(request):
+    """Return existing PRs that do not yet have a supplier quotation."""
+    prs = (
+        PurchaseRequest.objects
+        .filter(quotations__isnull=True)
+        .prefetch_related('line_items')
+        .order_by('-created_at')
+        .distinct()
+    )
+    result = []
+    for pr in prs:
+        categories = sorted({item.category for item in pr.line_items.all() if item.category})
+        result.append({
+            'id': pr.id,
+            'pr_no': pr.pr_no,
+            'date': pr.date.isoformat() if pr.date else None,
+            'entity_name': pr.entity_name,
+            'office_section': pr.office_section,
+            'category': pr.category or ', '.join(categories),
+            'purpose': pr.purpose,
+            'status': pr.status,
+            'grand_total': float(pr.grand_total),
+            'items_count': pr.line_items.count(),
+        })
+    return JsonResponse(result, safe=False)
+
+
+def _rfq_payload(rfq, request):
+    pr = rfq.purchase_request
+    items = [{
+        'id': item.id,
+        'item_description': item.item_description,
+        'quantity': float(item.quantity),
+        'unit': item.unit or '',
+        'category': item.category or '',
+    } for item in pr.line_items.all()]
+    return {
+        'id': rfq.id,
+        'rfq_no': rfq.rfq_no,
+        'status': rfq.status,
+        'subject': rfq.subject,
+        'message': rfq.message,
+        'created_at': rfq.created_at.isoformat(),
+        'sent_at': rfq.sent_at.isoformat() if rfq.sent_at else None,
+        'purchase_request': {
+            'id': pr.id,
+            'pr_no': pr.pr_no,
+            'date': pr.date.isoformat() if pr.date else '',
+            'entity_name': pr.entity_name,
+            'office_section': pr.office_section or '',
+            'purpose': pr.purpose or '',
+            'category': pr.category or '',
+            'source_filename': pr.source_filename,
+            'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
+            'items': items,
+        },
+        'supplier': {
+            'id': rfq.supplier.id,
+            'company_name': rfq.supplier.company_name,
+            'contact_person': rfq.supplier.contact_person,
+            'email': rfq.supplier.email,
+        },
+    }
+
+
+def _rfq_number():
+    return f"RFQ-{timezone.now().year}-{RFQ.objects.filter(created_at__year=timezone.now().year).count() + 1:04d}"
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST', 'PATCH'])
+def admin_rfq(request, pr_id):
+    try:
+        pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
+        return json_error('Purchase Request not found', 404)
+
+    if request.method == 'GET':
+        rfqs = RFQ.objects.filter(purchase_request=pr).select_related('supplier')
+        return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfqs]})
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (TypeError, json.JSONDecodeError):
+        return json_error('Invalid JSON payload', 400)
+
+    supplier_id = payload.get('supplier_id')
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except (Supplier.DoesNotExist, TypeError, ValueError):
+        return json_error('Supplier not found', 404)
+
+    if supplier.status != 'Approved':
+        return json_error('Supplier is not eligible because the supplier is not approved.', 400)
+
+    pr_category_names = {item.category for item in pr.line_items.all() if item.category}
+    if pr.category:
+        pr_category_names.add(pr.category)
+    supplier_category_names = set(SupplierCategory.objects.filter(
+        supplier=supplier, category__is_active=True
+    ).values_list('category__name', flat=True))
+    requested_category = str(payload.get('category') or '').strip()
+    eligible_categories = pr_category_names.intersection(supplier_category_names)
+    if requested_category and requested_category not in eligible_categories:
+        return json_error('Supplier is no longer eligible for the selected PR category.', 400)
+    if not eligible_categories:
+        return json_error('Supplier is no longer eligible for this Purchase Request.', 400)
+
+    rfq_id = payload.get('rfq_id')
+    rfq = RFQ.objects.filter(id=rfq_id, purchase_request=pr).first() if rfq_id else None
+    if rfq and rfq.supplier_id != supplier.id:
+        return json_error('RFQ does not belong to the selected supplier.', 400)
+    default_subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
+    default_message = (
+        f"Dear {supplier.contact_person or supplier.company_name},\n\n"
+        "Greetings.\n\n"
+        f"The {pr.entity_name} is requesting a quotation for the items/services specified in Purchase Request "
+        f"{pr.pr_no or pr.id}. Please provide your quotation based on the specifications and quantities indicated.\n\n"
+        "Kindly submit your quotation through the eProcure system or through the designated submission process.\n\n"
+        "Thank you.\n\nRegards,\nBAC Secretariat"
+    )
+
+    if not rfq:
+        rfq = RFQ.objects.create(
+            rfq_no=_rfq_number(),
+            purchase_request=pr,
+            supplier=supplier,
+            subject=str(payload.get('subject') or default_subject).strip(),
+            message=str(payload.get('message') or default_message).strip(),
+        )
+    elif request.method == 'PATCH':
+        rfq.subject = str(payload.get('subject') or rfq.subject).strip()
+        rfq.message = str(payload.get('message') or rfq.message).strip()
+
+    should_send = bool(payload.get('send'))
+    if should_send:
+        if not rfq.subject or not rfq.message:
+            return json_error('RFQ subject and message are required.', 400)
+        if not supplier.email or '@' not in supplier.email:
+            return json_error("RFQ could not be sent. Please verify the supplier's email address and email configuration.", 400)
+
+        email = EmailMessage(
+            subject=rfq.subject,
+            body=rfq.message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[supplier.email],
+        )
+        if pr.source_filename:
+            attachment_path = UPLOADS_DIR / Path(pr.source_filename).name
+            if attachment_path.is_file():
+                email.attach_file(attachment_path)
+        try:
+            email.send(fail_silently=False)
+        except Exception:
+            return json_error("RFQ could not be sent. Please verify the supplier's email address and email configuration.", 502)
+
+        rfq.status = RFQ.STATUS_SENT
+        rfq.sent_at = timezone.now()
+        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'updated_at'])
+        Notification.objects.create(
+            supplier=supplier,
+            notification_type=Notification.TYPE_RFQ_RECEIVED,
+            title='New Request for Quotation',
+            message=f'RFQ {rfq.rfq_no} for PR {pr.pr_no or pr.id} is ready for your quotation.',
+            related_pr_id=pr.id,
+        )
+    else:
+        rfq.save(update_fields=['subject', 'message', 'updated_at'])
+
+    return JsonResponse(_rfq_payload(rfq, request), status=201 if request.method == 'POST' and not rfq_id else 200)
+
+
+@require_GET
+def supplier_rfqs(request, supplier_id):
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return json_error('Supplier not found', 404)
+    rfqs = RFQ.objects.filter(supplier=supplier).select_related('purchase_request').prefetch_related('purchase_request__line_items')
+    return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfqs]})

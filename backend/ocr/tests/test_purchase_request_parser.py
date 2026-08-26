@@ -7,7 +7,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from ocr.purchase_request_parser import parse_purchase_request
-from ocr.textract_purchase_request_parser import parse_ctu_purchase_request
+from ocr.textract_purchase_request_parser import parse_ctu_purchase_request, parse_item_row, reconstruct_item_rows
 
 SAMPLE_PDF_PATH = BACKEND_ROOT / 'uploads' / '1783518303882_Purchase-Requests-MIS-aircon2026.pdf'
 purchase_request_parser = sys.modules['ocr.purchase_request_parser']
@@ -290,3 +290,41 @@ def test_parse_ctu_purchase_request_maps_grouped_signatories_to_correct_fields()
     assert result["signatory_designations"]["requested_by"] == "MIS Chair"
     assert result["signatory_designations"]["budget_officer"] == "AO IV / Budget Officer 2"
     assert result["signatory_designations"]["approved_by"] == "Campus Director"
+
+
+def test_textract_reconstructs_wrapped_description_until_numeric_row():
+    def row(row_index, description='', unit='', quantity='', unit_cost='', total_cost=''):
+        values = {
+            3: description,
+            4: unit,
+            5: quantity,
+            6: unit_cost,
+            7: total_cost,
+        }
+        return {
+            'row_index': row_index,
+            'confidence': 90.0,
+            'cells': [
+                {'column_index': column, 'text': value, 'confidence': 90.0}
+                for column, value in values.items()
+                if value
+            ],
+        }
+
+    header_map = {'description': 3, 'unit': 4, 'quantity': 5, 'unit_cost': 6, 'total_cost': 7}
+    rows = [
+        row(3, 'Supply and Delivery of 4.0HP FLOOR STANDING,'),
+        row(4, 'Capacity: 3 Tons of Refrigeration'),
+        row(5, 'Airflow: Automatic Swing (Motorized Louver)', 'unit', '1', '145,000', '145,000.00'),
+        row(6, 'nothing follows', total_cost='-'),
+    ]
+
+    reconstructed = reconstruct_item_rows(rows, header_map)
+    item = parse_item_row(reconstructed[0], header_map)
+
+    assert len(reconstructed) == 1
+    assert item.description == 'Supply and Delivery of 4.0HP FLOOR STANDING,\nCapacity: 3 Tons of Refrigeration\nAirflow: Automatic Swing (Motorized Louver)'
+    assert item.unit == 'unit'
+    assert item.quantity == 1
+    assert item.unit_cost == 145000
+    assert item.total_cost == 145000

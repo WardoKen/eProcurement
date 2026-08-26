@@ -38,6 +38,9 @@ function validatePhone(phone) {
 
 export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const [step, setStep] = React.useState(1)
+  const [categories, setCategories] = React.useState([])
+  const [selectedCategoryIds, setSelectedCategoryIds] = React.useState([])
+  const [categorySearchTerm, setCategorySearchTerm] = React.useState('')
   const [form, setForm] = React.useState({
     companyName: '',
     businessType: 'Sole Proprietorship',
@@ -66,7 +69,24 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const [submitting, setSubmitting] = React.useState(false)
   const [uploadProgress, setUploadProgress] = React.useState(0)
   const [submitted, setSubmitted] = React.useState(false)
+  const [successModalOpen, setSuccessModalOpen] = React.useState(false)
   const [referenceNumber, setReferenceNumber] = React.useState('')
+
+  React.useEffect(() => {
+    let isMounted = true
+    fetch(`${apiBase.replace(/\/$/, '')}/api/categories/`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load categories')
+        return response.json()
+      })
+      .then((data) => {
+        if (isMounted) setCategories(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (isMounted) setErrors(['Unable to load supplier categories. Please try again.'])
+      })
+    return () => { isMounted = false }
+  }, [apiBase])
 
   function updateField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
@@ -111,6 +131,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
     if (nextStep >= 3) {
       if (!form.productsServices.trim()) nextErrors.push('Products or services description is required')
+      if (selectedCategoryIds.length === 0) nextErrors.push('At least one supplier category must be selected')
     }
 
     if (nextStep >= 2) {
@@ -170,6 +191,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     formData.append('contactNumber', form.contactNumber.trim())
     formData.append('email', form.email.trim())
     formData.append('productsServices', form.productsServices.trim())
+    selectedCategoryIds.forEach((categoryId) => formData.append('category_ids', categoryId))
     formData.append('username', form.username.trim())
     formData.append('password', form.password)
     formData.append('confirmPassword', form.confirmPassword)
@@ -196,6 +218,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         setMessage(response.message || 'Supplier registration submitted successfully. Please wait for review.')
         setReferenceNumber(`SUP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`)
         setSubmitted(true)
+        setSuccessModalOpen(true)
         setStep(4)
         setForm({
           companyName: '',
@@ -209,6 +232,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           password: '',
           confirmPassword: '',
         })
+        setSelectedCategoryIds([])
         setRequiredFiles({
           mayor_permit: null,
           business_permit: null,
@@ -227,7 +251,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           const serverErrors = response.errors || []
           if (serverErrors.length) setErrors(serverErrors)
           else setErrors([response.message || 'Registration failed. Please try again.'])
-        } catch (error) {
+        } catch {
           setErrors(['Registration failed. Please try again.'])
         }
       }
@@ -240,8 +264,14 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   }
 
   const businessDocLabel = businessDocLabels[form.businessType]
+  const selectedCategories = categories.filter((category) => selectedCategoryIds.includes(category.id))
+  const availableCategories = categories.filter((category) => (
+    !selectedCategoryIds.includes(category.id)
+    && category.name.toLowerCase().includes(categorySearchTerm.trim().toLowerCase())
+  ))
   const documentCards = [
     { key: 'mayor_permit', label: "Mayor's Permit" },
+    { key: 'business_permit', label: 'Business Permit' },
     { key: 'philgeps_registration', label: 'PhilGEPS' },
     { key: 'bir_registration', label: 'BIR Registration' },
     { key: 'tax_clearance', label: 'Tax Clearance' },
@@ -341,6 +371,57 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             <span>Products / Services *</span>
             <textarea rows="6" value={form.productsServices} onChange={(event) => updateField('productsServices', event.target.value)} placeholder="Supply and installation of air conditioning systems." required />
           </label>
+          <div className="form-field">
+            <span>Supplier Categories *</span>
+            <p className="helper-text">Select all categories that match the products or services your company can provide.</p>
+            <div className="category-search">
+              <input
+                type="search"
+                value={categorySearchTerm}
+                onChange={(event) => setCategorySearchTerm(event.target.value)}
+                placeholder="Search supplier categories"
+                aria-label="Search supplier categories"
+              />
+            </div>
+            <div className="category-groups" role="group" aria-label="Supplier categories">
+              <div className="category-group">
+                <div className="category-group-header">
+                  <strong>Selected Categories</strong>
+                  <span>{selectedCategories.length}</span>
+                </div>
+                <div className="multi-select category-list selected-category-list">
+                  {selectedCategories.length > 0 ? selectedCategories.map((category) => (
+                    <label key={category.id} className="category-option">
+                      <input
+                        type="checkbox"
+                        checked
+                        onChange={() => setSelectedCategoryIds((current) => current.filter((id) => id !== category.id))}
+                      />
+                      <span>{category.name}</span>
+                    </label>
+                  )) : <span className="helper-text">No categories selected yet.</span>}
+                </div>
+              </div>
+              <div className="category-group">
+                <div className="category-group-header">
+                  <strong>Available Categories</strong>
+                  <span>{availableCategories.length}</span>
+                </div>
+                <div className="multi-select category-list">
+                  {availableCategories.length > 0 ? availableCategories.map((category) => (
+                    <label key={category.id} className="category-option">
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={() => setSelectedCategoryIds((current) => [...current, category.id])}
+                      />
+                      <span>{category.name}</span>
+                    </label>
+                  )) : <span className="helper-text">No matching categories found.</span>}
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       )
     }
@@ -423,6 +504,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           <div className="review-block">
             <h3>Products & Services</h3>
             <p><strong>Products / Services:</strong> {form.productsServices || '—'}</p>
+            <p><strong>Categories:</strong> {selectedCategories.map((category) => category.name).join(', ') || '—'}</p>
           </div>
           <div className="review-block review-block-wide">
             <h3>Uploaded Documents</h3>
@@ -477,6 +559,43 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           {step === 4 && !submitted && <button type="submit" className="btn-primary" disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Registration'}</button>}
         </div>
       </form>
+
+      {successModalOpen && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="supplier-registration-success-title"
+          onClick={() => setSuccessModalOpen(false)}
+        >
+          <div className="modal-content registration-success-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h2 id="supplier-registration-success-title">Registration Submitted Successfully</h2>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSuccessModalOpen(false)}
+                aria-label="Close registration confirmation"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body registration-success-modal-body">
+              <div className="success-icon" aria-hidden="true">✓</div>
+              <p>Supplier registration submitted successfully. It is now pending review.</p>
+              <div className="reference-box">
+                <span>Reference Number</span>
+                <strong>{referenceNumber}</strong>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" onClick={() => setSuccessModalOpen(false)}>
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

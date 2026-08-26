@@ -14,6 +14,8 @@ class User(models.Model):
     username = models.CharField(max_length=255, unique=True)
     password_hash = models.CharField(max_length=255)
     full_name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField(blank=True)
+    unit_office = models.CharField(max_length=255, blank=True)
     role = models.ForeignKey(Role, on_delete=models.PROTECT)
     is_active = models.BooleanField(default=True)
     last_login = models.DateTimeField(null=True, blank=True)
@@ -98,7 +100,9 @@ class PurchaseRequest(models.Model):
     category = models.CharField(max_length=255, blank=True, null=True)
     fund_cluster = models.CharField(max_length=100, blank=True, null=True)
     office_section = models.CharField(max_length=255, blank=True, null=True)
-    pr_no = models.CharField(max_length=50, blank=True, null=True)
+    pr_no = models.CharField(max_length=50, blank=True, null=True, unique=True)
+    source_filename = models.CharField(max_length=512, blank=True)
+    submitted_by = models.CharField(max_length=255, blank=True)
     responsibility_center_code = models.CharField(max_length=100, blank=True, null=True)
     date = models.DateField(blank=True, null=True)
     purpose = models.TextField(blank=True, null=True)
@@ -112,6 +116,10 @@ class PurchaseRequest(models.Model):
 
     def __str__(self):
         return f"PR {self.pr_no or self.id} - {self.entity_name}"
+
+
+class PRNumberSequence(models.Model):
+    key = models.CharField(max_length=20, primary_key=True, default='global')
 
 
 class PurchaseRequestItem(models.Model):
@@ -145,6 +153,7 @@ class Quotation(models.Model):
 
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='quotations')
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='quotations')
+    rfq = models.ForeignKey('RFQ', on_delete=models.SET_NULL, null=True, blank=True, related_name='quotations')
     quoted_amount = models.DecimalField(max_digits=14, decimal_places=2)
     estimated_delivery_days = models.IntegerField(blank=True, null=True)
     warranty_months = models.IntegerField(blank=True, null=True)
@@ -163,6 +172,7 @@ class Quotation(models.Model):
 
 class Notification(models.Model):
     TYPE_OPPORTUNITY = 'opportunity'
+    TYPE_RFQ_RECEIVED = 'rfq_received'
     TYPE_QUOTATION_SUBMITTED = 'quotation_submitted'
     TYPE_QUOTATION_REVIEW = 'quotation_review'
     TYPE_QUOTATION_AWARDED = 'quotation_awarded'
@@ -171,6 +181,7 @@ class Notification(models.Model):
 
     TYPE_CHOICES = [
         (TYPE_OPPORTUNITY, 'New Procurement Opportunity'),
+        (TYPE_RFQ_RECEIVED, 'New Request for Quotation'),
         (TYPE_QUOTATION_SUBMITTED, 'Quotation Submitted'),
         (TYPE_QUOTATION_REVIEW, 'Quotation Under Review'),
         (TYPE_QUOTATION_AWARDED, 'Quotation Awarded'),
@@ -185,6 +196,7 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     related_pr_id = models.IntegerField(blank=True, null=True)
     related_quotation_id = models.IntegerField(blank=True, null=True)
+    related_rfq_id = models.IntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -192,3 +204,31 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class RFQ(models.Model):
+    STATUS_DRAFT = 'draft'
+    STATUS_SENT = 'sent'
+    STATUS_QUOTATION_RECEIVED = 'quotation_received'
+    STATUS_COMPLETED = 'completed'
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_SENT, 'Sent'),
+        (STATUS_QUOTATION_RECEIVED, 'Quotation Received'),
+        (STATUS_COMPLETED, 'Completed'),
+    ]
+
+    rfq_no = models.CharField(max_length=50, unique=True)
+    purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='rfqs')
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='rfqs')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_rfqs')
+    subject = models.CharField(max_length=255)
+    message = models.TextField()
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.rfq_no} ({self.supplier.company_name})"

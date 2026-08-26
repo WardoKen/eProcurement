@@ -170,7 +170,7 @@ const bacNewsSlides = [
     title: 'Register and manage supplier documents',
     description: 'Upload permits, BIR, and PhilGEPS requirements while keeping your supplier profile current.',
     buttonLabel: 'Register as Supplier',
-    buttonTo: '/register',
+    buttonTo: '/supplier/register',
     image: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=80',
   },
   {
@@ -897,50 +897,6 @@ const Login = () => {
   return (
     <div className="login-page">
       <div className="login-container">
-        <div className="login-instructions">
-          <h2>Login Instructions</h2>
-          <ol>
-            <li>
-              <strong>Select User Type:</strong>
-              <p>Choose your appropriate user type from the drop down menu:</p>
-              <ul>
-                <li><strong>Buyer</strong> for all buyer users.</li>
-                <li><strong>Supplier</strong> for supplier accounts, CSOs, and observer users.</li>
-                <li><strong>Admin</strong> for administrative users.</li>
-              </ul>
-            </li>
-            <li>
-              <strong>Enter Username</strong>
-              <p>Type your username or login ID in the <strong>Username</strong> field.</p>
-            </li>
-            <li>
-              <strong>Enter Password</strong>
-              <p>Enter your account password in the <strong>Password</strong> field.</p>
-            </li>
-            <li>
-              <strong>Enter Your Credentials</strong>
-              <p>Use your username, password, and selected role to sign in.</p>
-            </li>
-            <li>
-              <strong>Log In</strong>
-              <p>Click the <strong>Log In</strong> button or press Enter on your keyboard to proceed.</p>
-            </li>
-            <li>
-              <strong>Forgot Password</strong>
-              <p>If you forgot your password, click the <strong>Forgot Password</strong> link and follow the on-screen instructions to reset it.</p>
-            </li>
-          </ol>
-
-          <div className="login-credentials">
-            <h3>Temporary Test Accounts</h3>
-            <ul>
-              <li><strong>Buyer:</strong> buyer1 / buyer123</li>
-              <li><strong>Supplier:</strong> supplier1 / supplier123</li>
-              <li><strong>Admin:</strong> admin / admin123</li>
-            </ul>
-          </div>
-        </div>
-
         <div className="login-form-container">
           <h2>LOG IN</h2>
           <form className="login-form" onSubmit={handleSubmit}>
@@ -988,7 +944,7 @@ const Login = () => {
             </div>
 
             <div className="form-actions login-actions">
-              <button type="button" className="btn-secondary" onClick={() => navigate('/register')}>Register as Supplier</button>
+              <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
               <button type="button" className="btn-outline" onClick={() => alert('Forgot password flow not implemented yet.')}>Forgot Password</button>
               <button type="submit" className="btn-login">Log In</button>
             </div>
@@ -1000,26 +956,6 @@ const Login = () => {
 }
 
 // ─── Workflow helpers ─────────────────────────────────────────────────────────
-
-function suggestCategory(description, categories) {
-  const desc = (description || '').toLowerCase()
-  if (!desc.trim() || !categories.length) return null
-  let best = { score: 0, cat: null }
-  for (const cat of categories) {
-    const catLower = cat.name.toLowerCase()
-    const catWords = catLower.split(/[\s,\/&\-\(\)\.]+/).filter((w) => w.length > 3)
-    let score = 0
-    for (const cw of catWords) {
-      if (desc.includes(cw)) score += 2
-    }
-    const descWords = desc.split(/\W+/).filter((w) => w.length > 3)
-    for (const dw of descWords) {
-      if (catLower.includes(dw)) score += 1
-    }
-    if (score > best.score) best = { score, cat }
-  }
-  return best.score > 0 ? best.cat : null
-}
 
 const _thS = { padding: '11px 14px', textAlign: 'left', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }
 const _tdS = { padding: '11px 14px', fontSize: 13, verticalAlign: 'middle' }
@@ -1034,6 +970,7 @@ const WorkflowStepper = ({ current }) => {
     { key: 'save', label: 'Save Purchase Request' },
     { key: 'categories', label: 'Assign Categories' },
     { key: 'matching', label: 'Supplier Matching' },
+    { key: 'rfq', label: 'RFQ Review' },
   ]
   const order = steps.map((s) => s.key)
   const currentIndex = order.indexOf(current)
@@ -1081,9 +1018,6 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
         for (const item of itms) {
           if (item.category) {
             init[item.id] = item.category
-          } else {
-            const s = suggestCategory(item.item_description, cats)
-            if (s) init[item.id] = s.name
           }
         }
         setAssignments(init)
@@ -1132,7 +1066,7 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
 
       <div className="supplier-header" style={{ marginTop: 20 }}>
         <h1>Assign Categories</h1>
-        <p>Confirm the category for each item in Purchase Request <strong>#{prId}</strong>. Suggestions are pre-selected — change any that are incorrect, then click Save.</p>
+        <p>Assign a category to each item in Purchase Request <strong>#{prId}</strong>, then click Save.</p>
       </div>
 
       {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
@@ -1150,13 +1084,11 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
               <th style={_thS}>Item Description</th>
               <th style={_thS}>Qty</th>
               <th style={_thS}>Unit Cost</th>
-              <th style={_thS}>Suggested</th>
               <th style={{ ..._thS, minWidth: 220 }}>Final Category</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item, idx) => {
-              const suggested = suggestCategory(item.item_description, categories)
               const assigned = assignments[item.id] || ''
               const missing = touched && !assigned
               return (
@@ -1165,13 +1097,6 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
                   <td style={{ ..._tdS, fontWeight: 500 }}>{item.item_description || '—'}</td>
                   <td style={_tdS}>{Number(item.quantity)}</td>
                   <td style={_tdS}>₱{Number(item.unit_cost).toLocaleString()}</td>
-                  <td style={_tdS}>
-                    {suggested ? (
-                      <span className="cat-suggest-badge">🟢 {suggested.name}</span>
-                    ) : (
-                      <span className="cat-suggest-none">No suggestion</span>
-                    )}
-                  </td>
                   <td style={_tdS}>
                     <select
                       value={assigned}
@@ -1213,19 +1138,139 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
 
 // ─── SupplierMatchingView ─────────────────────────────────────────────────────
 
+const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
+  const [rfq, setRfq] = React.useState(null)
+  const [subject, setSubject] = React.useState('')
+  const [message, setMessage] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState('')
+
+  React.useEffect(() => {
+    fetch(`${apiBase}/api/pr/${prId}/rfq/`)
+      .then((response) => response.ok ? response.json() : { rfqs: [] })
+      .then((data) => {
+        const existing = (data.rfqs || []).find((item) => item.supplier.id === supplier.id && item.status !== 'sent')
+        if (existing) {
+          setRfq(existing)
+          setSubject(existing.subject)
+          setMessage(existing.message)
+        } else {
+          setSubject(`Request for Quotation - PR ${prDetails?.pr_no || prId}`)
+          setMessage(
+            `Dear ${supplier.contact_person || supplier.company_name},\n\n` +
+            'Greetings.\n\n' +
+            `The ${prDetails?.entity_name || 'requesting office'} is requesting a quotation for the items/services specified in Purchase Request ${prDetails?.pr_no || prId}.\n\n` +
+            'Please provide your quotation based on the specifications and quantities indicated.\n\n' +
+            'Kindly submit your quotation through the eProcure system or through the designated submission process.\n\n' +
+            'Thank you.\n\nRegards,\nBAC Secretariat'
+          )
+        }
+      })
+      .catch(() => {})
+  }, [apiBase, prId, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.id])
+
+  const items = prDetails?.items || []
+  const saveRfq = async (send = false) => {
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch(`${apiBase}/api/pr/${prId}/rfq/`, {
+        method: rfq ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_id: supplier.id,
+          category: supplier.matched_category || prDetails?.category || items.find((item) => item.category)?.category || '',
+          rfq_id: rfq?.id,
+          subject,
+          message,
+          send,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Unable to save RFQ')
+      setRfq(data)
+      setSubject(data.subject)
+      setMessage(data.message)
+      if (send) window.alert(`RFQ sent successfully to ${supplier.company_name}.`)
+    } catch (saveError) {
+      setError(saveError.message || 'Unable to save RFQ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="supplier-section">
+      <WorkflowStepper current="rfq" />
+      <div className="supplier-header" style={{ marginTop: 20 }}>
+        <h1>Request for Quotation</h1>
+        <p>Review the existing Purchase Request and supplier details before sending.</p>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="card rfq-review-card">
+        <div className="detail-grid">
+          <div><strong>PR No.</strong><span>{prDetails?.pr_no || `PR-${prId}`}</span></div>
+          <div><strong>PR Date</strong><span>{prDetails?.date || 'N/A'}</span></div>
+          <div><strong>Requesting Office / Entity</strong><span>{prDetails?.office_section || prDetails?.entity_name || 'N/A'}</span></div>
+          <div><strong>Category</strong><span>{prDetails?.category || items.find((item) => item.category)?.category || 'N/A'}</span></div>
+          <div><strong>Supplier</strong><span>{supplier.company_name}</span></div>
+          <div><strong>Supplier Contact</strong><span>{supplier.contact_person || 'N/A'}</span></div>
+          <div><strong>Supplier Email</strong><span>{supplier.email || 'N/A'}</span></div>
+          <div><strong>Status</strong><span>{rfq?.status || 'Draft'}</span></div>
+        </div>
+      </div>
+      <div className="card rfq-review-card">
+        <h2>Requested Items</h2>
+        <div className="opportunity-table-wrapper">
+          <table className="opportunity-table">
+            <thead><tr><th>#</th><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
+            <tbody>{items.map((item, index) => (
+              <tr key={item.id || index}>
+                <td>{index + 1}</td><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        {items.length === 0 && <p>No requested items found.</p>}
+      </div>
+      <div className="card rfq-review-card">
+        <label className="form-field"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={`Request for Quotation - PR ${prDetails?.pr_no || prId}`} /></label>
+        <label className="form-field"><span>RFQ Message</span><textarea rows="12" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter the RFQ message" /></label>
+        <div className="rfq-attachment">
+          <strong>Original PR Attachment</strong>
+          {prDetails?.source_file_url ? <a href={prDetails.source_file_url} target="_blank" rel="noreferrer">{prDetails.source_filename || 'Open original PR'}</a> : <span>No uploaded PR document available.</span>}
+        </div>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn-secondary" onClick={onBack} disabled={saving}>Back to Matching</button>
+        <button type="button" className="btn-secondary" onClick={() => saveRfq(false)} disabled={saving}>{saving ? 'Saving...' : 'Save RFQ'}</button>
+        <button type="button" className="btn-primary" onClick={() => saveRfq(true)} disabled={saving || !supplier.email || !subject.trim() || !message.trim()}>{saving ? 'Sending...' : 'Send RFQ'}</button>
+      </div>
+    </div>
+  )
+}
+
 const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [matches, setMatches] = React.useState([])
+  const [prDetails, setPrDetails] = React.useState(null)
+  const [selectedSupplier, setSelectedSupplier] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
   React.useEffect(() => {
     setLoading(true)
     setError('')
-    fetch(`${apiBase}/api/pr/${prId}/supplier-match/`)
-      .then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() })
-      .then((data) => { setMatches(data); setLoading(false) })
+    Promise.all([
+      fetch(`${apiBase}/api/pr/${prId}/supplier-match/`).then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() }),
+      fetch(`${apiBase}/api/pr/${prId}/details/`).then((r) => { if (!r.ok) throw new Error('Failed to load Purchase Request details'); return r.json() }),
+    ])
+      .then(([matchData, details]) => { setMatches(matchData); setPrDetails(details); setLoading(false) })
       .catch((err) => { setError(err.message || 'Failed to load'); setLoading(false) })
   }, [prId, apiBase])
+
+  if (selectedSupplier && prDetails) {
+    return <RFQPreparation prId={prId} apiBase={apiBase} supplier={selectedSupplier} prDetails={prDetails} onBack={() => setSelectedSupplier(null)} />
+  }
 
   return (
     <div className="supplier-section">
@@ -1233,17 +1278,41 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
 
       <div className="supplier-header" style={{ marginTop: 20 }}>
         <h1>Supplier Matching</h1>
-        <p>Suppliers matched by item categories for Purchase Request <strong>#{prId}</strong>.</p>
+        <p>Suppliers matched by item categories for Purchase Request <strong>#{prDetails?.pr_no || prId}</strong>.</p>
       </div>
 
       {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
+
+      {prDetails && (
+        <div className="card" style={{ padding: 16, marginBottom: 18 }}>
+          <div className="detail-grid">
+            <div><strong>PR Number</strong><span>{prDetails.pr_no || 'N/A'}</span></div>
+            <div><strong>PR Date</strong><span>{prDetails.date || prDetails.created_at?.slice(0, 10) || 'N/A'}</span></div>
+            <div><strong>Entity Name</strong><span>{prDetails.entity_name || 'N/A'}</span></div>
+            <div><strong>Office / Section</strong><span>{prDetails.office_section || 'N/A'}</span></div>
+            <div><strong>Category</strong><span>{prDetails.category || 'Not assigned'}</span></div>
+            <div><strong>Grand Total</strong><span>₱{Number(prDetails.grand_total || 0).toLocaleString()}</span></div>
+            <div style={{ gridColumn: '1 / -1' }}><strong>Purpose</strong><span>{prDetails.purpose || 'N/A'}</span></div>
+          </div>
+          {prDetails.items?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <strong>Requested Items</strong>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+                {prDetails.items.map((item) => (
+                  <li key={item.id}>{item.item_description} ({item.quantity} {item.unit || 'units'})</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="skeleton-stack">
           {[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 110 }} />)}
         </div>
       ) : matches.length === 0 ? (
-        <div className="alert alert-info">No category assignments found. Go back and assign categories to items first.</div>
+        <div className="alert alert-info">No matching suppliers available yet. Register a supplier for this category to continue supplier matching.</div>
       ) : (
         matches.map((group) => (
           <div key={group.category} style={{ marginBottom: 24 }}>
@@ -1256,8 +1325,6 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
                 <div className="supplier-match-empty">No suppliers found for this category.</div>
               )}
               {group.suppliers.map((s) => {
-                const score = s.match_score || 0
-                const pct = score > 0 ? Math.min(100, score * 12) : 0
                 return (
                   <article key={s.id} className="supplier-match-card">
                     <div className="supplier-match-head">
@@ -1273,10 +1340,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
                       {s.nature_of_business && <div><strong>Business:</strong> {s.nature_of_business}</div>}
                     </div>
                     <div className="supplier-match-foot">
-                      <span className="match-pill">
-                        {pct > 0 ? `Match: ${pct}%` : 'Low match'}
-                      </span>
-                      <button className="btn-sm btn-primary" onClick={() => window.alert(`Selected ${s.company_name} for "${group.category}"`)}>Select</button>
+                      <button type="button" className="btn-sm btn-primary" onClick={() => setSelectedSupplier({ ...s, matched_category: group.category })}>Select Supplier</button>
                     </div>
                   </article>
                 )
@@ -1293,6 +1357,72 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   )
 }
 
+const UnmatchedPurchaseRequests = ({ apiBase, onContinue }) => {
+  const [requests, setRequests] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`${apiBase}/api/pr/unmatched/`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load unmatched Purchase Requests')
+        return response.json()
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setRequests(Array.isArray(data) ? data : [])
+          setLoading(false)
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setError(requestError.message || 'Failed to load unmatched Purchase Requests')
+          setLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [apiBase])
+
+  return (
+    <div className="supplier-section">
+      <WorkflowStepper current="matching" />
+      <div className="supplier-header" style={{ marginTop: 20 }}>
+        <h1>Supplier Matching</h1>
+        <p>Continue matching an existing Purchase Request with registered suppliers.</p>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="admin-checklist unmatched-pr-section">
+        <h3>Unmatched Purchase Requests</h3>
+        {loading ? (
+          <div className="skeleton-stack"><div className="skeleton-line" style={{ height: 48 }} /></div>
+        ) : requests.length === 0 ? (
+          <div className="supplier-match-empty">No unmatched Purchase Requests available.</div>
+        ) : (
+          <div className="table-shell">
+            <table className="enterprise-table unmatched-pr-table">
+              <thead>
+                <tr><th>PR No.</th><th>Category</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {requests.map((request) => (
+                  <tr key={request.id}>
+                    <td><strong>{request.pr_no || `PR-${request.id}`}</strong></td>
+                    <td>{request.category || 'Category not assigned'}</td>
+                    <td><span className="status-badge status-review">Unmatched</span></td>
+                    <td><button type="button" className="btn-sm btn-primary" onClick={() => onContinue(request.id)}>Continue Matching</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const Admin = () => {
   const navigate = useNavigate()
   const [currentTab, setCurrentTab] = React.useState('suppliers')
@@ -1302,6 +1432,16 @@ const Admin = () => {
   const [prError, setPrError] = React.useState('')
   const [prSavingId, setPrSavingId] = React.useState(null)
   const [prDeletingId, setPrDeletingId] = React.useState(null)
+  const [editingPr, setEditingPr] = React.useState(null)
+  const [editPrForm, setEditPrForm] = React.useState(null)
+  const [editPrLoading, setEditPrLoading] = React.useState(false)
+  const [editPrSaving, setEditPrSaving] = React.useState(false)
+  const [editPrNumberMode, setEditPrNumberMode] = React.useState('automatic')
+  const [editPrCustomNumber, setEditPrCustomNumber] = React.useState('')
+  const [editPrSourceUrl, setEditPrSourceUrl] = React.useState('')
+  const [dashboardStats, setDashboardStats] = React.useState(null)
+  const [dashboardLoading, setDashboardLoading] = React.useState(false)
+  const [dashboardError, setDashboardError] = React.useState('')
   const [editingStatusById, setEditingStatusById] = React.useState({})
   const [pendingStatusById, setPendingStatusById] = React.useState({})
   const [supplierRegistrations, setSupplierRegistrations] = React.useState([])
@@ -1317,6 +1457,10 @@ const Admin = () => {
   const [previewDoc, setPreviewDoc] = React.useState(null)
   const [previewVisible, setPreviewVisible] = React.useState(false)
   const [navCollapsed, setNavCollapsed] = React.useState(false)
+  const [buyerAccountForm, setBuyerAccountForm] = React.useState({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
+  const [buyerAccountSaving, setBuyerAccountSaving] = React.useState(false)
+  const [buyerAccountMessage, setBuyerAccountMessage] = React.useState('')
+  const [buyerAccountError, setBuyerAccountError] = React.useState('')
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const prStatusOptions = [
     { value: 'uploaded', label: 'Uploaded' },
@@ -1331,9 +1475,52 @@ const Admin = () => {
     navigate('/login')
   }
 
+  const handleBuyerAccountSubmit = async (event) => {
+    event.preventDefault()
+    setBuyerAccountMessage('')
+    setBuyerAccountError('')
+    if (buyerAccountForm.password !== buyerAccountForm.confirmPassword) {
+      setBuyerAccountError('Passwords do not match.')
+      return
+    }
+    if (buyerAccountForm.password.length < 8) {
+      setBuyerAccountError('Password must be at least 8 characters long.')
+      return
+    }
+
+    setBuyerAccountSaving(true)
+    try {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: buyerAccountForm.username.trim(),
+          fullName: buyerAccountForm.fullName.trim(),
+          email: buyerAccountForm.email.trim(),
+          unitOffice: buyerAccountForm.unitOffice.trim(),
+          password: buyerAccountForm.password,
+          role: 'buyer',
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.message || 'Unable to create Buyer account.')
+      setBuyerAccountMessage('Buyer account created successfully.')
+      setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
+    } catch (error) {
+      setBuyerAccountError(error?.message || 'Unable to create Buyer account.')
+    } finally {
+      setBuyerAccountSaving(false)
+    }
+  }
+
   const handlePrSaved = React.useCallback((prId) => {
     setWorkflowPrId(prId)
     setCurrentTab('assign-categories')
+  }, [])
+
+  const handleContinueMatching = React.useCallback((prId) => {
+    setWorkflowPrId(prId)
+    setCurrentTab('supplier-matching')
   }, [])
 
   const loadSupplierRegistrations = React.useCallback(async () => {
@@ -1351,6 +1538,21 @@ const Admin = () => {
       setSupplierError(error?.message || 'Failed to load supplier registrations')
     } finally {
       setSupplierLoading(false)
+    }
+  }, [apiBaseUrl])
+
+  const loadDashboardStats = React.useCallback(async () => {
+    setDashboardLoading(true)
+    setDashboardError('')
+    try {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/dashboard-summary/`)
+      if (!res.ok) throw new Error('Failed to load dashboard data')
+      setDashboardStats(await res.json())
+    } catch (error) {
+      console.error(error)
+      setDashboardError(error?.message || 'Failed to load dashboard data')
+    } finally {
+      setDashboardLoading(false)
     }
   }, [apiBaseUrl])
 
@@ -1522,6 +1724,13 @@ const Admin = () => {
     setPreviewDoc(null)
   }
 
+  const closeSupplierReview = () => {
+    setSelectedSupplierId(null)
+    setSelectedSupplierDetails(null)
+    setReviewRemarks('')
+    setDocumentStatusDrafts({})
+  }
+
   const loadPrRecords = React.useCallback(async () => {
     setPrLoading(true)
     setPrError('')
@@ -1541,13 +1750,20 @@ const Admin = () => {
   }, [apiBaseUrl])
 
   React.useEffect(() => {
+    if (currentTab === 'dashboard') {
+      loadDashboardStats()
+      loadPrRecords()
+      loadSupplierRegistrations()
+      const refreshTimer = window.setInterval(loadDashboardStats, 30000)
+      return () => window.clearInterval(refreshTimer)
+    }
     if (currentTab === 'suppliers') {
       loadSupplierRegistrations()
     }
-    if (currentTab === 'pr-monitoring') {
+    if (currentTab === 'pr-monitoring' || currentTab === 'pr-review') {
       loadPrRecords()
     }
-  }, [currentTab, loadPrRecords, loadSupplierRegistrations])
+  }, [currentTab, loadDashboardStats, loadPrRecords, loadSupplierRegistrations])
 
   const handlePrStatusChange = async (prId, nextStatus) => {
     setPrSavingId(prId)
@@ -1637,6 +1853,91 @@ const Admin = () => {
     window.alert(`PR #${pr.pr_no || pr.id}\nEntity: ${pr.entity_name || 'N/A'}\nStatus: ${getPrStatusMeta(pr.status).label}`)
   }
 
+  const handleEditPr = async (pr) => {
+    setEditingPr(pr)
+    setEditPrForm(null)
+    setEditPrLoading(true)
+    setPrError('')
+    try {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${pr.id}/details/`)
+      if (!res.ok) throw new Error('Failed to load Purchase Request details')
+      const details = await res.json()
+      setEditPrForm({
+        pr_no: details.pr_no || '',
+        entity_name: details.entity_name || '',
+        category: details.category || '',
+        fund_cluster: details.fund_cluster || '',
+        office_section: details.office_section || '',
+        responsibility_center_code: details.responsibility_center_code || '',
+        date: details.date || '',
+        purpose: details.purpose || '',
+        requested_by: details.requested_by || '',
+        funds_available_by: details.funds_available_by || '',
+        approved_by: details.approved_by || '',
+        twg_verified_by: details.twg_verified_by || '',
+        items: (details.items || []).map((item) => ({
+          stock_property_no: item.stock_property_no || '',
+          unit: item.unit || '',
+          item_description: item.item_description || '',
+          quantity: item.quantity ?? 0,
+          unit_cost: item.unit_cost ?? 0,
+          category: item.category || '',
+        })),
+      })
+      setEditPrNumberMode(details.pr_no ? 'existing' : 'automatic')
+      setEditPrCustomNumber(details.pr_no || '')
+      setEditPrSourceUrl(details.source_file_url || '')
+    } catch (error) {
+      setPrError(error?.message || 'Failed to load Purchase Request details')
+      setEditingPr(null)
+    } finally {
+      setEditPrLoading(false)
+    }
+  }
+
+  const closeEditPr = () => {
+    if (editPrSaving) return
+    setEditingPr(null)
+    setEditPrForm(null)
+  }
+
+  const handleSavePrEdit = async (finalizeReview = false) => {
+    if (!editPrForm || !editingPr) return
+    setEditPrSaving(true)
+    setPrError('')
+    try {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${editingPr.id}/edit/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editPrForm,
+          finalize_review: finalizeReview,
+          pr_number_mode: editPrNumberMode === 'custom' ? 'custom' : 'automatic',
+          custom_pr_number: editPrCustomNumber,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.message || 'Failed to update Purchase Request')
+      setPrRecords((prev) => prev.map((row) => row.id === editingPr.id ? {
+        ...row,
+        entity_name: editPrForm.entity_name,
+        office_section: editPrForm.office_section,
+        purpose: editPrForm.purpose,
+        grand_total: payload.grand_total,
+        items_count: editPrForm.items.length,
+        pr_no: payload.pr_no || row.pr_no,
+        status: payload.status || row.status,
+      } : row))
+      closeEditPr()
+      return true
+    } catch (error) {
+      setPrError(error?.message || 'Failed to update Purchase Request')
+      return false
+    } finally {
+      setEditPrSaving(false)
+    }
+  }
+
   const matchedSupplierCards = prRecords.flatMap((pr) => {
     const suppliers = Array.isArray(pr.matched_suppliers) ? pr.matched_suppliers : []
     return suppliers.map((supplier, index) => ({
@@ -1690,12 +1991,28 @@ const Admin = () => {
               <span className="admin-nav-label">Supplier Management</span>
             </button>
             <button
+              className={`admin-nav-item ${currentTab === 'buyer-accounts' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('buyer-accounts')}
+              title="Buyer Accounts"
+            >
+              <Users size={14} />
+              <span className="admin-nav-label">Buyer Accounts</span>
+            </button>
+            <button
               className={`admin-nav-item ${currentTab === 'pr-upload' ? 'active' : ''}`}
               onClick={() => setCurrentTab('pr-upload')}
               title="PR Upload"
             >
               <UploadCloud size={14} />
               <span className="admin-nav-label">PR Upload</span>
+            </button>
+            <button
+              className={`admin-nav-item ${currentTab === 'pr-review' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('pr-review')}
+              title="PR Review"
+            >
+              <Pencil size={14} />
+              <span className="admin-nav-label">PR Review</span>
             </button>
             <button
               className={`admin-nav-item ${currentTab === 'pr-monitoring' ? 'active' : ''}`}
@@ -1728,23 +2045,81 @@ const Admin = () => {
               <h1>Admin Dashboard</h1>
               <p>System overview and management controls</p>
             </div>
+            {dashboardError && <div className="alert alert-error" style={{ marginBottom: '16px' }}>{dashboardError}</div>}
             <div className="admin-cards">
               <div className="admin-card">
-                <div className="admin-card-value">3</div>
-                <div className="admin-card-label">Pending Suppliers</div>
+                <div className="admin-card-eyebrow">Procurement</div>
+                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.total_purchase_requests ?? 0}</div>
+                <div className="admin-card-label">Total Purchase Requests</div>
               </div>
               <div className="admin-card">
-                <div className="admin-card-value">2</div>
-                <div className="admin-card-label">Under Review</div>
+                <div className="admin-card-eyebrow">Needs attention</div>
+                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.pending_purchase_requests ?? 0}</div>
+                <div className="admin-card-label">Open Purchase Requests</div>
               </div>
               <div className="admin-card">
-                <div className="admin-card-value">1</div>
-                <div className="admin-card-label">Action Required</div>
+                <div className="admin-card-eyebrow">Completed</div>
+                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.approved_purchase_requests ?? 0}</div>
+                <div className="admin-card-label">Approved Purchase Requests</div>
               </div>
               <div className="admin-card">
-                <div className="admin-card-value">47</div>
-                <div className="admin-card-label">Total Suppliers</div>
+                <div className="admin-card-eyebrow">Supplier network</div>
+                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.total_suppliers ?? 0}</div>
+                <div className="admin-card-label">Registered Suppliers</div>
               </div>
+            </div>
+            <div className="admin-dashboard-grid">
+              <section className="admin-dashboard-panel">
+                <div className="admin-dashboard-panel-header">
+                  <div>
+                    <span className="section-kicker">Latest records</span>
+                    <h2>Recent Purchase Requests</h2>
+                  </div>
+                  <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('pr-monitoring')}>View all</button>
+                </div>
+                {prLoading && prRecords.length === 0 ? <SkeletonRows count={4} /> : prRecords.length === 0 ? (
+                  <div className="dashboard-empty-state"><ClipboardList size={20} /><span>No Purchase Requests found.</span></div>
+                ) : (
+                  <div className="dashboard-activity-list">
+                    {prRecords.slice(0, 5).map((pr) => {
+                      const statusMeta = getPrStatusMeta(pr.status)
+                      return (
+                        <button key={pr.id} type="button" className="dashboard-activity-row" onClick={() => handleViewPr(pr)}>
+                          <span className="dashboard-activity-id">{pr.pr_no || `PR-${pr.id}`}</span>
+                          <span className="dashboard-activity-main"><strong>{pr.entity_name || 'Unnamed entity'}</strong><small>{pr.office_section || 'Office not specified'}</small></span>
+                          <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                          <span className="dashboard-activity-value">{formatPeso(pr.grand_total)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+              <section className="admin-dashboard-panel">
+                <div className="admin-dashboard-panel-header">
+                  <div>
+                    <span className="section-kicker">Supplier network</span>
+                    <h2>Recent Registrations</h2>
+                  </div>
+                  <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('suppliers')}>Manage</button>
+                </div>
+                {supplierLoading && supplierRegistrations.length === 0 ? <SkeletonRows count={4} /> : supplierRegistrations.length === 0 ? (
+                  <div className="dashboard-empty-state"><Users size={20} /><span>No supplier registrations found.</span></div>
+                ) : (
+                  <div className="dashboard-activity-list">
+                    {supplierRegistrations.slice(0, 5).map((supplier) => {
+                      const statusMeta = getSupplierStatusMeta(supplier.status)
+                      return (
+                        <button key={supplier.id} type="button" className="dashboard-activity-row" onClick={() => { setCurrentTab('suppliers'); handleSelectSupplier(supplier) }}>
+                          <span className="dashboard-activity-id">#{supplier.id}</span>
+                          <span className="dashboard-activity-main"><strong>{supplier.company_name || 'Unnamed supplier'}</strong><small>{supplier.email || 'Email not specified'}</small></span>
+                          <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
           </div>
         )}
@@ -1877,24 +2252,31 @@ const Admin = () => {
                 </div>
               </div>
 
-              <div className="supplier-verification-detail-card">
-                {!selectedSupplierDetails ? (
-                  <div className="supplier-empty-state">
-                    <Building2 size={24} />
-                    <h3>Select a supplier</h3>
-                    <p>Choose a supplier from the list to review their business profile and compliance documents.</p>
-                  </div>
-                ) : (
+              {selectedSupplierId && (
+                <div className="supplier-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="supplier-review-title" onClick={closeSupplierReview}>
+                  <div className="supplier-preview-modal supplier-review-modal" onClick={(event) => event.stopPropagation()}>
+                    {!selectedSupplierDetails ? (
+                      <div className="supplier-empty-state">
+                        <Building2 size={24} />
+                        <h3>Loading supplier review</h3>
+                        <p>Loading the supplier profile and compliance documents.</p>
+                      </div>
+                    ) : (
                   <>
                     <div className="supplier-detail-header">
                       <div>
                         <div className="eyebrow">BAC Administrator Review</div>
-                        <h3>{selectedSupplierDetails.company_name}</h3>
+                        <h3 id="supplier-review-title">{selectedSupplierDetails.company_name}</h3>
                         <p>{selectedSupplierDetails.business_type || 'Business registration review'}</p>
                       </div>
-                      <span className={`status-badge ${getSupplierStatusMeta(selectedSupplierDetails.status).className}`}>
-                        {getSupplierStatusMeta(selectedSupplierDetails.status).label}
-                      </span>
+                      <div className="supplier-review-header-actions">
+                        <span className={`status-badge ${getSupplierStatusMeta(selectedSupplierDetails.status).className}`}>
+                          {getSupplierStatusMeta(selectedSupplierDetails.status).label}
+                        </span>
+                        <button className="icon-action-btn" type="button" onClick={closeSupplierReview} aria-label="Close supplier review">
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="supplier-detail-grid">
@@ -1995,8 +2377,10 @@ const Admin = () => {
                       </div>
                     </div>
                   </>
-                )}
-              </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {previewVisible && previewDoc && (
@@ -2024,6 +2408,54 @@ const Admin = () => {
           </div>
         )}
 
+        {currentTab === 'buyer-accounts' && (
+          <div className="supplier-section">
+            <div className="supplier-header">
+              <h1>Buyer Accounts</h1>
+              <p>Create an account for a Buyer or End User who will submit Purchase Requests.</p>
+            </div>
+            <section className="card buyer-account-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Create Buyer Account</h2>
+                  <p className="supplier-subtext">The account is created with the Buyer role and can access PR upload.</p>
+                </div>
+              </div>
+              <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit}>
+                <label className="form-field">
+                  <span>Full Name</span>
+                  <input required value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="Buyer or End User name" />
+                </label>
+                <label className="form-field">
+                  <span>Username</span>
+                  <input required value={buyerAccountForm.username} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, username: event.target.value }))} placeholder="buyer.username" />
+                </label>
+                <label className="form-field">
+                  <span>Email</span>
+                  <input required type="email" value={buyerAccountForm.email} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="buyer@office.edu" />
+                </label>
+                <label className="form-field">
+                  <span>Unit / Office</span>
+                  <input required value={buyerAccountForm.unitOffice} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, unitOffice: event.target.value }))} placeholder="Procurement Office" />
+                </label>
+                <label className="form-field">
+                  <span>Password</span>
+                  <input required type="password" minLength={8} value={buyerAccountForm.password} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value }))} placeholder="At least 8 characters" />
+                </label>
+                <label className="form-field">
+                  <span>Confirm Password</span>
+                  <input required type="password" minLength={8} value={buyerAccountForm.confirmPassword} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} placeholder="Re-enter password" />
+                </label>
+                {buyerAccountError && <div className="alert alert-error" role="alert">{buyerAccountError}</div>}
+                {buyerAccountMessage && <div className="alert alert-success" role="status">{buyerAccountMessage}</div>}
+                <div className="form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={buyerAccountSaving}>{buyerAccountSaving ? 'Creating Account...' : 'Create Buyer Account'}</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
         {currentTab === 'pr-upload' && (
           <div className="supplier-section">
             <div className="supplier-header">
@@ -2038,12 +2470,50 @@ const Admin = () => {
           </div>
         )}
 
+        {currentTab === 'pr-review' && (
+          <div className="supplier-section">
+            <div className="supplier-header">
+              <h1>PR Review</h1>
+              <p>Review Buyer-submitted Purchase Requests before numbering and supplier matching.</p>
+            </div>
+            <div className="admin-checklist pr-review-queue">
+              <div className="pr-review-queue-header">
+                <div>
+                  <h3>Awaiting BAC Review</h3>
+                  <p>These records are saved in the database and have not received a final PR number.</p>
+                </div>
+                <button type="button" className="btn-sm btn-secondary" onClick={loadPrRecords} disabled={prLoading}><RefreshCw size={14} className={prLoading ? 'spin' : ''} /> Refresh</button>
+              </div>
+              {prRecords.filter((pr) => pr.status === 'uploaded').length === 0 ? (
+                <div className="dashboard-empty-state"><CheckCircle size={20} /><span>No Purchase Requests are awaiting review.</span></div>
+              ) : (
+                <div className="pr-review-queue-list">
+                  {prRecords.filter((pr) => pr.status === 'uploaded').map((pr) => (
+                    <div className="pr-review-queue-row" key={pr.id}>
+                      <div><strong>#{pr.id}</strong><span>{pr.entity_name || 'Unnamed entity'}</span><small>{pr.office_section || 'Office not specified'}</small></div>
+                      <span className="status-badge status-review">For Review</span>
+                      <button type="button" className="btn-sm btn-primary" onClick={() => { setCurrentTab('pr-monitoring'); handleEditPr(pr) }}><Pencil size={14} /> Review PR</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {currentTab === 'assign-categories' && workflowPrId && (
           <AssignCategories
             prId={workflowPrId}
             apiBase={apiBaseUrl}
             onComplete={(prId) => setCurrentTab('supplier-matching')}
             onBack={() => setCurrentTab('pr-upload')}
+          />
+        )}
+
+        {currentTab === 'supplier-matching' && !workflowPrId && (
+          <UnmatchedPurchaseRequests
+            apiBase={apiBaseUrl}
+            onContinue={handleContinueMatching}
           />
         )}
 
@@ -2141,6 +2611,15 @@ const Admin = () => {
                       </span>
                       <span>{pr.created_at ? new Date(pr.created_at).toLocaleString() : 'N/A'}</span>
                       <span className="pr-row-actions">
+                        {pr.status !== 'uploaded' && !pr.has_quotation && (
+                          <button
+                            type="button"
+                            className="btn-sm btn-primary"
+                            onClick={() => handleContinueMatching(pr.id)}
+                          >
+                            Continue Matching
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="icon-action-btn"
@@ -2154,10 +2633,10 @@ const Admin = () => {
                           <button
                             type="button"
                             className="icon-action-btn"
-                            title="Edit Status"
-                            aria-label="Edit Status"
+                            title="Edit Purchase Request"
+                            aria-label="Edit Purchase Request"
                             disabled={prSavingId === pr.id || prDeletingId === pr.id}
-                            onClick={() => handleStartStatusEdit(pr)}
+                            onClick={() => handleEditPr(pr)}
                           >
                             <Pencil size={14} />
                           </button>
@@ -2185,6 +2664,18 @@ const Admin = () => {
                             </button>
                           </>
                         )}
+                        {!isEditing && (
+                          <button
+                            type="button"
+                            className="icon-action-btn"
+                            title="Edit Status"
+                            aria-label="Edit Status"
+                            disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                            onClick={() => handleStartStatusEdit(pr)}
+                          >
+                            <Settings size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="icon-action-btn delete"
@@ -2201,6 +2692,112 @@ const Admin = () => {
                 })}
               </div>
             </div>
+
+            {editingPr && (
+              <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-pr-title" onClick={closeEditPr}>
+                <div className="modal-content pr-edit-modal" onClick={(event) => event.stopPropagation()}>
+                  <div className="modal-header">
+                    <h2 id="edit-pr-title">Edit Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
+                    <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close edit Purchase Request">×</button>
+                  </div>
+                  {editPrLoading || !editPrForm ? (
+                    <div className="modal-body"><SkeletonRows count={4} /></div>
+                  ) : (
+                    <>
+                      {editPrSourceUrl && (
+                        <div className="pr-review-document-pane">
+                          <div className="pr-review-document-header">
+                            <h3>Original PR Document</h3>
+                            <a className="btn-sm btn-secondary" href={editPrSourceUrl} target="_blank" rel="noreferrer">Open document</a>
+                          </div>
+                          <iframe src={editPrSourceUrl} title="Original Purchase Request document" />
+                        </div>
+                      )}
+                      <div className="modal-body pr-edit-body">
+                        <label className="form-field">
+                          <span>PR Number</span>
+                          <input value={editPrForm.pr_no} readOnly />
+                        </label>
+                        {!editPrForm.pr_no && (
+                          <div className="pr-review-numbering">
+                            <span className="form-field-label">Final PR Number</span>
+                            <div className="numbering-options">
+                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'automatic'} onChange={() => setEditPrNumberMode('automatic')} /> Automatic</label>
+                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'custom'} onChange={() => setEditPrNumberMode('custom')} /> Custom</label>
+                            </div>
+                            {editPrNumberMode === 'automatic' ? (
+                              <small>Next available number will be assigned when you continue to Supplier Matching.</small>
+                            ) : (
+                              <input value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="YYYY-MM-NNN" />
+                            )}
+                          </div>
+                        )}
+                        <label className="form-field">
+                          <span>Entity Name *</span>
+                          <input value={editPrForm.entity_name} onChange={(event) => setEditPrForm((prev) => ({ ...prev, entity_name: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Category</span>
+                          <input value={editPrForm.category} onChange={(event) => setEditPrForm((prev) => ({ ...prev, category: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Fund Cluster</span>
+                          <input value={editPrForm.fund_cluster} onChange={(event) => setEditPrForm((prev) => ({ ...prev, fund_cluster: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Office / Section</span>
+                          <input value={editPrForm.office_section} onChange={(event) => setEditPrForm((prev) => ({ ...prev, office_section: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Responsibility Center Code</span>
+                          <input value={editPrForm.responsibility_center_code} onChange={(event) => setEditPrForm((prev) => ({ ...prev, responsibility_center_code: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Date</span>
+                          <input type="date" value={editPrForm.date} onChange={(event) => setEditPrForm((prev) => ({ ...prev, date: event.target.value }))} />
+                        </label>
+                        <label className="form-field">
+                          <span>Purpose</span>
+                          <textarea rows="3" value={editPrForm.purpose} onChange={(event) => setEditPrForm((prev) => ({ ...prev, purpose: event.target.value }))} />
+                        </label>
+                        <div className="pr-edit-signatories">
+                          {[
+                            ['requested_by', 'Requested By'],
+                            ['funds_available_by', 'Funds Available By'],
+                            ['approved_by', 'Approved By'],
+                            ['twg_verified_by', 'TWG Verified By'],
+                          ].map(([field, label]) => (
+                            <label className="form-field" key={field}>
+                              <span>{label}</span>
+                              <input value={editPrForm[field]} onChange={(event) => setEditPrForm((prev) => ({ ...prev, [field]: event.target.value }))} />
+                            </label>
+                          ))}
+                        </div>
+                        <div className="pr-edit-items">
+                          <div className="pr-edit-items-header"><h3>Line Items</h3><button type="button" className="btn-sm btn-secondary" onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}>Add Item</button></div>
+                          {editPrForm.items.map((item, index) => (
+                            <div className="pr-edit-item" key={`${editingPr.id}-item-${index}`}>
+                              <input aria-label={`Item ${index + 1} stock number`} placeholder="Stock / Property No." value={item.stock_property_no} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, stock_property_no: event.target.value } : current) }))} />
+                              <input aria-label={`Item ${index + 1} description`} placeholder="Description" value={item.item_description} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, item_description: event.target.value } : current) }))} />
+                              <input aria-label={`Item ${index + 1} unit`} placeholder="Unit" value={item.unit} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit: event.target.value } : current) }))} />
+                              <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" placeholder="Qty" value={item.quantity} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: event.target.value } : current) }))} />
+                              <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" placeholder="Unit cost" value={item.unit_cost} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit_cost: event.target.value } : current) }))} />
+                              <input aria-label={`Item ${index + 1} category`} placeholder="Category" value={item.category} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, category: event.target.value } : current) }))} />
+                              <button type="button" className="icon-action-btn delete" aria-label={`Remove item ${index + 1}`} onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="modal-actions">
+                        <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
+                        <button type="button" className="btn btn-primary" onClick={async () => { const saved = await handleSavePrEdit(true); if (saved) { setWorkflowPrId(editingPr.id); setCurrentTab('supplier-matching') } }} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Continuing...' : 'Continue to Supplier Matching'}</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="admin-checklist">
               <h3>Monitoring Notes</h3>
@@ -2651,7 +3248,6 @@ const Register = () => {
 
         <div className="form-actions" style={{display:'flex',gap:10,flexWrap:'wrap'}}>
           <button type="submit" className="btn-login">Submit Registration</button>
-          <button type="button" className="btn-secondary" onClick={() => setMessage('Save as draft is not implemented in this demo.')}>Save Draft</button>
         </div>
         {message && <div className="form-message" style={{color:'#b91c1c',fontWeight:600}}>{message}</div>}
       </form>
@@ -2662,6 +3258,23 @@ const Register = () => {
 const Buyer = () => {
   const navigate = useNavigate()
   const user = React.useMemo(getStoredUser, [])
+  const buyerStorageKey = `buyer_pr_ids_${user?.username || 'current'}`
+  const [submittedPrIds, setSubmittedPrIds] = React.useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(buyerStorageKey) || '[]')
+    } catch {
+      return []
+    }
+  })
+
+  const handlePrSubmitted = (prId) => {
+    setSubmittedPrIds((current) => {
+      const next = [prId, ...current.filter((id) => id !== prId)].slice(0, 10)
+      localStorage.setItem(buyerStorageKey, JSON.stringify(next))
+      return next
+    })
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('eProcureUser')
     navigate('/login')
@@ -2677,17 +3290,32 @@ const Buyer = () => {
       <div className="dashboard-grid">
         <div className="dashboard-card">
           <h2>Active Purchase Requests</h2>
-          <p>4 items requiring bid evaluation and supplier recommendation.</p>
+          <p>Review purchase requests that require bid evaluation and supplier recommendation.</p>
         </div>
         <div className="dashboard-card">
           <h2>Pending Approvals</h2>
-          <p>2 award recommendations are waiting for BAC decision.</p>
+          <p>Review award recommendations waiting for BAC decision.</p>
         </div>
         <div className="dashboard-card">
           <h2>Supplier Shortlist</h2>
           <p>Key suppliers are prequalified for campus equipment and service bids.</p>
         </div>
       </div>
+
+      <section className="buyer-pr-upload-section">
+        <div className="dashboard-header">
+          <h2>Submit a Purchase Request</h2>
+          <p>Upload a signed PR for OCR extraction. BAC Secretariat will review, number, and continue it to supplier matching.</p>
+        </div>
+        {submittedPrIds.length > 0 && (
+          <div className="alert alert-success" role="status">
+            Purchase Request submitted for BAC review. The status viewer below tracks the same database record.
+          </div>
+        )}
+        <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
+      </section>
+
+      <BuyerPRStatusViewer prIds={submittedPrIds} username={user?.username || ''} />
 
       <section className="dashboard-section">
         <h2>Next steps</h2>
@@ -2699,6 +3327,92 @@ const Buyer = () => {
       </section>
 
     </div>
+  )
+}
+
+const BuyerPRStatusViewer = ({ prIds, username }) => {
+  const [records, setRecords] = React.useState([])
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+  const statusMeta = {
+    uploaded: { label: 'For Review', className: 'status-review', step: 1 },
+    in_review: { label: 'Under Review', className: 'status-review', step: 2 },
+    matched: { label: 'Ready for Matching', className: 'status-open', step: 3 },
+    approved: { label: 'Approved', className: 'status-open', step: 4 },
+    rejected: { label: 'Rejected', className: 'status-merged', step: 4 },
+  }
+
+  const loadRecords = React.useCallback(async () => {
+    if (!prIds.length && !username) return
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}`)
+      if (!response.ok) throw new Error('Unable to load your Purchase Requests')
+      const databaseRecords = await response.json()
+      const results = Array.isArray(databaseRecords) ? databaseRecords : []
+      setRecords(results)
+    } catch (loadError) {
+      setError(loadError?.message || 'Unable to load Purchase Request status')
+    } finally {
+      setLoading(false)
+    }
+  }, [apiBaseUrl, prIds])
+
+  React.useEffect(() => {
+    loadRecords()
+    const refreshTimer = window.setInterval(loadRecords, 30000)
+    return () => window.clearInterval(refreshTimer)
+  }, [loadRecords])
+
+  if (!prIds.length && !username) return null
+
+  return (
+    <section className="buyer-status-viewer dashboard-section">
+      <div className="buyer-status-viewer-header">
+        <div>
+          <span className="section-kicker">Live status</span>
+          <h2>My Purchase Requests</h2>
+          <p>Track the PRs you submitted and see when BAC review is complete.</p>
+        </div>
+        <button type="button" className="btn-sm btn-secondary" onClick={loadRecords} disabled={loading}>
+          <RefreshCw size={14} className={loading ? 'spin' : ''} />
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="buyer-status-list">
+        {records.map((record) => {
+          const meta = statusMeta[record.status] || { label: record.status || 'Unknown', className: 'status-review', step: 1 }
+          return (
+            <article className="buyer-status-record" key={record.id}>
+              <div className="buyer-status-record-head">
+                <div>
+                  <strong>{record.pr_no || `Reference #${record.id}`}</strong>
+                  <span>{record.entity_name || 'Purchase Request'}</span>
+                </div>
+                <span className={`status-badge ${meta.className}`}>{meta.label}</span>
+              </div>
+              <div className="buyer-status-meta">
+                <span>Office: {record.office_section || 'N/A'}</span>
+                <span>Date: {record.date ? new Date(record.date).toLocaleDateString() : 'N/A'}</span>
+                <span>Total: {record.grand_total ?? '0.00'}</span>
+              </div>
+              <div className="buyer-status-progress" aria-label={`Purchase Request status: ${meta.label}`}>
+                {['Submitted', 'BAC Review', 'Supplier Matching', 'Completed'].map((label, index) => (
+                  <div className={`buyer-status-step ${index + 1 <= meta.step ? 'active' : ''}`} key={label}>
+                    <span>{index + 1}</span>
+                    <small>{label}</small>
+                  </div>
+                ))}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -2790,9 +3504,142 @@ const Supplier = () => {
         {currentPage === 'dashboard' && <SupplierDashboard supplierId={supplierId} apiBaseUrl={apiBaseUrl} supplierStatus={supplierStatus} />}
         {currentPage === 'opportunities' && <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'quotations' && <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
+        {currentPage === 'rfqs' && <SupplierRFQs supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'profile' && <CompanyProfile supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'notifications' && <SupplierNotifications supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
       </div>
+    </div>
+  )
+}
+
+const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
+  const [rfqs, setRfqs] = React.useState([])
+  const [selectedRfq, setSelectedRfq] = React.useState(null)
+  const [showQuotationForm, setShowQuotationForm] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+
+  const loadRFQs = React.useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
+      if (!response.ok) throw new Error('Unable to load RFQs')
+      const data = await response.json()
+      setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load RFQs')
+    } finally {
+      setLoading(false)
+    }
+  }, [apiBaseUrl, supplierId])
+
+  React.useEffect(() => { loadRFQs() }, [loadRFQs])
+
+  if (selectedRfq) {
+    return (
+      <div className="supplier-content-inner">
+        <button type="button" className="back-link" onClick={() => setSelectedRfq(null)}><ChevronLeft size={18} /> Back to RFQs</button>
+        <div className="supplier-header">
+          <h2>{selectedRfq.rfq_no}</h2>
+          <p>{selectedRfq.subject}</p>
+        </div>
+        <div className="card rfq-review-card">
+          <div className="detail-grid">
+            <div><strong>PR No.: </strong><span>{selectedRfq.purchase_request.pr_no || `PR-${selectedRfq.purchase_request.id}`}</span></div>
+            <div><strong>Requesting Office / Entity: </strong><span>{selectedRfq.purchase_request.office_section || selectedRfq.purchase_request.entity_name}</span></div>
+            <div><strong>Category: </strong><span>{selectedRfq.purchase_request.category || 'N/A'}</span></div>
+            <div><strong>Status: </strong><span>{selectedRfq.status}</span></div>
+          </div>
+          <h3>RFQ Message</h3>
+          <div className="supplier-readonly-card" style={{ whiteSpace: 'pre-wrap' }}>{selectedRfq.message}</div>
+        </div>
+        <div className="card rfq-review-card">
+          <h3>Requested Items</h3>
+          <div className="opportunity-table-wrapper">
+            <table className="opportunity-table">
+              <thead><tr><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
+              <tbody>{selectedRfq.purchase_request.items.map((item) => (
+                <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          {selectedRfq.purchase_request.source_file_url && <p><strong>Attachment:</strong> <a href={selectedRfq.purchase_request.source_file_url} target="_blank" rel="noreferrer">{selectedRfq.purchase_request.source_filename || 'Original PR'}</a></p>}
+        </div>
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={() => setSelectedRfq(null)}>Back to RFQs</button>
+          {selectedRfq.status === 'sent' ? (
+            <button type="button" className="btn-primary" onClick={() => setShowQuotationForm(true)}>Submit Quotation</button>
+          ) : (
+            <span className="supplier-subtext">A quotation has already been submitted for this RFQ.</span>
+          )}
+        </div>
+        {showQuotationForm && (
+          <QuotationForm
+            supplierId={supplierId}
+            prId={selectedRfq.purchase_request.id}
+            rfqId={selectedRfq.id}
+            apiBaseUrl={apiBaseUrl}
+            onClose={() => setShowQuotationForm(false)}
+            onSuccess={() => { setShowQuotationForm(false); setSelectedRfq(null); loadRFQs() }}
+          />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="supplier-content-inner">
+      <div className="supplier-header"><h2>Requests for Quotation</h2><p>Review RFQs sent to your company and submit a quotation.</p></div>
+      {error && <div className="alert alert-error">{error}</div>}
+      {loading ? <SkeletonRows count={4} /> : rfqs.length === 0 ? <div className="empty-state"><Send size={48} /><h3>No RFQs received</h3><p>New requests for quotation will appear here.</p></div> : (
+        <div className="supplier-verification-list-card">
+          {rfqs.map((rfq) => (
+            <button type="button" className="dashboard-activity-row" key={rfq.id} onClick={() => setSelectedRfq(rfq)}>
+              <span className="dashboard-activity-id">{rfq.rfq_no}</span>
+              <span className="dashboard-activity-main"><strong>{rfq.subject}</strong><small>PR {rfq.purchase_request.pr_no || rfq.purchase_request.id}</small></span>
+              <span className={`status-badge ${rfq.status === 'sent' ? 'status-open' : 'status-review'}`}>{rfq.status}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SupplierRFQDetail = ({ rfq, supplierId, apiBaseUrl, onBack }) => {
+  const [showQuotationForm, setShowQuotationForm] = React.useState(false)
+
+  return (
+    <div className="supplier-content-inner">
+      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} /> Back</button>
+      <div className="supplier-header"><h2>{rfq.rfq_no}</h2><p>{rfq.subject}</p></div>
+      <div className="card rfq-review-card">
+        <div className="detail-grid">
+          <div><strong>PR No.</strong><span>{rfq.purchase_request.pr_no || `PR-${rfq.purchase_request.id}`}</span></div>
+          <div><strong>Requesting Office / Entity</strong><span>{rfq.purchase_request.office_section || rfq.purchase_request.entity_name}</span></div>
+          <div><strong>Category</strong><span>{rfq.purchase_request.category || 'N/A'}</span></div>
+          <div><strong>Status</strong><span>{rfq.status}</span></div>
+        </div>
+        <h3>RFQ Message</h3>
+        <div className="supplier-readonly-card" style={{ whiteSpace: 'pre-wrap' }}>{rfq.message}</div>
+      </div>
+      <div className="card rfq-review-card">
+        <h3>Requested Items</h3>
+        <div className="opportunity-table-wrapper"><table className="opportunity-table">
+          <thead><tr><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
+          <tbody>{rfq.purchase_request.items.map((item) => <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>)}</tbody>
+        </table></div>
+        {rfq.purchase_request.source_file_url && <p><strong>Attachment:</strong> <a href={rfq.purchase_request.source_file_url} target="_blank" rel="noreferrer">{rfq.purchase_request.source_filename || 'Original PR'}</a></p>}
+      </div>
+      <div className="form-actions">
+        {rfq.status === 'sent' ? (
+          <button type="button" className="btn-primary" onClick={() => setShowQuotationForm(true)}>Submit Quotation</button>
+        ) : (
+          <span className="supplier-subtext">A quotation has already been submitted for this RFQ.</span>
+        )}
+      </div>
+      {showQuotationForm && <QuotationForm supplierId={supplierId} prId={rfq.purchase_request.id} rfqId={rfq.id} apiBaseUrl={apiBaseUrl} onClose={() => setShowQuotationForm(false)} onSuccess={onBack} />}
     </div>
   )
 }
@@ -2804,6 +3651,7 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout }) => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
     { id: 'quotations', label: 'Quotations', icon: FileText },
+    { id: 'rfqs', label: 'RFQs', icon: Send },
     { id: 'profile', label: 'Profile', icon: Building2 },
     { id: 'notifications', label: 'Notifications', icon: Bell },
   ]
@@ -2812,7 +3660,7 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout }) => {
     <nav className="supplier-nav">
       <div className="supplier-nav-left">
         <div className="supplier-nav-brand">
-          <span className="supplier-brand-icon">📊</span>
+          <img src={logo} alt="eProcure" className="supplier-brand-logo" />
           <h1>Supplier Portal</h1>
         </div>
       </div>
@@ -3237,7 +4085,7 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl, supplierId }) => {
   )
 }
 
-const QuotationForm = ({ supplierId, prId, apiBaseUrl, onClose, onSuccess }) => {
+const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess }) => {
   const [formData, setFormData] = React.useState({
     quoted_amount: '',
     estimated_delivery_days: '',
@@ -3259,6 +4107,7 @@ const QuotationForm = ({ supplierId, prId, apiBaseUrl, onClose, onSuccess }) => 
         body: JSON.stringify({
           ...formData,
           purchase_request_id: prId,
+          rfq_id: rfqId,
           quoted_amount: parseFloat(formData.quoted_amount),
           estimated_delivery_days: formData.estimated_delivery_days ? parseInt(formData.estimated_delivery_days) : null,
           warranty_months: formData.warranty_months ? parseInt(formData.warranty_months) : null,
@@ -3269,11 +4118,11 @@ const QuotationForm = ({ supplierId, prId, apiBaseUrl, onClose, onSuccess }) => 
         alert('Quotation submitted successfully!')
         onSuccess()
       } else {
-        const data = await response.json()
-        setError(data.error || 'Failed to submit quotation')
+        const data = await response.json().catch(() => ({}))
+        setError(data.error || data.message || `Failed to submit quotation (${response.status})`)
       }
     } catch (err) {
-      setError('An error occurred while submitting your quotation')
+      setError(err?.message || 'Unable to reach the quotation service. Please try again.')
       console.error(err)
     } finally {
       setSubmitting(false)
@@ -3455,6 +4304,8 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
 
 const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const [profile, setProfile] = React.useState(null)
+  const [categories, setCategories] = React.useState([])
+  const [selectedCategories, setSelectedCategories] = React.useState([])
   const [editMode, setEditMode] = React.useState(false)
   const [formData, setFormData] = React.useState({})
   const [saving, setSaving] = React.useState(false)
@@ -3468,6 +4319,11 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
           const data = await response.json()
           setProfile(data)
           setFormData(data)
+          const categoriesResponse = await fetch(`${apiBaseUrl}/api/categories/`)
+          const availableCategories = categoriesResponse.ok ? await categoriesResponse.json() : []
+          setCategories(Array.isArray(availableCategories) ? availableCategories : [])
+          const selectedIds = new Set(data.category_ids || [])
+          setSelectedCategories((Array.isArray(availableCategories) ? availableCategories : []).filter((category) => selectedIds.has(category.id)))
         }
       } catch (error) {
         console.error('Failed to fetch profile:', error)
@@ -3486,12 +4342,13 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, category_ids: selectedCategories.map((category) => category.id) }),
       })
 
       if (response.ok) {
         const data = await response.json()
         setProfile(data.supplier)
+        setFormData((current) => ({ ...current, ...data.supplier }))
         setEditMode(false)
         setMessage({ type: 'success', text: 'Profile updated successfully!' })
         setTimeout(() => setMessage(null), 3000)
@@ -3670,6 +4527,10 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                 onChange={(e) => setFormData({ ...formData, goods_services: e.target.value })}
               />
             </div>
+
+            <div className="form-group full-width">
+              <CategorySelector categories={categories} selectedCategories={selectedCategories} onChange={setSelectedCategories} />
+            </div>
           </div>
 
           <div className="form-actions">
@@ -3697,6 +4558,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
 const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
   const [notifications, setNotifications] = React.useState([])
   const [loading, setLoading] = React.useState(true)
+  const [selectedRfq, setSelectedRfq] = React.useState(null)
 
   React.useEffect(() => {
     const fetchNotifications = async () => {
@@ -3718,6 +4580,10 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
   }, [supplierId, apiBaseUrl])
 
   if (loading) return <SkeletonRows count={5} />
+
+  if (selectedRfq) {
+    return <SupplierRFQDetail rfq={selectedRfq} supplierId={supplierId} apiBaseUrl={apiBaseUrl} onBack={() => setSelectedRfq(null)} />
+  }
 
   return (
     <div className="supplier-content-inner">
@@ -3743,6 +4609,21 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
                 <span className="notification-time">
                   {new Date(notif.created_at).toLocaleDateString()}
                 </span>
+                {notif.related_rfq_id && (
+                  <button
+                    type="button"
+                    className="btn-sm btn-primary"
+                    onClick={async () => {
+                      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
+                      if (response.ok) {
+                        const data = await response.json()
+                        setSelectedRfq((data.rfqs || []).find((rfq) => rfq.id === notif.related_rfq_id) || null)
+                      }
+                    }}
+                  >
+                    View RFQ
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -3829,7 +4710,7 @@ const AppLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [user, setUser] = React.useState(getStoredUser())
-  const showMainNavbar = !location.pathname.startsWith('/admin')
+  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier'
 
   React.useEffect(() => {
     setUser(getStoredUser())
