@@ -36,6 +36,7 @@ import {
   Send,
   Settings,
   Building2,
+  HelpCircle,
 } from 'lucide-react'
 import logo from './assets/logo.png'
 import DragDropUpload from './components/DragDropUpload'
@@ -159,13 +160,6 @@ const RecaptchaWidget = ({ onChange, error }) => {
 }
 
 const bacNewsSlides = [
-  {
-    title: 'Browse active procurement opportunities',
-    description: 'Discover open bids, upcoming tenders, and procurement notices in one place.',
-    buttonLabel: 'View Opportunities',
-    buttonTo: '/opportunities',
-    image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80',
-  },
   {
     title: 'Register and manage supplier documents',
     description: 'Upload permits, BIR, and PhilGEPS requirements while keeping your supplier profile current.',
@@ -345,7 +339,7 @@ const Footer = () => (
   </footer>
 )
 
-const Opportunities = () => {
+export const Opportunities = () => {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
   const [categories, setCategories] = React.useState([])
@@ -782,6 +776,127 @@ const Tracking = () => {
   )
 }
 
+const FAQ = () => (
+  <div className="page-content">
+    <div className="faq-container">
+      <h1>Frequently Asked Questions & Help</h1>
+      <p className="faq-intro">Find answers to common questions about eProcure and the procurement process.</p>
+
+      <div className="faq-grid">
+        {/* General Section */}
+        <section className="faq-section">
+          <h2>General</h2>
+          
+          <details className="faq-item">
+            <summary><strong>What is eProcure?</strong></summary>
+            <p>eProcure is the BAC's digital procurement platform that streamlines the purchase request and supplier matching process. It enables efficient procurement by digitizing workflows and automating communications.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>How do I access my account?</strong></summary>
+            <p>Visit the login page and enter your credentials. If you don't have an account, you can register as either a buyer (university/department) or supplier. Make sure to use the correct login role.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>I forgot my password. What should I do?</strong></summary>
+            <p>Please contact the BAC office directly with your username or registered email. Our team will help you reset your password or provide account recovery assistance.</p>
+          </details>
+        </section>
+
+        {/* Buyer Section */}
+        <section className="faq-section">
+          <h2>Buyer Portal</h2>
+          
+          <details className="faq-item">
+            <summary><strong>How do I submit a Purchase Request?</strong></summary>
+            <p>Log in to your buyer account and navigate to the Dashboard. Upload your signed PR document (PDF or image). The OCR system will automatically extract key information. BAC staff will review and number the request before supplier matching begins.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>What file formats are accepted for PR uploads?</strong></summary>
+            <p>We accept PDF, JPG, PNG, and other common image formats. Ensure your PR document is clearly scanned or printed for best OCR accuracy.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>How can I track my Purchase Request status?</strong></summary>
+            <p>After submitting a PR, it will appear in your Live Status tab. You'll see real-time updates as the BAC reviews and matches it with qualified suppliers.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>Can I edit a Purchase Request after submission?</strong></summary>
+            <p>Once submitted to BAC, direct edits are not available through eProcure. If corrections are needed, contact BAC staff with details, and they can assist with amendments.</p>
+          </details>
+        </section>
+
+        {/* Supplier Section */}
+        <section className="faq-section">
+          <h2>Supplier Portal</h2>
+          
+          <details className="faq-item">
+            <summary><strong>How do I register as a supplier?</strong></summary>
+            <p>Click "Supplier Registration" on the login page and complete the registration form with your company details, contact information, and upload required documents (DTI, BIR, business permit, PhilGEPS, etc.). BAC will review your submission and notify you of approval status.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>What documents are required for supplier registration?</strong></summary>
+            <p>Required documents include: DTI/SEC Registration, Business Permit, BIR 2303 form, Tax Clearance, CDA Certificate (if applicable), and PhilGEPS Certificate. All documents must be valid and current.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>My account is showing "Pending Review". What does this mean?</strong></summary>
+            <p>Your registration is being verified by BAC administrators. This typically takes 3-5 business days. Once approved, you'll receive an email notification and can immediately access all procurement opportunities.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>How do I submit a quotation for a procurement opportunity?</strong></summary>
+            <p>Navigate to Opportunities or RFQs, select the item you're interested in, and click "Submit Quotation". Enter your quoted amount, estimated delivery time, warranty, and any remarks. Submit to be considered for the award.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>Can I modify a quotation after submission?</strong></summary>
+            <p>Once submitted, quotations generally cannot be edited directly. Contact BAC if urgent changes are needed. For future opportunities, you'll be able to submit fresh quotations.</p>
+          </details>
+        </section>
+
+        {/* Technical Section */}
+        <section className="faq-section">
+          <h2>Technical & Account</h2>
+          
+          <details className="faq-item">
+            <summary><strong>Is there a mobile app for eProcure?</strong></summary>
+            <p>eProcure is accessible through web browsers on any device (desktop, tablet, mobile). A dedicated mobile app is not currently available, but the website is responsive and mobile-friendly.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>What browsers are supported?</strong></summary>
+            <p>eProcure works best with modern browsers: Chrome, Firefox, Safari, and Edge (latest versions). We recommend updating your browser for the best experience.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>I'm having technical issues. Who should I contact?</strong></summary>
+            <p>For technical support, account issues, or system problems, please contact the BAC office with a description of the issue. They can help troubleshoot or escalate to our technical team.</p>
+          </details>
+        </section>
+
+        {/* Contact Section */}
+        <section className="faq-section">
+          <h2>Contact & Support</h2>
+          
+          <details className="faq-item">
+            <summary><strong>How do I contact BAC support?</strong></summary>
+            <p>Reach out to the BAC office through your institution's procurement department or direct BAC contact. Include your account username, the issue description, and any relevant PR/RFQ numbers.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>What are BAC's business hours?</strong></summary>
+            <p>BAC typically operates during standard government office hours (8:00 AM - 5:00 PM, Monday-Friday). Response times may vary based on inquiry volume.</p>
+          </details>
+        </section>
+      </div>
+    </div>
+  </div>
+)
+
 const Login = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -1209,14 +1324,14 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       {error && <div className="alert alert-error">{error}</div>}
       <div className="card rfq-review-card">
         <div className="detail-grid">
-          <div><strong>PR No.</strong><span>{prDetails?.pr_no || `PR-${prId}`}</span></div>
-          <div><strong>PR Date</strong><span>{prDetails?.date || 'N/A'}</span></div>
-          <div><strong>Requesting Office / Entity</strong><span>{prDetails?.office_section || prDetails?.entity_name || 'N/A'}</span></div>
-          <div><strong>Category</strong><span>{prDetails?.category || items.find((item) => item.category)?.category || 'N/A'}</span></div>
-          <div><strong>Supplier</strong><span>{supplier.company_name}</span></div>
-          <div><strong>Supplier Contact</strong><span>{supplier.contact_person || 'N/A'}</span></div>
-          <div><strong>Supplier Email</strong><span>{supplier.email || 'N/A'}</span></div>
-          <div><strong>Status</strong><span>{rfq?.status || 'Draft'}</span></div>
+          <div><strong>PR No.: </strong><span>{prDetails?.pr_no || `PR-${prId}`}</span></div>
+          <div><strong>PR Date: </strong><span>{prDetails?.date || 'N/A'}</span></div>
+          <div><strong>Requesting Office / Entity: </strong><span>{prDetails?.office_section || prDetails?.entity_name || 'N/A'}</span></div>
+          <div><strong>Category: </strong><span>{prDetails?.category || items.find((item) => item.category)?.category || 'N/A'}</span></div>
+          <div><strong>Supplier: </strong><span>{supplier.company_name}</span></div>
+          <div><strong>Supplier Contact: </strong><span>{supplier.contact_person || 'N/A'}</span></div>
+          <div><strong>Supplier Email: </strong><span>{supplier.email || 'N/A'}</span></div>
+          <div><strong>Status: </strong><span>{rfq?.status || 'Draft'}</span></div>
         </div>
       </div>
       <div className="card rfq-review-card">
@@ -1286,13 +1401,13 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
       {prDetails && (
         <div className="card" style={{ padding: 16, marginBottom: 18 }}>
           <div className="detail-grid">
-            <div><strong>PR Number</strong><span>{prDetails.pr_no || 'N/A'}</span></div>
-            <div><strong>PR Date</strong><span>{prDetails.date || prDetails.created_at?.slice(0, 10) || 'N/A'}</span></div>
-            <div><strong>Entity Name</strong><span>{prDetails.entity_name || 'N/A'}</span></div>
-            <div><strong>Office / Section</strong><span>{prDetails.office_section || 'N/A'}</span></div>
-            <div><strong>Category</strong><span>{prDetails.category || 'Not assigned'}</span></div>
-            <div><strong>Grand Total</strong><span>₱{Number(prDetails.grand_total || 0).toLocaleString()}</span></div>
-            <div style={{ gridColumn: '1 / -1' }}><strong>Purpose</strong><span>{prDetails.purpose || 'N/A'}</span></div>
+            <div><strong>PR Number: </strong><span>{prDetails.pr_no || 'N/A'}</span></div>
+            <div><strong>PR Date: </strong><span>{prDetails.date || prDetails.created_at?.slice(0, 10) || 'N/A'}</span></div>
+            <div><strong>Entity Name: </strong><span>{prDetails.entity_name || 'N/A'}</span></div>
+            <div><strong>Office / Section: </strong><span>{prDetails.office_section || 'N/A'}</span></div>
+            <div><strong>Category: </strong><span>{prDetails.category || 'Not assigned'}</span></div>
+            <div><strong>Grand Total: </strong><span>₱{Number(prDetails.grand_total || 0).toLocaleString()}</span></div>
+            <div style={{ gridColumn: '1 / -1' }}><strong>Purpose: </strong><span>{prDetails.purpose || 'N/A'}</span></div>
           </div>
           {prDetails.items?.length > 0 && (
             <div style={{ marginTop: 16 }}>
@@ -1461,6 +1576,10 @@ const Admin = () => {
   const [buyerAccountSaving, setBuyerAccountSaving] = React.useState(false)
   const [buyerAccountMessage, setBuyerAccountMessage] = React.useState('')
   const [buyerAccountError, setBuyerAccountError] = React.useState('')
+  const [buyerAccounts, setBuyerAccounts] = React.useState([])
+  const [buyerAccountsLoading, setBuyerAccountsLoading] = React.useState(false)
+  const [buyerAccountSearch, setBuyerAccountSearch] = React.useState('')
+  const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const prStatusOptions = [
     { value: 'uploaded', label: 'Uploaded' },
@@ -1474,6 +1593,19 @@ const Admin = () => {
     localStorage.removeItem('eProcureUser')
     navigate('/login')
   }
+
+  const loadBuyerAccounts = React.useCallback(async () => {
+    setBuyerAccountsLoading(true)
+    try {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/`)
+      if (!response.ok) throw new Error('Unable to load Buyer accounts.')
+      setBuyerAccounts(await response.json())
+    } catch (error) {
+      setBuyerAccountError(error?.message || 'Unable to load Buyer accounts.')
+    } finally {
+      setBuyerAccountsLoading(false)
+    }
+  }, [apiBaseUrl])
 
   const handleBuyerAccountSubmit = async (event) => {
     event.preventDefault()
@@ -1506,10 +1638,37 @@ const Admin = () => {
       if (!response.ok) throw new Error(result.message || 'Unable to create Buyer account.')
       setBuyerAccountMessage('Buyer account created successfully.')
       setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
+      loadBuyerAccounts()
     } catch (error) {
       setBuyerAccountError(error?.message || 'Unable to create Buyer account.')
     } finally {
       setBuyerAccountSaving(false)
+    }
+  }
+
+  const filteredBuyerAccounts = React.useMemo(() => {
+    const query = buyerAccountSearch.trim().toLowerCase()
+    if (!query) return buyerAccounts
+    return buyerAccounts.filter((account) => [account.full_name, account.username, account.email, account.unit_office]
+      .filter(Boolean).join(' ').toLowerCase().includes(query))
+  }, [buyerAccountSearch, buyerAccounts])
+
+  const toggleBuyerAccount = async (account) => {
+    setBuyerAccountActionId(account.id)
+    setBuyerAccountError('')
+    try {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/status/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !account.is_active }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.message || 'Unable to update Buyer account.')
+      setBuyerAccounts((current) => current.map((item) => item.id === account.id ? { ...item, is_active: result.is_active } : item))
+    } catch (error) {
+      setBuyerAccountError(error?.message || 'Unable to update Buyer account.')
+    } finally {
+      setBuyerAccountActionId(null)
     }
   }
 
@@ -1760,10 +1919,13 @@ const Admin = () => {
     if (currentTab === 'suppliers') {
       loadSupplierRegistrations()
     }
-    if (currentTab === 'pr-monitoring' || currentTab === 'pr-review') {
+    if (currentTab === 'buyer-accounts') {
+      loadBuyerAccounts()
+    }
+    if (currentTab === 'pr-monitoring') {
       loadPrRecords()
     }
-  }, [currentTab, loadDashboardStats, loadPrRecords, loadSupplierRegistrations])
+  }, [currentTab, loadBuyerAccounts, loadDashboardStats, loadPrRecords, loadSupplierRegistrations])
 
   const handlePrStatusChange = async (prId, nextStatus) => {
     setPrSavingId(prId)
@@ -1948,6 +2110,9 @@ const Admin = () => {
     }))
   })
 
+  const unnumberedPrRecords = prRecords.filter((pr) => !pr.pr_no?.trim())
+  const numberedPrRecords = prRecords.filter((pr) => pr.pr_no?.trim())
+
   const handleSelectMatchedSupplier = (card) => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
     window.alert(`Selected ${name} for ${card.prNo}.`)
@@ -1960,7 +2125,7 @@ const Admin = () => {
         <div className="admin-sidebar-header">
           <div className="admin-brand">
             <span className="admin-brand-mark">eP</span>
-            <span className="admin-brand-copy">eProcure Admin</span>
+            <span className="admin-brand-copy">eProcura</span>
           </div>
           <button
             className="admin-nav-toggle"
@@ -2007,20 +2172,12 @@ const Admin = () => {
               <span className="admin-nav-label">PR Upload</span>
             </button>
             <button
-              className={`admin-nav-item ${currentTab === 'pr-review' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('pr-review')}
-              title="PR Review"
-            >
-              <Pencil size={14} />
-              <span className="admin-nav-label">PR Review</span>
-            </button>
-            <button
               className={`admin-nav-item ${currentTab === 'pr-monitoring' ? 'active' : ''}`}
               onClick={() => setCurrentTab('pr-monitoring')}
-              title="PR Monitoring"
+              title="PR Review & Monitoring"
             >
               <ClipboardList size={14} />
-              <span className="admin-nav-label">PR Monitoring</span>
+              <span className="admin-nav-label">PR Review & Monitoring</span>
             </button>
           </div>
         </div>
@@ -2361,18 +2518,22 @@ const Admin = () => {
                       <div className="supplier-action-section">
                         <div className="supplier-action-heading">Actions</div>
                         <div className="supplier-action-row">
-                          <button className="btn btn-login supplier-action-btn supplier-action-btn-primary" type="button" onClick={() => handleApprove(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
-                            <Check size={16} />
-                            Approve Registration
-                          </button>
+                          {selectedSupplierDetails.status !== 'Approved' && (
+                            <button className="btn btn-login supplier-action-btn supplier-action-btn-primary" type="button" onClick={() => handleApprove(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
+                              <Check size={16} />
+                              Approve Registration
+                            </button>
+                          )}
                           <button className="btn btn-secondary supplier-action-btn supplier-action-btn-outline" type="button" onClick={() => handleRequestCompliance(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
                             <FileText size={16} />
                             Request Additional Documents
                           </button>
-                          <button className="btn btn-danger supplier-action-btn supplier-action-btn-danger" type="button" onClick={() => handleReject(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
-                            <X size={16} />
-                            Reject Registration
-                          </button>
+                          {selectedSupplierDetails.status !== 'Approved' && (
+                            <button className="btn btn-danger supplier-action-btn supplier-action-btn-danger" type="button" onClick={() => handleReject(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
+                              <X size={16} />
+                              Reject Registration
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2412,16 +2573,17 @@ const Admin = () => {
           <div className="supplier-section">
             <div className="supplier-header">
               <h1>Buyer Accounts</h1>
-              <p>Create an account for a Buyer or End User who will submit Purchase Requests.</p>
+              <p>Create and manage Buyer or End User accounts for Purchase Request submission.</p>
             </div>
-            <section className="card buyer-account-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Create Buyer Account</h2>
-                  <p className="supplier-subtext">The account is created with the Buyer role and can access PR upload.</p>
+            <div className="buyer-account-layout">
+              <section className="card buyer-account-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Create Buyer Account</h2>
+                    <p className="supplier-subtext">New accounts are created with access to PR upload.</p>
+                  </div>
                 </div>
-              </div>
-              <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit}>
+                <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit}>
                 <label className="form-field">
                   <span>Full Name</span>
                   <input required value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="Buyer or End User name" />
@@ -2451,8 +2613,45 @@ const Admin = () => {
                 <div className="form-actions">
                   <button type="submit" className="btn btn-primary" disabled={buyerAccountSaving}>{buyerAccountSaving ? 'Creating Account...' : 'Create Buyer Account'}</button>
                 </div>
-              </form>
-            </section>
+                </form>
+              </section>
+
+              <section className="card buyer-accounts-list-panel">
+                <div className="buyer-accounts-list-header">
+                  <div>
+                    <h2>Managed Accounts</h2>
+                    <p className="supplier-subtext">{buyerAccounts.length} Buyer account{buyerAccounts.length === 1 ? '' : 's'} registered</p>
+                  </div>
+                  <div className="buyer-account-search">
+                    <Search size={16} />
+                    <input type="search" value={buyerAccountSearch} onChange={(event) => setBuyerAccountSearch(event.target.value)} placeholder="Search accounts" aria-label="Search Buyer accounts" />
+                  </div>
+                </div>
+                {buyerAccountsLoading ? (
+                  <div className="buyer-accounts-empty">Loading accounts...</div>
+                ) : filteredBuyerAccounts.length === 0 ? (
+                  <div className="buyer-accounts-empty">No Buyer accounts found.</div>
+                ) : (
+                  <div className="buyer-accounts-list">
+                    {filteredBuyerAccounts.map((account) => (
+                      <article className="buyer-account-record" key={account.id}>
+                        <div className="buyer-account-record-main">
+                          <strong>{account.full_name || account.username}</strong>
+                          <span>@{account.username}</span>
+                          <small>{account.unit_office || 'Office not specified'} · {account.email || 'No email'}</small>
+                        </div>
+                        <div className="buyer-account-record-actions">
+                          <span className={`status-badge ${account.is_active ? 'status-open' : 'status-merged'}`}>{account.is_active ? 'Active' : 'Inactive'}</span>
+                          <button type="button" className="btn-sm btn-secondary" onClick={() => toggleBuyerAccount(account)} disabled={buyerAccountActionId === account.id}>
+                            {buyerAccountActionId === account.id ? 'Updating...' : account.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         )}
 
@@ -2466,37 +2665,6 @@ const Admin = () => {
             <div className="admin-pr-upload">
               <div className="note">Drag a PDF or image of the PR into the area below. Extracted fields will appear for review and editing.</div>
               <DragDropUpload onSaved={handlePrSaved} />
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'pr-review' && (
-          <div className="supplier-section">
-            <div className="supplier-header">
-              <h1>PR Review</h1>
-              <p>Review Buyer-submitted Purchase Requests before numbering and supplier matching.</p>
-            </div>
-            <div className="admin-checklist pr-review-queue">
-              <div className="pr-review-queue-header">
-                <div>
-                  <h3>Awaiting BAC Review</h3>
-                  <p>These records are saved in the database and have not received a final PR number.</p>
-                </div>
-                <button type="button" className="btn-sm btn-secondary" onClick={loadPrRecords} disabled={prLoading}><RefreshCw size={14} className={prLoading ? 'spin' : ''} /> Refresh</button>
-              </div>
-              {prRecords.filter((pr) => pr.status === 'uploaded').length === 0 ? (
-                <div className="dashboard-empty-state"><CheckCircle size={20} /><span>No Purchase Requests are awaiting review.</span></div>
-              ) : (
-                <div className="pr-review-queue-list">
-                  {prRecords.filter((pr) => pr.status === 'uploaded').map((pr) => (
-                    <div className="pr-review-queue-row" key={pr.id}>
-                      <div><strong>#{pr.id}</strong><span>{pr.entity_name || 'Unnamed entity'}</span><small>{pr.office_section || 'Office not specified'}</small></div>
-                      <span className="status-badge status-review">For Review</span>
-                      <button type="button" className="btn-sm btn-primary" onClick={() => { setCurrentTab('pr-monitoring'); handleEditPr(pr) }}><Pencil size={14} /> Review PR</button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -2528,8 +2696,8 @@ const Admin = () => {
         {currentTab === 'pr-monitoring' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>PR Monitoring</h1>
-              <p>View uploaded and saved Purchase Requests for review and supplier matching.</p>
+              <h1>PR Review & Monitoring</h1>
+              <p>Review unnumbered Purchase Requests and monitor numbered requests through the procurement workflow.</p>
             </div>
 
             <div className="admin-actions" style={{ marginBottom: '16px' }}>
@@ -2545,6 +2713,42 @@ const Admin = () => {
               </div>
             )}
 
+            <div className="admin-checklist pr-review-queue" style={{ marginBottom: '16px' }}>
+              <div className="pr-review-queue-header">
+                <div>
+                  <h3>Purchase Requests Awaiting PR Number</h3>
+                  <p>Review and complete these saved requests before they enter PR monitoring.</p>
+                </div>
+              </div>
+              {unnumberedPrRecords.length === 0 ? (
+                <div className="dashboard-empty-state"><CheckCircle size={20} /><span>No Purchase Requests are awaiting a PR number.</span></div>
+              ) : (
+                <div className="pr-review-queue-list">
+                  {unnumberedPrRecords.map((pr) => (
+                    <div className="pr-review-queue-row" key={pr.id}>
+                      <div><strong>#{pr.id}</strong><span>{pr.entity_name || 'Unnamed entity'}</span><small>{pr.office_section || 'Office not specified'}</small></div>
+                      <span className={`status-badge ${getPrStatusMeta(pr.status).className}`}>{getPrStatusMeta(pr.status).label}</span>
+                      <button
+                        type="button"
+                        className={`btn-sm pr-review-action-btn ${pr.category?.trim() ? 'pr-review-btn' : 'pr-assign-category-btn'}`}
+                        onClick={() => {
+                          if (!pr.category?.trim()) {
+                            setWorkflowPrId(pr.id)
+                            setCurrentTab('assign-categories')
+                          } else {
+                            handleEditPr(pr)
+                          }
+                        }}
+                      >
+                        {pr.category?.trim() ? <Pencil size={14} /> : <ClipboardList size={14} />}
+                        {pr.category?.trim() ? 'Review PR' : 'Assign Category'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="pr-monitor-table-shell">
               <div className="pr-monitor-table-wrapper">
                 <div className="pr-monitor-table-head">
@@ -2556,12 +2760,13 @@ const Admin = () => {
                   <span>Grand Total</span>
                   <span>Status</span>
                   <span>Created</span>
+                  <span>Supplier Matching</span>
                   <span>Actions</span>
                 </div>
 
-                {prRecords.length === 0 && !prLoading && (
+                {numberedPrRecords.length === 0 && !prLoading && (
                   <div className="pr-monitor-table-row">
-                    <span className="admin-entry-name" style={{ gridColumn: '1 / -1' }}>No Purchase Requests found yet.</span>
+                    <span className="admin-entry-name" style={{ gridColumn: '1 / -1' }}>No numbered Purchase Requests found yet.</span>
                   </div>
                 )}
 
@@ -2571,7 +2776,7 @@ const Admin = () => {
                   </div>
                 )}
 
-                {prRecords.map((pr) => {
+                {numberedPrRecords.map((pr) => {
                   const isEditing = Boolean(editingStatusById[pr.id])
                   const statusMeta = getPrStatusMeta(pr.status)
                   return (
@@ -2610,7 +2815,7 @@ const Admin = () => {
                         )}
                       </span>
                       <span>{pr.created_at ? new Date(pr.created_at).toLocaleString() : 'N/A'}</span>
-                      <span className="pr-row-actions">
+                      <span className="pr-matching-action">
                         {pr.status !== 'uploaded' && !pr.has_quotation && (
                           <button
                             type="button"
@@ -2620,6 +2825,8 @@ const Admin = () => {
                             Continue Matching
                           </button>
                         )}
+                      </span>
+                      <span className="pr-row-actions">
                         <button
                           type="button"
                           className="icon-action-btn"
@@ -3257,7 +3464,9 @@ const Register = () => {
 
 const Buyer = () => {
   const navigate = useNavigate()
-  const user = React.useMemo(getStoredUser, [])
+  const user = React.useMemo(() => getStoredUser(), [])
+  const [currentTab, setCurrentTab] = React.useState('dashboard')
+  const [navCollapsed, setNavCollapsed] = React.useState(false)
   const buyerStorageKey = `buyer_pr_ids_${user?.username || 'current'}`
   const [submittedPrIds, setSubmittedPrIds] = React.useState(() => {
     try {
@@ -3281,51 +3490,96 @@ const Buyer = () => {
   }
 
   return (
-    <div className="page-content">
-      <div className="dashboard-header">
-        <h1>Buyer Dashboard</h1>
-        <p>Welcome back, {user?.name || 'Buyer'}. Review purchase opportunities and track BAC review status.</p>
-      </div>
+    <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
+      {/* Buyer Sidebar Navigation */}
+      <nav className="admin-navbar">
+        <div className="admin-sidebar-header">
+          <div className="admin-brand">
+            <span className="admin-brand-mark">eP</span>
+            <span className="admin-brand-copy">eProcure Buyer</span>
+          </div>
+          <button
+            className="admin-nav-toggle"
+            onClick={() => setNavCollapsed((v) => !v)}
+            aria-label={navCollapsed ? 'Open navigation' : 'Collapse navigation'}
+            title={navCollapsed ? 'Open navigation' : 'Collapse navigation'}
+          >
+            {navCollapsed ? <Menu size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
 
-      <div className="dashboard-grid">
-        <div className="dashboard-card">
-          <h2>Active Purchase Requests</h2>
-          <p>Review purchase requests that require bid evaluation and supplier recommendation.</p>
+        <div className="admin-nav-scroll">
+          <div className="admin-nav-items">
+            <button
+              className={`admin-nav-item ${currentTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('dashboard')}
+              title="Dashboard"
+            >
+              <LayoutDashboard size={14} />
+              <span className="admin-nav-label">Dashboard</span>
+            </button>
+            <button
+              className={`admin-nav-item ${currentTab === 'live-status' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('live-status')}
+              title="Live Status"
+            >
+              <TrendingUp size={14} />
+              <span className="admin-nav-label">Live Status</span>
+            </button>
+          </div>
         </div>
-        <div className="dashboard-card">
-          <h2>Pending Approvals</h2>
-          <p>Review award recommendations waiting for BAC decision.</p>
-        </div>
-        <div className="dashboard-card">
-          <h2>Supplier Shortlist</h2>
-          <p>Key suppliers are prequalified for campus equipment and service bids.</p>
-        </div>
-      </div>
 
-      <section className="buyer-pr-upload-section">
-        <div className="dashboard-header">
-          <h2>Submit a Purchase Request</h2>
-          <p>Upload a signed PR for OCR extraction. BAC Secretariat will review, number, and continue it to supplier matching.</p>
+        <div className="admin-navbar-right">
+          <div className="admin-user-card" aria-label="Logged in user">
+            <div className="admin-user">{user?.name || user?.username || 'Buyer'}</div>
+            <div className="admin-user-email">{user?.email || ''}</div>
+          </div>
+          <button className="admin-nav-logout" onClick={handleLogout} title="Log Out">
+            <LogOut size={14} />
+            <span className="admin-nav-label">Log Out</span>
+          </button>
         </div>
-        {submittedPrIds.length > 0 && (
-          <div className="alert alert-success" role="status">
-            Purchase Request submitted for BAC review. The status viewer below tracks the same database record.
+      </nav>
+
+      {/* Buyer Content */}
+      <div className="admin-content">
+        {currentTab === 'dashboard' && (
+          <div className="supplier-section">
+            <div className="supplier-header">
+              <h1>Buyer Dashboard</h1>
+              <p>Welcome back, {user?.name || 'Buyer'}. Submit and track Purchase Requests.</p>
+            </div>
+
+            <section className="buyer-pr-upload-section">
+              <div className="supplier-header">
+                <h2>Submit a Purchase Request</h2>
+                <p>Upload a signed PR for OCR extraction. BAC Secretariat will review, number, and continue it to supplier matching.</p>
+              </div>
+              {submittedPrIds.length > 0 && (
+                <div className="alert alert-success" role="status">
+                  Purchase Request submitted for BAC review. The status viewer below tracks the same database record.
+                </div>
+              )}
+              <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
+            </section>
+
+            <section className="supplier-section">
+              <h2>Next steps</h2>
+              <ul>
+                <li>Review supplier bids and document compliance reports.</li>
+                <li>Compare proposals for university furniture and lab equipment.</li>
+                <li>Request additional information from shortlisted suppliers.</li>
+              </ul>
+            </section>
           </div>
         )}
-        <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
-      </section>
 
-      <BuyerPRStatusViewer prIds={submittedPrIds} username={user?.username || ''} />
-
-      <section className="dashboard-section">
-        <h2>Next steps</h2>
-        <ul>
-          <li>Review supplier bids and document compliance reports.</li>
-          <li>Compare proposals for university furniture and lab equipment.</li>
-          <li>Request additional information from shortlisted suppliers.</li>
-        </ul>
-      </section>
-
+        {currentTab === 'live-status' && (
+          <div className="supplier-section">
+            <BuyerPRStatusViewer prIds={submittedPrIds} username={user?.username || ''} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -3370,32 +3624,36 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
   if (!prIds.length && !username) return null
 
   return (
-    <section className="buyer-status-viewer dashboard-section">
-      <div className="buyer-status-viewer-header">
-        <div>
-          <span className="section-kicker">Live status</span>
-          <h2>My Purchase Requests</h2>
-          <p>Track the PRs you submitted and see when BAC review is complete.</p>
-        </div>
-        <button type="button" className="btn-sm btn-secondary" onClick={loadRecords} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'spin' : ''} />
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
+    <>
+      <div className="supplier-header">
+        <h1>Live Status</h1>
+        <p>Track the PRs you submitted and see when BAC review is complete.</p>
       </div>
-      {error && <div className="alert alert-error">{error}</div>}
-      <div className="buyer-status-list">
-        {records.map((record) => {
-          const meta = statusMeta[record.status] || { label: record.status || 'Unknown', className: 'status-review', step: 1 }
-          return (
-            <article className="buyer-status-record" key={record.id}>
-              <div className="buyer-status-record-head">
-                <div>
-                  <strong>{record.pr_no || `Reference #${record.id}`}</strong>
-                  <span>{record.entity_name || 'Purchase Request'}</span>
+      <section className="buyer-status-viewer dashboard-section">
+        <div className="supplier-header">
+          <div>
+            <span className="section-kicker">Purchase Requests</span>
+            <h2>My Purchase Requests</h2>
+          </div>
+          <button type="button" className="btn-sm btn-secondary" onClick={loadRecords} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="buyer-status-list">
+          {records.map((record) => {
+            const meta = statusMeta[record.status] || { label: record.status || 'Unknown', className: 'status-review', step: 1 }
+            return (
+              <article className="buyer-status-record" key={record.id}>
+                <div className="buyer-status-record-head">
+                  <div>
+                    <strong>{record.pr_no || `Reference #${record.id}`}</strong>
+                    <span>{record.entity_name || 'Purchase Request'}</span>
+                  </div>
+                  <span className={`status-badge ${meta.className}`}>{meta.label}</span>
                 </div>
-                <span className={`status-badge ${meta.className}`}>{meta.label}</span>
-              </div>
-              <div className="buyer-status-meta">
+                <div className="buyer-status-meta">
                 <span>Office: {record.office_section || 'N/A'}</span>
                 <span>Date: {record.date ? new Date(record.date).toLocaleDateString() : 'N/A'}</span>
                 <span>Total: {record.grand_total ?? '0.00'}</span>
@@ -3411,16 +3669,18 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
             </article>
           )
         })}
-      </div>
-    </section>
+        </div>
+      </section>
+    </>
   )
 }
 
 const Supplier = () => {
   const navigate = useNavigate()
-  const user = React.useMemo(getStoredUser, [])
+  const user = React.useMemo(() => getStoredUser(), [])
   const [supplierData, setSupplierData] = React.useState(null)
   const [currentPage, setCurrentPage] = React.useState('dashboard')
+  const [navCollapsed, setNavCollapsed] = React.useState(false)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const supplierId = user?.supplier_id || localStorage.getItem('supplier_id')
   const supplierStatus = user?.supplier_status || localStorage.getItem('supplier_status') || 'Pending Review'
@@ -3498,9 +3758,15 @@ const Supplier = () => {
   }
 
   return (
-    <div className="supplier-portal">
-      <SupplierNav currentPage={currentPage} onPageChange={handlePageChange} onLogout={handleLogout} />
-      <div className="supplier-content">
+    <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
+      <SupplierNav 
+        currentPage={currentPage} 
+        onPageChange={handlePageChange} 
+        onLogout={handleLogout}
+        navCollapsed={navCollapsed}
+        onToggleNav={() => setNavCollapsed((v) => !v)}
+      />
+      <div className="admin-content">
         {currentPage === 'dashboard' && <SupplierDashboard supplierId={supplierId} apiBaseUrl={apiBaseUrl} supplierStatus={supplierStatus} />}
         {currentPage === 'opportunities' && <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'quotations' && <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
@@ -3644,9 +3910,7 @@ const SupplierRFQDetail = ({ rfq, supplierId, apiBaseUrl, onBack }) => {
   )
 }
 
-const SupplierNav = ({ currentPage, onPageChange, onLogout }) => {
-  const [menuOpen, setMenuOpen] = React.useState(false)
-
+const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onToggleNav }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
@@ -3657,47 +3921,49 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout }) => {
   ]
 
   return (
-    <nav className="supplier-nav">
-      <div className="supplier-nav-left">
-        <div className="supplier-nav-brand">
-          <img src={logo} alt="eProcure" className="supplier-brand-logo" />
-          <h1>Supplier Portal</h1>
+    <nav className="admin-navbar">
+      <div className="admin-sidebar-header">
+        <div className="admin-brand">
+          <span className="admin-brand-mark">eP</span>
+          <span className="admin-brand-copy">eProcure Supplier</span>
+        </div>
+        <button
+          className="admin-nav-toggle"
+          onClick={onToggleNav}
+          aria-label={navCollapsed ? 'Open navigation' : 'Collapse navigation'}
+          title={navCollapsed ? 'Open navigation' : 'Collapse navigation'}
+        >
+          {navCollapsed ? <Menu size={16} /> : <ChevronLeft size={16} />}
+        </button>
+      </div>
+
+      <div className="admin-nav-scroll">
+        <div className="admin-nav-items">
+          {navItems.map((item) => {
+            const IconComponent = item.icon
+            return (
+              <button
+                key={item.id}
+                className={`admin-nav-item ${currentPage === item.id ? 'active' : ''}`}
+                onClick={() => onPageChange(item.id)}
+                title={item.label}
+              >
+                <IconComponent size={14} />
+                <span className="admin-nav-label">{item.label}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      <div className={`supplier-nav-menu ${menuOpen ? 'open' : ''}`}>
-        {navItems.map((item) => {
-          const IconComponent = item.icon
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`supplier-nav-item ${currentPage === item.id ? 'active' : ''}`}
-              onClick={() => {
-                onPageChange(item.id)
-                setMenuOpen(false)
-              }}
-              title={item.label}
-            >
-              <IconComponent size={18} />
-              <span>{item.label}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="supplier-nav-right">
-        <button type="button" className="supplier-nav-logout" onClick={onLogout} title="Log Out">
-          <LogOut size={18} />
-          <span>Logout</span>
-        </button>
-        <button
-          type="button"
-          className="supplier-nav-toggle"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+      <div className="admin-navbar-right">
+        <div className="admin-user-card" aria-label="Logged in supplier">
+          <div className="admin-user">Supplier Account</div>
+          <div className="admin-user-email">Portal</div>
+        </div>
+        <button className="admin-nav-logout" onClick={onLogout} title="Log Out">
+          <LogOut size={14} />
+          <span className="admin-nav-label">Log Out</span>
         </button>
       </div>
     </nav>
@@ -4640,42 +4906,6 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
 }
 
 
-const Help = () => (
-  <div className="page-content faq-page">
-    <div className="page-header">
-      <h1>Help & FAQ</h1>
-      <p>Find answers to common questions about eProcure.</p>
-    </div>
-
-    <section className="faq-section">
-      <article className="faq-item">
-        <h2>How do I browse current opportunities?</h2>
-        <p>Go to the Opportunities page from the navigation bar. You can view active bids and procurement requests posted by the university.</p>
-      </article>
-
-      <article className="faq-item">
-        <h2>How do I track my procurement request?</h2>
-        <p>Use the Tracking Portal link in the navigation to see the status of your purchase request or supplier registration.</p>
-      </article>
-
-      <article className="faq-item">
-        <h2>How do I register as a supplier?</h2>
-        <p>Click Register as Supplier on the home page or visit the Register page from the login menu. Submit the required documents and wait for BAC review.</p>
-      </article>
-
-      <article className="faq-item">
-        <h2>What should I do if I forget my password?</h2>
-        <p>Click Log In and follow the password recovery instructions on the login page. If recovery is unavailable, contact BAC support directly.</p>
-      </article>
-
-      <article className="faq-item">
-        <h2>How can I contact support?</h2>
-        <p>Support contact details are available from the university procurement office. For urgent issues, use the site email or campus help desk.</p>
-      </article>
-    </section>
-  </div>
-)
-
 const getStoredUser = () => {
   try {
     const stored = localStorage.getItem('eProcureUser')
@@ -4697,7 +4927,7 @@ const getStoredUser = () => {
 
 const ProtectedRoute = ({ element, requiredRole }) => {
   const location = useLocation()
-  const user = React.useMemo(getStoredUser, [])
+  const user = React.useMemo(() => getStoredUser(), [])
 
   if (!user || (requiredRole && user.role !== requiredRole)) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />
@@ -4710,7 +4940,8 @@ const AppLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [user, setUser] = React.useState(getStoredUser())
-  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier'
+  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/buyer'
+  const homeLink = user?.role === 'buyer' ? '/buyer' : '/'
 
   React.useEffect(() => {
     setUser(getStoredUser())
@@ -4731,10 +4962,8 @@ const AppLayout = () => {
               <img src={logo} alt="eProcure logo" className="navbar-logo" />
             </Link>
             <div className="navbar-links">
-              <Link to="/" className="nav-item"><House size={15} /> Home</Link>
-              <Link to="/opportunities" className="nav-item"><BriefcaseBusiness size={15} /> Opportunities</Link>
-              <Link to="/tracking" className="nav-item"><ScanSearch size={15} /> Tracking Portal</Link>
-              <Link to="/help" className="nav-item"><CircleHelp size={15} /> Help</Link>
+              <Link to={homeLink} className={`nav-item ${location.pathname === homeLink || (homeLink === '/' && location.pathname === '/') ? 'active' : ''}`}><House size={15} /> Home</Link>
+              <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`}><HelpCircle size={15} /> Help & FAQ</Link>
             </div>
           </div>
 
@@ -4762,9 +4991,7 @@ const AppLayout = () => {
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/opportunities" element={<Opportunities />} />
-          <Route path="/tracking" element={<Tracking />} />
-          <Route path="/help" element={<Help />} />
+          <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/buyer" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />

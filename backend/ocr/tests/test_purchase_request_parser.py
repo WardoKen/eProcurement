@@ -7,7 +7,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from ocr.purchase_request_parser import parse_purchase_request
-from ocr.textract_purchase_request_parser import parse_ctu_purchase_request, parse_item_row, reconstruct_item_rows
+from ocr.textract_purchase_request_parser import parse_ctu_purchase_request, parse_item_row, parse_tables, reconstruct_item_rows
 
 SAMPLE_PDF_PATH = BACKEND_ROOT / 'uploads' / '1783518303882_Purchase-Requests-MIS-aircon2026.pdf'
 purchase_request_parser = sys.modules['ocr.purchase_request_parser']
@@ -328,3 +328,81 @@ def test_textract_reconstructs_wrapped_description_until_numeric_row():
     assert item.quantity == 1
     assert item.unit_cost == 145000
     assert item.total_cost == 145000
+
+
+def test_textract_parses_headerless_continuation_table_on_second_page():
+    blocks = []
+
+    def add_table(page, table_id, rows):
+        cell_ids = []
+        for row_index, values in enumerate(rows, start=1):
+            for column_index, value in enumerate(values, start=1):
+                cell_id = f'{table_id}-cell-{row_index}-{column_index}'
+                word_id = f'{cell_id}-word'
+                blocks.append({
+                    'BlockType': 'WORD',
+                    'Id': word_id,
+                    'Text': value,
+                    'Confidence': 99.0,
+                    'Page': page,
+                })
+                blocks.append({
+                    'BlockType': 'CELL',
+                    'Id': cell_id,
+                    'RowIndex': row_index,
+                    'ColumnIndex': column_index,
+                    'Confidence': 99.0,
+                    'Page': page,
+                    'Relationships': [{'Type': 'CHILD', 'Ids': [word_id]}],
+                })
+                cell_ids.append(cell_id)
+        blocks.append({
+            'BlockType': 'TABLE',
+            'Id': table_id,
+            'Confidence': 99.0,
+            'Page': page,
+            'Relationships': [{'Type': 'CHILD', 'Ids': cell_ids}],
+        })
+
+    add_table(1, 'table-page-1', [
+        ['Item Description', 'Unit', 'Quantity', 'Unit Cost', 'Total Cost'],
+        ['Laptop computer', 'unit', '2', '25000', '50000'],
+    ])
+    add_table(2, 'table-page-2', [
+        ['Desktop computer', 'unit', '3', '30000', '90000'],
+    ])
+
+    items, table_info = parse_tables(blocks)
+
+    assert len(table_info) == 2
+    assert [item.description for item in items] == ['Laptop computer', 'Desktop computer']
+
+
+def test_textract_ignores_repeated_header_on_continuation_page():
+    blocks = []
+
+    def add_line(block_id, text, row_index, column_index):
+        word_id = f'{block_id}-word'
+        blocks.extend([
+            {'BlockType': 'WORD', 'Id': word_id, 'Text': text, 'Confidence': 99.0, 'Page': 2},
+            {
+                'BlockType': 'CELL', 'Id': block_id, 'RowIndex': row_index, 'ColumnIndex': column_index,
+                'Confidence': 99.0, 'Page': 2, 'Relationships': [{'Type': 'CHILD', 'Ids': [word_id]}],
+            },
+        ])
+
+    for column_index, text in enumerate(['Item Description', 'Unit', 'Quantity', 'Unit Cost', 'Total Cost'], start=1):
+        add_line(f'header-{column_index}', text, 1, column_index)
+    for column_index, text in enumerate(['Monitor', 'unit', '4', '10000', '40000'], start=1):
+        add_line(f'item-{column_index}', text, 2, column_index)
+    blocks.append({
+        'BlockType': 'TABLE',
+        'Id': 'table-page-2',
+        'Confidence': 99.0,
+        'Page': 2,
+        'Relationships': [{'Type': 'CHILD', 'Ids': [f'header-{index}' for index in range(1, 6)] + [f'item-{index}' for index in range(1, 6)]}],
+    })
+
+    items, _ = parse_tables(blocks)
+
+    assert [item.description for item in items] == ['Monitor']

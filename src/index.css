@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
 :root {
   --primary: #4f46e5;
   --primary-soft: #6366f1;
@@ -477,6 +479,17 @@ summary:focus-visible {
 .btn-sm {
   padding: 8px 12px;
   font-size: 13px;
+}
+
+.pr-review-action-btn {
+  min-width: 140px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .pr-review-action-btn {
+    width: 100%;
+  }
 }
 
 .form-field {
@@ -1313,7 +1326,7 @@ summary:focus-visible {
 
 .supplier-verification-shell {
   display: grid;
-  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -1379,6 +1392,7 @@ summary:focus-visible {
 
 .supplier-verification-table {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1542,6 +1556,10 @@ summary:focus-visible {
 }
 
 @media (max-width: 640px) {
+  .supplier-verification-table {
+    grid-template-columns: 1fr;
+  }
+
   .supplier-verification-toolbar {
     align-items: flex-start;
   }
@@ -3006,6 +3024,95 @@ summary:focus-visible {
   }
 }
 
+/* Procurement ledger — final presentation layer.  This deliberately favours
+   document-like hierarchy over the familiar rounded SaaS-dashboard look. */
+:root {
+  --ink: #153449;
+  --navy: #102f43;
+  --teal: #0f766e;
+  --gold: #c58b3a;
+  --paper: #f6f4ee;
+  --line: #cbd7dc;
+}
+
+body {
+  background-color: var(--paper);
+  background-image: linear-gradient(90deg, transparent 0, transparent 71px, rgba(21, 52, 73, .035) 72px), linear-gradient(rgba(21, 52, 73, .028) 1px, transparent 1px);
+  background-size: 72px 100%, 100% 32px;
+}
+
+.navbar {
+  height: 74px;
+  padding: 0 38px;
+  background: var(--navy);
+  border-bottom: 3px solid var(--gold);
+  box-shadow: 0 5px 20px rgba(16, 47, 67, .2);
+}
+
+.navbar-logo-link { position: relative; padding-right: 18px; }
+.navbar-logo-link::after { content: 'PROCUREMENT PORTAL'; position: absolute; left: calc(100% + 2px); top: 50%; transform: translateY(-50%); color: #9fbdc5; font-size: 9px; letter-spacing: .14em; white-space: nowrap; }
+.navbar-logo { height: 42px; filter: none; }
+.navbar-links { gap: 3px; }
+.nav-item { position: relative; border-radius: 0; padding: 27px 13px 22px; color: #d9e8ea; font-size: 13px; }
+.nav-item::after { content: ''; position: absolute; right: 13px; bottom: 12px; left: 13px; height: 2px; transform: scaleX(0); transform-origin: left; background: var(--gold); transition: transform .18s ease; }
+.nav-item:hover, .nav-item:focus-visible, .nav-item.active { background: rgba(119, 212, 198, .09); color: #fff; transform: none; }
+.nav-item:hover::after, .nav-item.active::after { transform: scaleX(1); }
+.login-link { border: 1px solid rgba(197, 139, 58, .78); border-radius: 3px; background: transparent; padding: 10px 14px; }
+.login-link:hover { background: rgba(197, 139, 58, .16); }
+
+.page-content { max-width: 1440px; padding: 38px 42px 54px; }
+.page-content h1, .supplier-header h1, .admin-header h1, .dashboard-header h1 { color: var(--ink); letter-spacing: -.025em; }
+.page-content h1::after, .supplier-header h1::after, .admin-header h1::after, .dashboard-header h1::after { content: ''; display: block; width: 44px; height: 3px; margin-top: 12px; background: var(--gold); }
+
+.bac-news-slider-section { position: relative; overflow: hidden; padding: 30px; border: 1px solid #23475a; border-radius: 4px; background: var(--navy); box-shadow: 0 16px 32px rgba(16, 47, 67, .16); }
+.bac-news-slider-section::before { content: none; }
+.bac-news-slider-header { position: relative; border-bottom: 1px solid rgba(197, 139, 58, .45); padding-bottom: 16px; }
+.eyebrow { color: #e7bb78; }
+.bac-news-slider { border-radius: 2px; }
+.bac-news-slide { border-radius: 2px; }
+.bac-news-slide-content { max-width: 580px; padding: 36px; border-left: 3px solid var(--gold); }
+.bac-news-slider-section .btn-primary { background: var(--gold); border-color: var(--gold); color: #172f3d; }
+.bac-news-slider-section .btn-primary:hover { background: #d7a557; border-color: #d7a557; }
+
+.info-card, .home-notices, .process-step { border-radius: 3px; box-shadow: none; }
+.info-card { border-top: 3px solid var(--teal); }
+.home-notices { border-left: 3px solid var(--gold); }
+.process-step { position: relative; padding: 18px 18px 18px 48px; background: rgba(255,255,255,.82); }
+/* The timeline lives in a dedicated left gutter, clear of the step text. */
+.process-step::after { content: none; }
+.process-step::before { content: none; }
+.process-step:last-child::before { display: none; }
+
+.card, .admin-card, .dashboard-card, .dashboard-section, .supplier-status-card, .supplier-detail-panel, .supplier-document-card, .opportunity-table-wrapper, .admin-table-wrapper, .table-shell { border-radius: 3px; box-shadow: 0 2px 8px rgba(16,47,67,.06); }
+.card, .admin-card, .supplier-detail-panel { border-color: var(--line); }
+.panel-header, .section-header, .table-header { border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+
+.btn, .btn-primary, .btn-secondary, .btn-outline, .btn-login, .btn-danger, .btn-sm { border-radius: 3px; font-weight: 700; letter-spacing: .015em; }
+.btn-primary, .btn-login { background: var(--teal); border-color: var(--teal); }
+.btn-primary:hover, .btn-login:hover { background: #095d57; border-color: #095d57; }
+.btn-secondary, .btn-outline { background: #fff; }
+
+.enterprise-table thead th, .opportunity-table th, .admin-table th, .items-table th { background: #e3ebec; color: #28485b; font-size: 10px; letter-spacing: .09em; }
+.enterprise-table tbody tr:hover, .opportunity-table tbody tr:hover, .admin-table tbody tr:hover { background: #edf7f5; }
+.enterprise-table td, .opportunity-table td, .admin-table td { border-bottom-color: #dce5e6; }
+.status-badge, .status-pill { border-radius: 2px; font-weight: 700; letter-spacing: .045em; }
+
+input, select, textarea { border-color: #afc2c9; background: #fffefb; }
+input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(15,118,110,.13); }
+.dropzone { border: 1px dashed #6e969e; border-radius: 3px; background: #f9fcfa; }
+.dropzone[data-drag="true"] { border-color: var(--teal); background: #e9f6f3; }
+.modal-content, .supplier-preview-modal { border-radius: 4px; border-top: 4px solid var(--gold); }
+
+@media (max-width: 768px) {
+  .navbar { padding: 10px 16px; }
+  .navbar-logo-link::after { display: none; }
+  .nav-item { padding: 9px 8px; }
+  .nav-item::after { bottom: 3px; right: 8px; left: 8px; }
+  .page-content { padding: 25px 16px 36px; }
+  .bac-news-slider-section { padding: 18px; }
+  .bac-news-slide-content { padding: 22px; }
+}
+
 /* ── SUPPLIER PORTAL HOMEPAGE ALIGNMENT ────────────────────────────────────── */
 
 .supplier-portal {
@@ -3124,6 +3231,7 @@ summary:focus-visible {
   border-top: 4px solid #e7b65a;
   border-radius: 10px;
   box-shadow: var(--shadow-sm);
+  bottom-margin: 32px;
 }
 
 .dashboard-cards-grid {
@@ -4177,9 +4285,12 @@ summary:focus-visible {
 }
 
 .registration-hero h1 {
-  color: #f8fafc;
+  color: #ffffff !important;
   margin-bottom: 10px;
 }
+
+.registration-hero p { color: #ffffff !important; }
+.registration-hero .eyebrow { color: #f2c982; }
 
 .registration-form {
   display: flex;
@@ -4649,6 +4760,14 @@ textarea {
   color: #f5fbfa;
 }
 
+.bac-news-slider-section .bac-news-slide-content h3 {
+  color: #ffffff;
+}
+
+.bac-news-slider-section .bac-news-slide-content p {
+  color: #e0f2fe;
+}
+
 .eyebrow {
   color: #8be1d7;
 }
@@ -4945,9 +5064,14 @@ textarea:focus {
 }
 
 .buyer-account-panel {
-  max-width: 760px;
-  margin: 0 auto;
   padding: 24px;
+}
+
+.buyer-account-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+  gap: 20px;
+  align-items: start;
 }
 
 .buyer-account-form {
@@ -4965,6 +5089,107 @@ textarea:focus {
 .buyer-account-form .form-actions {
   justify-content: flex-end;
   padding-top: 4px;
+}
+
+.buyer-accounts-list-panel {
+  min-width: 0;
+  padding: 24px;
+}
+
+.buyer-accounts-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5edef;
+}
+
+.buyer-accounts-list-header h2 {
+  margin-bottom: 4px;
+  font-size: 18px;
+}
+
+.buyer-account-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 190px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.buyer-account-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.buyer-accounts-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.buyer-account-record {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #d9e3e5;
+  border-radius: 9px;
+  background: #fbfdfd;
+}
+
+.buyer-account-record-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.buyer-account-record-main strong {
+  color: #0f766e;
+}
+
+.buyer-account-record-main span,
+.buyer-account-record-main small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buyer-account-record-main span {
+  font-size: 13px;
+}
+
+.buyer-account-record-main small {
+  font-size: 12px;
+}
+
+.buyer-account-record-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.buyer-accounts-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .buyer-status-viewer {
@@ -5119,6 +5344,7 @@ textarea:focus {
   color: #8be1d7;
 }
 
+/* Supplier Navigation Styles */
 .supplier-nav-item.active {
   background: #0f766e;
   border-bottom-color: #e7b65a;
@@ -5258,6 +5484,24 @@ textarea:focus {
 
   .buyer-account-form {
     grid-template-columns: 1fr;
+  }
+
+  .buyer-account-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .buyer-accounts-list-header,
+  .buyer-account-record {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .buyer-account-search {
+    width: 100%;
+  }
+
+  .buyer-account-record-actions {
+    justify-content: flex-start;
   }
 
   .buyer-status-viewer-header,
@@ -5627,6 +5871,290 @@ textarea:focus {
   background: rgba(79, 70, 229, 0.08);
 }
 
+/* eProcure institutional visual system */
+:root {
+  --primary: #0f766e;
+  --primary-soft: #115e59;
+  --success: #217a4b;
+  --warning: #a16207;
+  --danger: #b42318;
+  --bg: #edf2f4;
+  --card: #ffffff;
+  --text: #193247;
+  --muted: #627486;
+  --border: #d4dee3;
+  --ring: rgba(15, 118, 110, 0.22);
+  --shadow-sm: 0 1px 2px rgba(25, 50, 71, 0.06), 0 5px 16px rgba(25, 50, 71, 0.04);
+  --shadow-md: 0 10px 24px rgba(25, 50, 71, 0.09);
+  --shadow-lg: 0 20px 48px rgba(25, 50, 71, 0.18);
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 9px;
+}
+
+body {
+  background-color: var(--bg);
+  background-image: linear-gradient(rgba(15, 118, 110, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 118, 110, 0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+.admin-brand-copy,
+.supplier-nav-brand h1 {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.navbar,
+.admin-navbar,
+.supplier-nav {
+  background: #102f43;
+  border-color: #c58b3a;
+  box-shadow: 0 8px 22px rgba(16, 47, 67, 0.16);
+}
+
+.navbar {
+  height: 64px;
+}
+
+.nav-item,
+.admin-nav-item,
+.supplier-nav-item {
+  border-radius: 5px;
+}
+
+.nav-item:hover,
+.nav-item:focus-visible,
+.admin-nav-item:hover,
+.supplier-nav-item:hover {
+  background: rgba(119, 212, 198, 0.14);
+}
+
+.admin-layout {
+  background: #edf2f4;
+}
+
+.admin-navbar {
+  width: 244px;
+  padding: 20px 14px;
+}
+
+.admin-brand-mark {
+  background: #c58b3a;
+  color: #102f43;
+  border-radius: 5px;
+}
+
+.admin-nav-item.active,
+.supplier-nav-item.active {
+  background: #0f766e;
+  border-color: #77d4c6;
+}
+
+.admin-content,
+.supplier-content-inner {
+  max-width: 1420px;
+}
+
+.supplier-header,
+.admin-header,
+.dashboard-header {
+  border-bottom-color: #cbd7dc;
+}
+
+.supplier-header h1,
+.admin-header h1,
+.dashboard-header h1,
+.page-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #102f43;
+}
+
+.admin-card,
+.admin-dashboard-panel,
+.admin-checklist,
+.card,
+.detail-card,
+.supplier-status-card,
+.supplier-detail-panel,
+.opportunity-card,
+.dashboard-card,
+.dashboard-section,
+.pr-monitor-table-shell,
+.opportunities-table-container {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-card {
+  border-left: 3px solid #c58b3a;
+}
+
+.admin-card-value,
+.dashboard-activity-id,
+.pr-number-link,
+.supplier-id-pill {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.admin-card-value {
+  color: #102f43;
+}
+
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-outline,
+.btn-login,
+.btn-danger,
+.btn-sm,
+input,
+select,
+textarea {
+  border-radius: 5px;
+}
+
+.btn-primary,
+.btn-login {
+  background: #0f766e;
+  border-color: #0f766e;
+  box-shadow: none;
+}
+
+.btn-primary:hover,
+.btn-login:hover {
+  background: #115e59;
+  border-color: #115e59;
+}
+
+.btn-secondary,
+.btn-outline {
+  color: #29485c;
+  border-color: #b8c8cf;
+}
+
+.pr-monitor-table-wrapper,
+.admin-table-wrapper,
+.table-shell {
+  overflow-x: auto;
+}
+
+.pr-monitor-table-head,
+.admin-table th,
+.table-header,
+.items-table th {
+  background: #e5edef;
+  color: #29485c;
+  border-bottom-color: #bccbd1;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pr-monitor-table-row,
+.admin-table td,
+.items-table td {
+  min-height: 54px;
+  border-bottom-color: #e2e9ec;
+}
+
+.pr-monitor-table-row:hover,
+.admin-table tbody tr:hover {
+  background: #f0f8f7;
+}
+
+.status-badge,
+.status-pill {
+  border-radius: 4px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.pr-review-queue {
+  border-top: 3px solid #c58b3a;
+}
+
+.pr-review-queue-row {
+  border-bottom-color: #e2e9ec;
+}
+
+.modal-content,
+.supplier-preview-modal {
+  border-radius: 7px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.supplier-nav-item.active {
+  border-bottom-color: #c58b3a;
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    height: auto;
+    min-height: 64px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .navbar-left,
+  .navbar-brand-row {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .navbar-links {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding-top: 6px;
+  }
+
+  .nav-item {
+    padding: 8px 7px;
+    font-size: 12px;
+  }
+
+  .navbar-right {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+  }
+
+  .admin-navbar {
+    width: 100%;
+  }
+
+  .supplier-header h1,
+  .admin-header h1,
+  .dashboard-header h1,
+  .page-content h1 {
+    font-size: 24px;
+  }
+
+  .admin-card,
+  .admin-dashboard-panel,
+  .card,
+  .detail-card {
+    border-radius: 6px;
+  }
+}
+
 @media (max-width: 768px) {
   .supplier-search-bar {
     max-width: 100%;
@@ -5646,5 +6174,214 @@ textarea:focus {
 
   .opportunity-card {
     margin-bottom: 12px;
+  }
+}
+
+/* Alignment guardrails: kept last so shared responsive rules cannot override it. */
+.navbar-logo-link::after { display: none; }
+.navbar-brand-row { min-width: 0; }
+.navbar-links { min-width: 0; }
+.nav-item { white-space: nowrap; }
+.page-content h1::after,
+.supplier-header h1::after,
+.admin-header h1::after,
+.dashboard-header h1::after { position: static; }
+
+@media (max-width: 768px) {
+  .navbar {
+    position: sticky;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+  }
+
+  .navbar-left,
+  .navbar-brand-row { width: auto; min-width: 0; }
+
+  .navbar-brand-row { gap: 8px; }
+  .navbar-logo { height: 37px; }
+  .navbar-links { grid-column: 1 / -1; width: 100%; display: flex; overflow-x: auto; flex-wrap: nowrap; padding: 3px 0 0; }
+  .navbar-right { position: static; justify-self: end; }
+  .login-link { padding: 9px 10px; font-size: 12px; }
+  .nav-item { flex: 0 0 auto; padding: 8px 9px; font-size: 12px; }
+
+  .bac-news-slider-header,
+  .table-header,
+  .section-header,
+  .items-header,
+  .supplier-header { align-items: flex-start; flex-direction: column; }
+  .bac-news-nav, .table-summary, .items-header-actions { width: 100%; }
+  .table-summary, .items-header-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .dropzone-file-row, .file-actions, .form-actions, .modal-actions { flex-wrap: wrap; }
+  .file-actions .btn, .form-actions .btn { flex: 1 1 160px; }
+}
+
+/* PR review queue actions */
+.pr-review-queue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 154px;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+}
+
+.pr-review-queue-row > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pr-review-queue-row > div:first-child strong { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.pr-review-queue-row > div:first-child span { overflow: hidden; color: var(--ink); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.pr-review-queue-row > div:first-child small { color: var(--muted); }
+
+.pr-review-action-btn { width: 154px; min-height: 36px; justify-content: center; border-radius: 3px; }
+.pr-review-btn { color: #fff; background: var(--teal); border-color: var(--teal); }
+.pr-review-btn:hover { background: #095d57; border-color: #095d57; }
+.pr-assign-category-btn { color: #193247; background: #f4d7a7; border-color: #d8a962; }
+.pr-assign-category-btn:hover { background: #ebc98c; border-color: #c58b3a; }
+
+@media (max-width: 700px) {
+  .pr-review-queue-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
+  .pr-review-queue-row .pr-review-action-btn { grid-column: 1 / -1; width: 100%; }
+}
+
+/* FAQ Page Styling */
+.faq-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.faq-intro {
+  font-size: 18px;
+  color: var(--muted);
+  margin-bottom: 32px;
+}
+
+.faq-grid {
+  display: grid;
+  gap: 40px;
+}
+
+.faq-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.faq-section h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--primary);
+}
+
+.faq-item {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.faq-item:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.faq-item summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 0;
+  font-size: 16px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.faq-item summary:hover {
+  color: var(--primary);
+}
+
+.faq-item summary::marker {
+  color: var(--primary);
+}
+
+.faq-item p {
+  margin: 12px 0 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.faq-item[open] summary {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .faq-container {
+    padding: 0;
+  }
+
+  .faq-intro {
+    font-size: 16px;
+    margin-bottom: 24px;
+  }
+
+  .faq-grid {
+    gap: 24px;
+  }
+
+  .faq-section h2 {
+    font-size: 18px;
+  }
+
+  .faq-item {
+    padding: 12px;
+  }
+
+  .faq-item summary {
+    font-size: 14px;
+  }
+
+  .faq-item p {
+    font-size: 13px;
+    margin-top: 10px;
+  }
+}
+
+/* Keep matching progression separate from record-management controls. */
+.pr-monitor-table-head,
+.pr-monitor-table-row {
+  min-width: 1230px;
+  grid-template-columns: 70px 160px minmax(180px, 1.1fr) minmax(130px, .9fr) 70px 140px 130px 160px 160px 132px;
+}
+
+.pr-monitor-table-head {
+  background: #e5edef;
+  color: #29485c;
+}
+
+.pr-monitor-table-head > span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pr-matching-action { display: flex; align-items: center; min-height: 36px; }
+.pr-matching-action .btn-sm { width: 150px; justify-content: center; white-space: nowrap; }
+.pr-row-actions { justify-content: flex-start; }
+
+@media (max-width: 1200px) {
+  .pr-monitor-table-head,
+  .pr-monitor-table-row {
+    min-width: 1170px;
+    grid-template-columns: 64px 150px minmax(170px, 1fr) 120px 64px 130px 120px 150px 154px 116px;
   }
 }

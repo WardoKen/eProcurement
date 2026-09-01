@@ -74,6 +74,22 @@ def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
     return {'document': {'pages': [], 'raw_text': '', 'source': 'none', 'filename': filename}, 'layout': {'blocks': [], 'text': '', 'line_count': 0}}, 'none'
 
 
+def is_purchase_request_document(document: dict, parsed: dict) -> bool:
+    raw_text = str(document.get('raw_text') or '')
+    normalized_text = re.sub(r'[^a-z0-9]+', ' ', raw_text.lower()).strip()
+    if re.search(r'purchase request|purchase requisition', normalized_text):
+        return True
+
+    structural_terms = (
+        'pr no', 'requested by', 'approved by', 'funds available',
+        'item description', 'unit cost', 'quantity', 'grand total',
+    )
+    matched_terms = sum(term in normalized_text for term in structural_terms)
+    has_items = bool(parsed.get('requested_items') or parsed.get('items'))
+    has_header = bool(parsed.get('entityName') or parsed.get('prNumber') or parsed.get('fundCluster'))
+    return matched_terms >= 2 and (has_items or has_header)
+
+
 def get_line_value(lines: list[str], source: str, labels: list[str], fallback_pattern: str | None = None) -> str | None:
     regex = re.compile(rf"^(?:{'|'.join(map(re.escape, labels))})\s*[:\-]\s*(.+)$", re.I)
     for line in lines:
@@ -192,6 +208,13 @@ def upload_file(request):
     if not file:
         return json_error('No file uploaded', 400)
 
+    allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png'}
+    extension = Path(file.name).suffix.lower()
+    if extension not in allowed_extensions:
+        return json_error('Unsupported file type. Upload a PDF, JPG, or PNG file.', 400)
+    if file.size > 10 * 1024 * 1024:
+        return json_error('File too large (max 10MB)', 400)
+
     filename = f"{int(time.time() * 1000)}_{file.name}"
     file_path = UPLOADS_DIR / filename
     with open(file_path, 'wb') as dest:
@@ -203,6 +226,10 @@ def upload_file(request):
     document = payload.get('document', {})
     layout = payload.get('layout', {})
     parsed = parse_purchase_request(document.get('raw_text', ''), layout, payload.get('textract_blocks') or [])
+    if not is_purchase_request_document(document, parsed):
+        file_path.unlink(missing_ok=True)
+        return json_error('This file does not appear to be a Purchase Request. Upload a PR document.', 422)
+
     auto_filled = auto_fill_service.populate(parsed)
     validation = validation_service.validate(parsed)
     response_payload = {
@@ -649,6 +676,41 @@ def register(request):
     return JsonResponse({'success': True, 'userId': user.id, 'role': role_name}, status=201)
 
 
+@require_GET
+def buyer_account_list(request):
+    accounts = User.objects.filter(role__name='buyer').select_related('role').order_by('-created_at')
+    payload = [{
+        'id': account.id,
+        'username': account.username,
+        'full_name': account.full_name,
+        'email': account.email,
+        'unit_office': account.unit_office,
+        'is_active': account.is_active,
+        'created_at': account.created_at,
+        'last_login': account.last_login,
+    } for account in accounts]
+    return JsonResponse(payload, safe=False)
+
+
+@csrf_exempt
+@require_http_methods(['PATCH'])
+def buyer_account_status(request, user_id: int):
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    account = User.objects.filter(id=user_id, role__name='buyer').first()
+    if not account:
+        return json_error('Buyer account not found', 404)
+    if not isinstance(data.get('is_active'), bool):
+        return json_error('is_active must be a boolean', 400)
+
+    account.is_active = data['is_active']
+    account.save(update_fields=['is_active', 'updated_at'])
+    return JsonResponse({'success': True, 'id': account.id, 'is_active': account.is_active})
+
+
 @csrf_exempt
 @require_POST
 def login_view(request):
@@ -1073,6 +1135,7 @@ def supplier_dashboard_summary(request, supplier_id):
     return JsonResponse(summary)
 
 
+@csrf_exempt
 @require_http_methods(['GET', 'POST'])
 def supplier_quotations(request, supplier_id):
     """Get supplier's quotations or submit a new quotation."""
@@ -1394,7 +1457,7 @@ def pr_items_view(request, pr_id):
 def pr_items_assign_categories(request, pr_id):
     """Save the selected category for each Purchase Request item."""
     try:
-        PurchaseRequest.objects.get(id=pr_id)
+        pr = PurchaseRequest.objects.get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
         return json_error('Purchase Request not found', 404)
 
@@ -1416,7 +1479,18 @@ def pr_items_assign_categories(request, pr_id):
                     id=item_id, purchase_request_id=pr_id
                 ).update(category=category)
 
-    return JsonResponse({'success': True})
+        assigned_categories = list(
+            PurchaseRequestItem.objects
+            .filter(purchase_request_id=pr_id)
+            .exclude(category__isnull=True)
+            .exclude(category='')
+            .values_list('category', flat=True)
+            .distinct()
+        )
+        pr.category = ', '.join(assigned_categories) or None
+        pr.save(update_fields=['category'])
+
+    return JsonResponse({'success': True, 'category': pr.category or ''})
 
 
 @require_GET

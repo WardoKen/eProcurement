@@ -3,7 +3,7 @@ from datetime import date
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, Role, Supplier, SupplierCategory, User
 from api.supplier_registration import get_required_business_document_key, validate_supplier_payload
@@ -291,6 +291,21 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(Quotation.objects.get(id=response.json()['quotation_id']).rfq_id, rfq.id)
         rfq.refresh_from_db()
         self.assertEqual(rfq.status, RFQ.STATUS_QUOTATION_RECEIVED)
+
+    def test_quotation_submission_is_allowed_with_csrf_checks_enabled(self):
+        rfq = RFQ.objects.create(
+            rfq_no='RFQ-2026-0002', purchase_request=self.pr, supplier=self.supplier,
+            subject='RFQ', message='Please quote', status=RFQ.STATUS_SENT,
+        )
+        csrf_checked_client = Client(enforce_csrf_checks=True)
+
+        response = csrf_checked_client.post(
+            f'/api/suppliers/{self.supplier.id}/quotations/',
+            data=json.dumps({'purchase_request_id': self.pr.id, 'rfq_id': rfq.id, 'quoted_amount': 1000}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
 
 
 class PurchaseRequestNumberTests(TestCase):

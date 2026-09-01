@@ -461,6 +461,7 @@ def parse_tables(blocks: List[Dict[str, Any]]) -> Tuple[List[ParsedItem], List[D
     parsed_items: List[ParsedItem] = []
     table_info: List[Dict[str, Any]] = []
     debug_rows: List[Dict[str, Any]] = []
+    previous_header_map: Dict[str, int] = {}
 
     for table_idx, table_block in enumerate(table_blocks, start=1):
         logger.info(
@@ -519,6 +520,29 @@ def parse_tables(blocks: List[Dict[str, Any]]) -> Tuple[List[ParsedItem], List[D
                         },
                     }
                 )
+        elif previous_header_map:
+            header_map = previous_header_map
+
+        if header_map:
+            previous_header_map = header_map
+
+        if header_map and not row_count:
+            continuation_rows = [
+                row for row in rows
+                if not (find_header_map(row).get("description") and not is_item_value_row(row, header_map))
+            ]
+            for row in reconstruct_item_rows(
+                [
+                    row for row in continuation_rows
+                    if not header_row_index or int(row.get("row_index", 0) or 0) > header_row_index
+                ],
+                header_map,
+            ):
+                item = parse_item_row(row, header_map)
+                if item is None:
+                    continue
+                parsed_items.append(item)
+                row_count += 1
 
         table_info.append(
             {

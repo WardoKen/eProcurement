@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -7,6 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 from PIL import Image as PILImage
+
+try:
+    import pypdfium2 as pdfium
+except ImportError:  # pragma: no cover
+    pdfium = None
 
 try:
     from pdfminer.high_level import extract_text as extract_pdf_text
@@ -116,7 +122,45 @@ class TextractOCRService:
         return document
 
     def _process_with_textract(self, path: Path, filename: str, source: str) -> OCRDocument:
+        if source == "pdf" and pdfium is not None:
+            return self._process_pdf_pages(path, filename)
+
         response = self._analyze_document(path)
+        return self._document_from_response(response, filename, source)
+
+    def _process_pdf_pages(self, path: Path, filename: str) -> OCRDocument:
+        try:
+            pdf = pdfium.PdfDocument(str(path))
+        except Exception:
+            return OCRDocument(pages=[], raw_text="", source="pdf", filename=filename)
+
+        responses: List[dict[str, Any]] = []
+        try:
+            for page_index in range(len(pdf)):
+                page = pdf[page_index]
+                bitmap = page.render(scale=2.0)
+                image = bitmap.to_pil()
+                image_bytes = io.BytesIO()
+                image.save(image_bytes, format="PNG")
+                response = self._analyze_document_bytes(image_bytes.getvalue())
+                if response:
+                    responses.append(self._add_page_number(response, page_index + 1))
+                page.close()
+        except Exception:
+            return OCRDocument(pages=[], raw_text="", source="pdf", filename=filename)
+        finally:
+            pdf.close()
+
+        blocks = [block for response in responses for block in response.get("Blocks", [])]
+        response = {"Blocks": blocks}
+        return self._document_from_response(response, filename, "pdf")
+
+    def _document_from_response(
+        self,
+        response: Optional[dict[str, Any]],
+        filename: str,
+        source: str,
+    ) -> OCRDocument:
         if response is None:
             return OCRDocument(pages=[], raw_text="", source=source, filename=filename)
 
@@ -165,13 +209,7 @@ class TextractOCRService:
             all_tables=table_summaries,
         )
 
-    def _analyze_document(self, path: Path) -> Optional[dict[str, Any]]:
-        try:
-            with open(path, "rb") as file_handle:
-                payload = file_handle.read()
-        except Exception:
-            return None
-
+    def _analyze_document_bytes(self, payload: bytes) -> Optional[dict[str, Any]]:
         try:
             return self._client.analyze_document(
                 Document={"Bytes": payload},
@@ -182,6 +220,34 @@ class TextractOCRService:
                 return self._client.detect_document_text(Document={"Bytes": payload})
             except Exception:
                 return None
+
+    def _add_page_number(self, response: dict[str, Any], page_number: int) -> dict[str, Any]:
+        prefix = f"page-{page_number}-"
+        blocks: List[dict[str, Any]] = []
+        for block in response.get("Blocks", []):
+            updated = dict(block)
+            old_id = updated.get("Id")
+            if old_id:
+                updated["Id"] = f"{prefix}{old_id}"
+            updated["Page"] = page_number
+            relationships = []
+            for relationship in updated.get("Relationships", []) or []:
+                relation = dict(relationship)
+                relation["Ids"] = [f"{prefix}{item_id}" for item_id in relation.get("Ids", [])]
+                relationships.append(relation)
+            if relationships:
+                updated["Relationships"] = relationships
+            blocks.append(updated)
+        return {"Blocks": blocks}
+
+    def _analyze_document(self, path: Path) -> Optional[dict[str, Any]]:
+        try:
+            with open(path, "rb") as file_handle:
+                payload = file_handle.read()
+        except Exception:
+            return None
+
+        return self._analyze_document_bytes(payload)
 
     def _load_image_size(self, path: Path) -> Tuple[int, int]:
         try:

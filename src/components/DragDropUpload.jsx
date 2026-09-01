@@ -20,6 +20,12 @@ const getCurrentDate = () => {
 }
 
 const PR_NUMBER_PATTERN = /^\d{4}-\d{2}-\d{3}$/
+const ACCEPTED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
+
+function isAcceptedFile(file) {
+  const extension = `.${file.name.split('.').pop().toLowerCase()}`
+  return ACCEPTED_FILE_EXTENSIONS.includes(extension)
+}
 
 const FieldShell = ({
   id,
@@ -199,6 +205,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   }
 
   function handleFile(nextFile) {
+    if (!isAcceptedFile(nextFile)) {
+      setFile(null)
+      setUploadMessage('Unsupported file type. Upload a PDF, JPG, or PNG file.')
+      setUploadSuccess(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
     setFile(nextFile)
     setFields({})
     setRawText('')
@@ -229,6 +243,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   }
 
   async function uploadFile(nextFile) {
+    if (!isAcceptedFile(nextFile)) {
+      setUploadMessage('Unsupported file type. Upload a PDF, JPG, or PNG file.')
+      return
+    }
+
     setUploading(true)
     setUploadMessage('')
     setUploadSuccess(false)
@@ -379,13 +398,13 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           aria-label="Upload Purchase Request file"
           data-drag={dragOver ? 'true' : 'false'}
         >
-          <input ref={fileInputRef} type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={onFileInputChange} />
+          <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style={{ display: 'none' }} onChange={onFileInputChange} />
 
           {!file && (
             <div className="dropzone-inner">
               <Upload size={36} />
               <strong>Drop PR document here</strong>
-              <span>PDF or image files supported. Click to browse local files.</span>
+              <span>PDF, JPG, or PNG files supported. Click to browse local files.</span>
             </div>
           )}
 
@@ -802,7 +821,6 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                 {saving ? <LoaderCircle size={16} className="spin" /> : <Save size={16} />}
                 {saving ? 'Saving...' : 'Save Purchase Request'}
               </button>
-              <span className="helper-text">Uploads and OCR extraction remain unchanged. Only UI presentation was improved.</span>
             </div>
           </div>
 
