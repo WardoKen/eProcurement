@@ -45,6 +45,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     companyName: '',
     businessType: 'Sole Proprietorship',
     businessAddress: '',
+    tin: '',
     contactPerson: '',
     email: '',
     contactNumber: '',
@@ -71,6 +72,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const [submitted, setSubmitted] = React.useState(false)
   const [successModalOpen, setSuccessModalOpen] = React.useState(false)
   const [referenceNumber, setReferenceNumber] = React.useState('')
+  const [showPassword, setShowPassword] = React.useState(false)
 
   React.useEffect(() => {
     let isMounted = true
@@ -187,6 +189,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     formData.append('companyName', form.companyName.trim())
     formData.append('businessType', form.businessType)
     formData.append('businessAddress', form.businessAddress.trim())
+    formData.append('tin', form.tin.trim())
     formData.append('contactPerson', form.contactPerson.trim())
     formData.append('contactNumber', form.contactNumber.trim())
     formData.append('email', form.email.trim())
@@ -224,6 +227,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           companyName: '',
           businessType: 'Sole Proprietorship',
           businessAddress: '',
+          tin: '',
           contactPerson: '',
           email: '',
           contactNumber: '',
@@ -307,6 +311,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
     if (step === 1) {
       return (
+        <>
         <section className="section-card">
           <div className="section-header">
             <h2>Company Information</h2>
@@ -332,6 +337,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               <input value={form.businessAddress} onChange={(event) => updateField('businessAddress', event.target.value)} placeholder="Street, City, Province" required />
             </label>
             <label className="form-field">
+              <span>TIN Number *</span>
+              <input value={form.tin} onChange={(event) => updateField('tin', event.target.value)} placeholder="e.g. 123-456-789-000" required />
+            </label>
+            <label className="form-field">
               <span>Contact Person *</span>
               <input value={form.contactPerson} onChange={(event) => updateField('contactPerson', event.target.value)} placeholder="Jane Doe" required />
             </label>
@@ -343,20 +352,40 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               <span>Phone Number *</span>
               <input value={form.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} placeholder="09XX-XXX-XXXX" required />
             </label>
+          </div>
+        </section>
+        <section className="section-card account-setup-card">
+          <div className="section-header">
+            <h2>Account Setup</h2>
+            <span className="section-badge">Login Details</span>
+          </div>
+          <p className="helper-text">Create the login credentials you will use to access the supplier portal.</p>
+          <div className="field-grid account-setup-fields">
             <label className="form-field">
               <span>Username *</span>
               <input value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="supplierdemo" required />
             </label>
-            <label className="form-field">
+            <label className="form-field password-field">
               <span>Password *</span>
-              <input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters" required />
+              <div className="password-input-wrapper">
+                <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </label>
-            <label className="form-field">
+            <label className="form-field password-field">
               <span>Confirm Password *</span>
-              <input type="password" value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Re-enter password" required />
+              <div className="password-input-wrapper">
+                <input type={showPassword ? 'text' : 'password'} value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Re-enter password" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </label>
           </div>
         </section>
+        </>
       )
     }
 

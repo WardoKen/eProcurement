@@ -27,6 +27,17 @@ function isAcceptedFile(file) {
   return ACCEPTED_FILE_EXTENSIONS.includes(extension)
 }
 
+function normalizeOcrDate(value, rawText = '') {
+  const source = String(value || '').trim() || String(rawText || '')
+  const match = source.match(/\b(\d{1,2})\s*[\/-]\s*(\d{1,2})\s*[\/-]\s*(\d{4})\b/)
+  if (!match) return String(value || '').trim()
+  const month = Number(match[1])
+  const day = Number(match[2])
+  const year = Number(match[3])
+  if (month < 1 || month > 12 || day < 1 || day > 31) return ''
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 const FieldShell = ({
   id,
   label,
@@ -92,6 +103,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const [uploadMessage, setUploadMessage] = useState('')
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadSuccessModalOpen, setUploadSuccessModalOpen] = useState(false)
+  const [saveSuccessModalOpen, setSaveSuccessModalOpen] = useState(false)
+  const [savedPr, setSavedPr] = useState(null)
   const [fields, setFields] = useState({})
   const [rawText, setRawText] = useState('')
   const [editedFieldKeys, setEditedFieldKeys] = useState(new Set())
@@ -266,7 +279,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       const incoming = data?.fields || {}
       const extractedFields = {
         ...incoming,
-        date: incoming.date || getCurrentDate(),
+        date: normalizeOcrDate(incoming.date, data?.rawText) || getCurrentDate(),
       }
       const requested = (incoming.requested_items || []).map((item) => ({
         stockPropertyNumber: item.stock_no || '',
@@ -359,12 +372,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       setFields((prev) => ({ ...prev, prNumber: result.pr_no || prev.prNumber }))
       setHasUnsavedChanges(false)
       setNumberError('')
-      if (typeof onSaved === 'function') {
-        onSaved(result.id)
-      } else {
-        window.alert(`Purchase Request saved (id: ${result.id})`)
-        removeFile()
-      }
+      setSavedPr(result)
+      setSaveSuccessModalOpen(true)
     } catch {
       window.alert('Network error while saving PR')
     } finally {
@@ -487,6 +496,28 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               <button type="button" className="btn btn-success" onClick={() => setUploadSuccessModalOpen(false)}>
                 Continue Reviewing
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveSuccessModalOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
+          <div className="modal-content save-success-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="save-success-title">Purchase Request Saved</h3>
+            </div>
+            <div className="modal-body upload-success-modal-body">
+              <CheckCircle size={42} aria-hidden="true" />
+              <p>Your Purchase Request was saved successfully.</p>
+              {savedPr?.pr_no && <p className="helper-text">PR Number: <strong>{savedPr.pr_no}</strong></p>}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-success" onClick={() => {
+                setSaveSuccessModalOpen(false)
+                if (typeof onSaved === 'function') onSaved(savedPr?.id)
+                else removeFile()
+              }}>Continue</button>
             </div>
           </div>
         </div>

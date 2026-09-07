@@ -13,11 +13,12 @@ import {
   LogOut,
   Menu,
   ChevronLeft,
+  ChevronRight,
+  ChevronDown,
   RefreshCw,
   ScanSearch,
   Search,
   Trash2,
-  UploadCloud,
   Users,
   X,
   Bell,
@@ -33,6 +34,7 @@ import {
   AlertCircle,
   Save,
   FileUp,
+  Download,
   Send,
   Settings,
   Building2,
@@ -42,6 +44,33 @@ import logo from './assets/logo.png'
 import DragDropUpload from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import './index.css'
+
+// Auth/session state lives in sessionStorage so it is cleared when the browser
+// (or its last tab) closes - opening the site fresh always starts logged out,
+// while reloads and in-tab navigation keep the session. Any legacy copy left in
+// localStorage by an older build is removed once on load so it can't resurface.
+const AUTH_STORAGE_KEYS = ['eProcureUser', 'supplier_id', 'supplier_status']
+
+try {
+  AUTH_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key))
+} catch {
+  // Storage may be unavailable (private mode / disabled cookies) - ignore.
+}
+
+const authStore = {
+  get(key) {
+    try { return window.sessionStorage.getItem(key) } catch { return null }
+  },
+  set(key, value) {
+    try { window.sessionStorage.setItem(key, value) } catch { /* ignore */ }
+  },
+  remove(key) {
+    try { window.sessionStorage.removeItem(key) } catch { /* ignore */ }
+  },
+  clear() {
+    AUTH_STORAGE_KEYS.forEach((key) => authStore.remove(key))
+  },
+}
 
 const SkeletonRows = ({ count = 4 }) => (
   <div className="skeleton-stack" aria-label="Loading content">
@@ -768,7 +797,7 @@ const Tracking = () => {
 
         <div style={{marginTop: '32px', padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '8px', borderLeft: '4px solid #3b82f6'}}>
           <p style={{margin: 0, color: '#1e40af'}}>
-            <strong>Note:</strong> Data is pulled from the live eProcure database. If you have questions about your purchase request, contact the BAC office.
+            <strong>Note:</strong> Data is pulled from the live eProcura database. If you have questions about your purchase request, contact the BAC office.
           </p>
         </div>
       </div>
@@ -780,7 +809,7 @@ const FAQ = () => (
   <div className="page-content">
     <div className="faq-container">
       <h1>Frequently Asked Questions & Help</h1>
-      <p className="faq-intro">Find answers to common questions about eProcure and the procurement process.</p>
+      <p className="faq-intro">Find answers to common questions about eProcura and the procurement process.</p>
 
       <div className="faq-grid">
         {/* General Section */}
@@ -788,13 +817,13 @@ const FAQ = () => (
           <h2>General</h2>
           
           <details className="faq-item">
-            <summary><strong>What is eProcure?</strong></summary>
-            <p>eProcure is the BAC's digital procurement platform that streamlines the purchase request and supplier matching process. It enables efficient procurement by digitizing workflows and automating communications.</p>
+            <summary><strong>What is eProcura?</strong></summary>
+            <p>eProcura is the BAC's digital procurement platform that streamlines the purchase request and supplier matching process. It enables efficient procurement by digitizing workflows and automating communications.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>How do I access my account?</strong></summary>
-            <p>Visit the login page and enter your credentials. If you don't have an account, you can register as either a buyer (university/department) or supplier. Make sure to use the correct login role.</p>
+            <p>Visit the login page and enter your credentials. If you don't have an account, you can register as either an end user (university/department) or supplier. Make sure to use the correct login role.</p>
           </details>
 
           <details className="faq-item">
@@ -803,13 +832,13 @@ const FAQ = () => (
           </details>
         </section>
 
-        {/* Buyer Section */}
+        {/* End User Section */}
         <section className="faq-section">
-          <h2>Buyer Portal</h2>
+          <h2>End User Portal</h2>
           
           <details className="faq-item">
             <summary><strong>How do I submit a Purchase Request?</strong></summary>
-            <p>Log in to your buyer account and navigate to the Dashboard. Upload your signed PR document (PDF or image). The OCR system will automatically extract key information. BAC staff will review and number the request before supplier matching begins.</p>
+            <p>Log in to your end user account and navigate to the Dashboard. Upload your signed PR document (PDF or image). The OCR system will automatically extract key information. BAC staff will review and number the request before supplier matching begins.</p>
           </details>
 
           <details className="faq-item">
@@ -824,7 +853,7 @@ const FAQ = () => (
 
           <details className="faq-item">
             <summary><strong>Can I edit a Purchase Request after submission?</strong></summary>
-            <p>Once submitted to BAC, direct edits are not available through eProcure. If corrections are needed, contact BAC staff with details, and they can assist with amendments.</p>
+            <p>Once submitted to BAC, direct edits are not available through eProcura. If corrections are needed, contact BAC staff with details, and they can assist with amendments.</p>
           </details>
         </section>
 
@@ -848,13 +877,13 @@ const FAQ = () => (
           </details>
 
           <details className="faq-item">
-            <summary><strong>How do I submit a quotation for a procurement opportunity?</strong></summary>
-            <p>Navigate to Opportunities or RFQs, select the item you're interested in, and click "Submit Quotation". Enter your quoted amount, estimated delivery time, warranty, and any remarks. Submit to be considered for the award.</p>
+            <summary><strong>How do I respond to a Request for Quotation (RFQ)?</strong></summary>
+            <p>Open the RFQ under "RFQs", download the generated RFQ PDF, then print it. Fill in the required supplier fields (brand/model, unit prices, totals, contact information), sign it, scan or photograph it as a single PDF, and upload the completed document in the "Completed RFQ Submission" area of that same RFQ.</p>
           </details>
 
           <details className="faq-item">
-            <summary><strong>Can I modify a quotation after submission?</strong></summary>
-            <p>Once submitted, quotations generally cannot be edited directly. Contact BAC if urgent changes are needed. For future opportunities, you'll be able to submit fresh quotations.</p>
+            <summary><strong>Can I change my completed RFQ after uploading it?</strong></summary>
+            <p>While the RFQ is still open for a response, you can use "Replace Submission" to upload a corrected version. Your original submission is kept for the BAC's records. Once the BAC finalizes the RFQ, contact them directly for any changes.</p>
           </details>
         </section>
 
@@ -863,8 +892,8 @@ const FAQ = () => (
           <h2>Technical & Account</h2>
           
           <details className="faq-item">
-            <summary><strong>Is there a mobile app for eProcure?</strong></summary>
-            <p>eProcure is accessible through web browsers on any device (desktop, tablet, mobile). A dedicated mobile app is not currently available, but the website is responsive and mobile-friendly.</p>
+            <summary><strong>Is there a mobile app for eProcura?</strong></summary>
+            <p>eProcura is accessible through web browsers on any device (desktop, tablet, mobile). A dedicated mobile app is not currently available, but the website is responsive and mobile-friendly.</p>
           </details>
 
           <details className="faq-item">
@@ -920,7 +949,7 @@ const Login = () => {
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
       const tempAccounts = {
-        buyer: { username: 'buyer1', password: 'buyer123', role: 'buyer', name: 'BAC Buyer' },
+        buyer: { username: 'buyer1', password: 'buyer123', role: 'buyer', name: 'BAC End User' },
         supplier: { username: 'supplier1', password: 'supplier123', role: 'supplier', name: 'Supplier Partner', supplierId: 1 },
         admin: { username: 'admin', password: 'admin123', role: 'admin', name: 'BAC Admin' },
       }
@@ -928,12 +957,12 @@ const Login = () => {
       const credentials = tempAccounts[selectedRole]
       if (credentials && username === credentials.username && password === credentials.password) {
         const user = { username, role: selectedRole, name: credentials.name, supplier_id: credentials.supplierId, supplier_status: credentials.supplierStatus || 'Approved' }
-        localStorage.setItem('eProcureUser', JSON.stringify(user))
+        authStore.set('eProcureUser', JSON.stringify(user))
         if (credentials.supplierId) {
-          localStorage.setItem('supplier_id', credentials.supplierId.toString())
+          authStore.set('supplier_id', credentials.supplierId.toString())
         }
-        localStorage.setItem('supplier_status', user.supplier_status)
-        alert(`Login successful as ${selectedRole}`)
+        authStore.set('supplier_status', user.supplier_status)
+        alert(`Login successful as ${selectedRole === 'buyer' ? 'End User' : selectedRole}`)
         if (selectedRole === 'admin') {
           navigate('/admin')
         } else {
@@ -957,14 +986,14 @@ const Login = () => {
         }
 
         const user = result.user
-        localStorage.setItem('eProcureUser', JSON.stringify(user))
+        authStore.set('eProcureUser', JSON.stringify(user))
 
         if (user.role === 'supplier') {
           if (user.supplier_id) {
-            localStorage.setItem('supplier_id', user.supplier_id.toString())
+            authStore.set('supplier_id', user.supplier_id.toString())
           }
           if (user.supplier_status) {
-            localStorage.setItem('supplier_status', user.supplier_status)
+            authStore.set('supplier_status', user.supplier_status)
           }
         }
 
@@ -976,13 +1005,13 @@ const Login = () => {
               const suppliers = await suppliersRes.json()
               // Try to find supplier by email or other identifier
               if (suppliers.length > 0) {
-                localStorage.setItem('supplier_id', suppliers[0].id.toString())
+                authStore.set('supplier_id', suppliers[0].id.toString())
                 user.supplier_id = suppliers[0].id
-                localStorage.setItem('eProcureUser', JSON.stringify(user))
+                authStore.set('eProcureUser', JSON.stringify(user))
               }
             }
             if (user.supplier_status) {
-              localStorage.setItem('supplier_status', user.supplier_status)
+              authStore.set('supplier_status', user.supplier_status)
             }
           } catch (err) {
             console.error('Failed to fetch supplier profile:', err)
@@ -1018,7 +1047,7 @@ const Login = () => {
             <div className="form-field">
               <select name="role" value={role} onChange={(e) => setRole(e.target.value)} className="form-select">
                 <option value="">Select Login as</option>
-                <option value="buyer">Buyer</option>
+                <option value="buyer">End User</option>
                 <option value="supplier">Supplier</option>
                 <option value="admin">Admin</option>
               </select>
@@ -1251,25 +1280,64 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
   )
 }
 
+// The generated RFQ PDF is always written to the same file path, so its URL
+// never changes between saves. Append a fresh token so the browser (and the
+// preview iframe) fetch the newly rendered document instead of a cached copy.
+const bustCache = (url) => {
+  if (!url) return ''
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
+}
+
 // ─── SupplierMatchingView ─────────────────────────────────────────────────────
 
 const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   const [rfq, setRfq] = React.useState(null)
   const [subject, setSubject] = React.useState('')
   const [message, setMessage] = React.useState('')
-  const [saving, setSaving] = React.useState(false)
+  const [abc, setAbc] = React.useState('')
+  const [awardBasis, setAwardBasis] = React.useState('LOT')
+  const [modeOfProcurement, setModeOfProcurement] = React.useState('')
+  const [procurementModes, setProcurementModes] = React.useState([])
+  const [additionalNotes, setAdditionalNotes] = React.useState('')
+  const [pendingAction, setPendingAction] = React.useState('')
   const [error, setError] = React.useState('')
+  const [notice, setNotice] = React.useState('')
+  const [previewUrl, setPreviewUrl] = React.useState('')
+  const rfqApiBase = apiBase.replace(/\/$/, '')
+  const busy = Boolean(pendingAction)
+  const isSent = rfq?.status === 'sent'
+
+  const computedAbc = React.useMemo(() => {
+    const total = Number(prDetails?.grand_total ?? 0)
+    return Number.isFinite(total) ? `₱${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'
+  }, [prDetails?.grand_total])
 
   React.useEffect(() => {
-    fetch(`${apiBase}/api/pr/${prId}/rfq/`)
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-User-Role': 'admin',
+      'X-User-Username': 'admin',
+    }
+    fetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, { headers })
       .then((response) => response.ok ? response.json() : { rfqs: [] })
       .then((data) => {
-        const existing = (data.rfqs || []).find((item) => item.supplier.id === supplier.id && item.status !== 'sent')
+        const forSupplier = (data.rfqs || []).filter((item) => item.supplier.id === supplier.id)
+        const existing = forSupplier.find((item) => item.status !== 'sent') || forSupplier.find((item) => item.status === 'sent')
         if (existing) {
           setRfq(existing)
           setSubject(existing.subject)
           setMessage(existing.message)
+          setAbc(existing.abc || computedAbc)
+          setAwardBasis(existing.award_basis === 'UNIT' ? 'UNIT' : 'LOT')
+          setModeOfProcurement(existing.mode_of_procurement || '')
+          setAdditionalNotes(existing.additional_notes || '')
+          setPreviewUrl(bustCache(existing.pdf_url))
+          if (existing.status === 'sent') {
+            setNotice(`RFQ ${existing.rfq_no} was already sent to ${supplier.email || 'the supplier'}. It can no longer be edited.`)
+          }
         } else {
+          setAbc(computedAbc)
           setSubject(`Request for Quotation - PR ${prDetails?.pr_no || prId}`)
           setMessage(
             `Dear ${supplier.contact_person || supplier.company_name},\n\n` +
@@ -1282,35 +1350,86 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         }
       })
       .catch(() => {})
-  }, [apiBase, prId, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.id])
+  }, [computedAbc, prId, rfqApiBase, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.email, supplier.id])
+
+  React.useEffect(() => {
+    fetch(`${rfqApiBase}/api/procurement-modes/`)
+      .then((response) => response.ok ? response.json() : { modes: [] })
+      .then((data) => setProcurementModes(Array.isArray(data.modes) ? data.modes : []))
+      .catch(() => {})
+  }, [rfqApiBase])
 
   const items = prDetails?.items || []
-  const saveRfq = async (send = false) => {
-    setSaving(true)
+  const canPrepare = Boolean(modeOfProcurement.trim() && subject.trim() && message.trim())
+
+  // Save applies the current edits and always refreshes the RFQ preview.
+  // Send delivers the saved RFQ (with its PDF) to the supplier by email.
+  const persistRfq = async (action) => {
+    const send = action === 'send'
+    if (!canPrepare) {
+      setError(!modeOfProcurement.trim()
+        ? 'Please select a mode of procurement.'
+        : 'Subject and RFQ message are required.')
+      return
+    }
+    if (send) {
+      if (!rfq) {
+        setError('Save the RFQ first, then send it to the supplier.')
+        return
+      }
+      if (!supplier.email) {
+        setError('The selected supplier has no email address on file.')
+        return
+      }
+      if (!window.confirm(`Send RFQ ${rfq.rfq_no} to ${supplier.email}? Once sent it can no longer be edited.`)) {
+        return
+      }
+    }
+    setPendingAction(action)
     setError('')
+    setNotice('')
     try {
-      const response = await fetch(`${apiBase}/api/pr/${prId}/rfq/`, {
+      const response = await fetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, {
         method: rfq ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': 'admin',
+          'X-User-Username': 'admin',
+        },
         body: JSON.stringify({
           supplier_id: supplier.id,
           category: supplier.matched_category || prDetails?.category || items.find((item) => item.category)?.category || '',
           rfq_id: rfq?.id,
           subject,
           message,
+          abc: computedAbc,
+          award_basis: awardBasis,
+          mode_of_procurement: modeOfProcurement,
+          additional_notes: additionalNotes,
+          generate_pdf: true,
+          preview: !send,
           send,
         }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.message || 'Unable to save RFQ')
+      if (!response.ok) throw new Error(data.message || `Unable to ${send ? 'send' : 'save'} RFQ (HTTP ${response.status})`)
       setRfq(data)
       setSubject(data.subject)
       setMessage(data.message)
-      if (send) window.alert(`RFQ sent successfully to ${supplier.company_name}.`)
+      setAbc(data.abc || computedAbc)
+      setAwardBasis(data.award_basis === 'UNIT' ? 'UNIT' : 'LOT')
+      setModeOfProcurement(data.mode_of_procurement || '')
+      setAdditionalNotes(data.additional_notes || '')
+      setPreviewUrl(bustCache(data.pdf_url))
+      setNotice(send
+        ? `RFQ ${data.rfq_no} sent to ${supplier.email}. It can no longer be edited.`
+        : 'Changes saved. The RFQ preview below has been updated.')
     } catch (saveError) {
-      setError(saveError.message || 'Unable to save RFQ')
+      setError(saveError.message === 'Failed to fetch'
+        ? `Unable to reach the backend at ${rfqApiBase}. Please verify that Django is running.`
+        : (saveError.message || 'Unable to save RFQ'))
     } finally {
-      setSaving(false)
+      setPendingAction('')
     }
   }
 
@@ -1318,11 +1437,13 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
     <div className="supplier-section">
       <WorkflowStepper current="rfq" />
       <div className="supplier-header" style={{ marginTop: 20 }}>
-        <h1>Request for Quotation</h1>
-        <p>Review the existing Purchase Request and supplier details before sending.</p>
+        <h1>RFQ Preparation</h1>
+        <p>Edit the RFQ details, click <strong>Save RFQ</strong> to apply changes and refresh the preview, then <strong>Send RFQ to Supplier</strong> to deliver it.</p>
       </div>
       {error && <div className="alert alert-error">{error}</div>}
+      {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`}>{notice}</div>}
       <div className="card rfq-review-card">
+        {rfq?.pdf_url && <p><a className="btn-secondary" href={bustCache(rfq.pdf_url)} download target="_blank" rel="noreferrer">Download RFQ PDF</a></p>}
         <div className="detail-grid">
           <div><strong>PR No.: </strong><span>{prDetails?.pr_no || `PR-${prId}`}</span></div>
           <div><strong>PR Date: </strong><span>{prDetails?.date || 'N/A'}</span></div>
@@ -1331,8 +1452,41 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           <div><strong>Supplier: </strong><span>{supplier.company_name}</span></div>
           <div><strong>Supplier Contact: </strong><span>{supplier.contact_person || 'N/A'}</span></div>
           <div><strong>Supplier Email: </strong><span>{supplier.email || 'N/A'}</span></div>
+          <div><strong>Supplier TIN: </strong><span>{supplier.tin || 'N/A'}</span></div>
           <div><strong>Status: </strong><span>{rfq?.status || 'Draft'}</span></div>
         </div>
+      </div>
+      <div className="card rfq-review-card">
+        <h2>RFQ Information</h2>
+        <div className="detail-grid">
+          <label className="form-field">
+            <span>Mode of Procurement *</span>
+            <select value={modeOfProcurement} onChange={(event) => setModeOfProcurement(event.target.value)} disabled={isSent}>
+              <option value="">Select procurement mode</option>
+              {procurementModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+              {modeOfProcurement && !procurementModes.includes(modeOfProcurement) && (
+                <option value={modeOfProcurement}>{modeOfProcurement}</option>
+              )}
+            </select>
+          </label>
+          <label className="form-field"><span>ABC</span><input value={abc || computedAbc} readOnly /></label>
+          <label className="form-field">
+            <span>Award Basis</span>
+            <select value={awardBasis} onChange={(event) => setAwardBasis(event.target.value)} disabled={isSent}>
+              <option value="LOT">Lot</option>
+              <option value="UNIT">Unit</option>
+            </select>
+          </label>
+        </div>
+        {!modeOfProcurement.trim() && (
+          <p className="helper-text" style={{ marginTop: 4 }}>Select the procurement procedure this RFQ is issued under. This is separate from the PR category.</p>
+        )}
+        <p className="helper-text" style={{ marginTop: 4 }}>
+          {awardBasis === 'UNIT'
+            ? 'The RFQ note will state the award is on a PER UNIT basis; suppliers may quote for one or more items.'
+            : 'The RFQ note will state the award is on a LOT basis; suppliers must quote all items to avoid disqualification.'}
+        </p>
+        <label className="form-field"><span>Additional RFQ Notes</span><textarea rows="5" value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Optional terms, notes, or instructions for the supplier" disabled={isSent} /></label>
       </div>
       <div className="card rfq-review-card">
         <h2>Requested Items</h2>
@@ -1349,18 +1503,33 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         {items.length === 0 && <p>No requested items found.</p>}
       </div>
       <div className="card rfq-review-card">
-        <label className="form-field"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={`Request for Quotation - PR ${prDetails?.pr_no || prId}`} /></label>
-        <label className="form-field"><span>RFQ Message</span><textarea rows="12" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter the RFQ message" /></label>
-        <div className="rfq-attachment">
-          <strong>Original PR Attachment</strong>
-          {prDetails?.source_file_url ? <a href={prDetails.source_file_url} target="_blank" rel="noreferrer">{prDetails.source_filename || 'Open original PR'}</a> : <span>No uploaded PR document available.</span>}
-        </div>
+        <label className="form-field"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={`Request for Quotation - PR ${prDetails?.pr_no || prId}`} disabled={isSent} /></label>
+        <label className="form-field"><span>RFQ Message</span><textarea rows="12" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter the RFQ message" disabled={isSent} /></label>
       </div>
       <div className="form-actions">
-        <button type="button" className="btn-secondary" onClick={onBack} disabled={saving}>Back to Matching</button>
-        <button type="button" className="btn-secondary" onClick={() => saveRfq(false)} disabled={saving}>{saving ? 'Saving...' : 'Save RFQ'}</button>
-        <button type="button" className="btn-primary" onClick={() => saveRfq(true)} disabled={saving || !supplier.email || !subject.trim() || !message.trim()}>{saving ? 'Sending...' : 'Send RFQ'}</button>
+        <button type="button" className="btn-secondary" onClick={onBack} disabled={busy}>Back to Matching</button>
+        {!isSent && (
+          <>
+            <button type="button" className="btn-secondary" onClick={() => persistRfq('save')} disabled={busy || !canPrepare}>{pendingAction === 'save' ? 'Saving...' : 'Save RFQ'}</button>
+            <button type="button" className="btn-primary" onClick={() => persistRfq('send')} disabled={busy || !rfq || !canPrepare || !supplier.email} title={!rfq ? 'Save the RFQ first' : undefined}>{pendingAction === 'send' ? 'Sending...' : 'Send RFQ to Supplier'}</button>
+          </>
+        )}
       </div>
+      {!isSent && !rfq && (
+        <p className="helper-text">Save the RFQ to enable sending it to the supplier.</p>
+      )}
+      {previewUrl && (
+        <div className="card rfq-review-card" style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ margin: 0 }}>RFQ Preview</h2>
+            <a href={previewUrl} target="_blank" rel="noreferrer" className="btn-secondary">Open PDF</a>
+          </div>
+          {(rfq?.mode_of_procurement || modeOfProcurement) && (
+            <p className="helper-text" style={{ marginBottom: 12 }}>Mode of Procurement: <strong>{rfq?.mode_of_procurement || modeOfProcurement}</strong></p>
+          )}
+          <iframe key={previewUrl} title="RFQ preview" src={previewUrl} style={{ width: '100%', minHeight: '820px', border: '1px solid #d1d5db', borderRadius: 8 }} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1369,8 +1538,10 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [matches, setMatches] = React.useState([])
   const [prDetails, setPrDetails] = React.useState(null)
   const [selectedSupplier, setSelectedSupplier] = React.useState(null)
+  const [issuedRfqBySupplier, setIssuedRfqBySupplier] = React.useState({})
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  const [reloadToken, setReloadToken] = React.useState(0)
 
   React.useEffect(() => {
     setLoading(true)
@@ -1378,13 +1549,34 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     Promise.all([
       fetch(`${apiBase}/api/pr/${prId}/supplier-match/`).then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() }),
       fetch(`${apiBase}/api/pr/${prId}/details/`).then((r) => { if (!r.ok) throw new Error('Failed to load Purchase Request details'); return r.json() }),
+      fetch(`${apiBase}/api/pr/${prId}/rfq/`, { headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' } })
+        .then((r) => r.ok ? r.json() : { rfqs: [] })
+        .catch(() => ({ rfqs: [] })),
     ])
-      .then(([matchData, details]) => { setMatches(matchData); setPrDetails(details); setLoading(false) })
+      .then(([matchData, details, rfqData]) => {
+        setMatches(matchData)
+        setPrDetails(details)
+        // Only RFQs that have actually been issued (not still in Draft) block a re-request.
+        const issued = {}
+        for (const rfq of rfqData.rfqs || []) {
+          if (rfq.supplier?.id && rfq.status && rfq.status !== 'draft') {
+            issued[rfq.supplier.id] = rfq.status
+          }
+        }
+        setIssuedRfqBySupplier(issued)
+        setLoading(false)
+      })
       .catch((err) => { setError(err.message || 'Failed to load'); setLoading(false) })
-  }, [prId, apiBase])
+  }, [prId, apiBase, reloadToken])
 
   if (selectedSupplier && prDetails) {
-    return <RFQPreparation prId={prId} apiBase={apiBase} supplier={selectedSupplier} prDetails={prDetails} onBack={() => setSelectedSupplier(null)} />
+    return <RFQPreparation prId={prId} apiBase={apiBase} supplier={selectedSupplier} prDetails={prDetails} onBack={() => { setSelectedSupplier(null); setReloadToken((token) => token + 1) }} />
+  }
+
+  const rfqStatusLabel = (status) => {
+    if (status === 'quotation_received') return 'Quotation Received'
+    if (status === 'completed') return 'RFQ Completed'
+    return 'RFQ Sent'
   }
 
   return (
@@ -1393,7 +1585,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
 
       <div className="supplier-header" style={{ marginTop: 20 }}>
         <h1>Supplier Matching</h1>
-        <p>Suppliers matched by item categories for Purchase Request <strong>#{prDetails?.pr_no || prId}</strong>.</p>
+        <p>Suppliers are filtered by procurement category and compliance requirements for Purchase Request <strong>#{prDetails?.pr_no || prId}</strong>.</p>
       </div>
 
       {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
@@ -1427,19 +1619,21 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
           {[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 110 }} />)}
         </div>
       ) : matches.length === 0 ? (
-        <div className="alert alert-info">No matching suppliers available yet. Register a supplier for this category to continue supplier matching.</div>
+        <div className="alert alert-info">No eligible suppliers found. Suppliers must match the PR category, have an Approved status, and have all required compliance documents verified.</div>
       ) : (
         matches.map((group) => (
           <div key={group.category} style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span className="status-badge status-review" style={{ fontSize: 12 }}>{group.category}</span>
               <span style={{ fontSize: 14, color: '#64748b' }}>{group.suppliers.length} supplier{group.suppliers.length !== 1 ? 's' : ''} matched</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Category + compliance eligible</span>
             </div>
             <div className="supplier-match-grid">
               {group.suppliers.length === 0 && (
                 <div className="supplier-match-empty">No suppliers found for this category.</div>
               )}
               {group.suppliers.map((s) => {
+                const issuedStatus = issuedRfqBySupplier[s.id]
                 return (
                   <article key={s.id} className="supplier-match-card">
                     <div className="supplier-match-head">
@@ -1453,9 +1647,17 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
                       {s.email && <div><strong>Email:</strong> {s.email}</div>}
                       {s.business_address && <div><strong>Address:</strong> {s.business_address}</div>}
                       {s.nature_of_business && <div><strong>Business:</strong> {s.nature_of_business}</div>}
+                      <div><strong>Compliance:</strong> <span className="status-badge status-open">{s.compliance_status || 'Eligible'} ({s.compliance_percentage ?? 100}%)</span></div>
                     </div>
                     <div className="supplier-match-foot">
-                      <button type="button" className="btn-sm btn-primary" onClick={() => setSelectedSupplier({ ...s, matched_category: group.category })}>Select Supplier</button>
+                      {issuedStatus ? (
+                        <>
+                          <span className="status-badge status-open">{rfqStatusLabel(issuedStatus)}</span>
+                          <button type="button" className="btn-sm btn-primary" disabled title="An RFQ has already been sent to this supplier for this PR">Request Quotation</button>
+                        </>
+                      ) : (
+                        <button type="button" className="btn-sm btn-primary" onClick={() => setSelectedSupplier({ ...s, matched_category: group.category })}>Request Quotation</button>
+                      )}
                     </div>
                   </article>
                 )
@@ -1538,6 +1740,402 @@ const UnmatchedPurchaseRequests = ({ apiBase, onContinue }) => {
   )
 }
 
+const RFQ_MGMT_FILTERS = [
+  ['all', 'All'],
+  ['awaiting', 'Awaiting Response'],
+  ['received', 'Responses Received'],
+]
+
+const RFQ_MGMT_SORTS = [
+  ['newest_pr', 'Newest PR'],
+  ['oldest_pr', 'Oldest PR'],
+  ['recent_activity', 'Recent activity'],
+  ['response_status', 'Response status'],
+]
+
+const PR_RFQ_STATUS_META = {
+  awaiting_responses: { label: 'Awaiting Responses', className: 'status-review' },
+  responses_in_progress: { label: 'Responses In Progress', className: 'status-review' },
+  all_responses_received: { label: 'All Responses Received', className: 'status-open' },
+  no_rfqs: { label: 'No RFQs', className: 'status-review' },
+}
+
+const rfqResponseIndicator = (rfq) => {
+  if (rfq.has_response) return { icon: '✓', label: 'Response Received', className: 'received' }
+  if (rfq.status === 'draft') return { icon: '•', label: 'Draft', className: 'draft' }
+  return { icon: '⏳', label: 'Awaiting Response', className: 'awaiting' }
+}
+
+const rfqMgmtFormatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—')
+const rfqMgmtFormatDateTime = (value) => (value ? new Date(value).toLocaleString() : '—')
+
+const RFQDocumentViewerModal = ({ viewer, onClose }) => {
+  if (!viewer) return null
+  return (
+    <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="supplier-preview-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="supplier-preview-header">
+          <div className="supplier-panel-title">{viewer.title}</div>
+          <button className="icon-action-btn" type="button" onClick={onClose} aria-label="Close document viewer"><X size={14} /></button>
+        </div>
+        <iframe className="supplier-preview-frame" src={viewer.url} title={viewer.title} />
+      </div>
+    </div>
+  )
+}
+
+const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
+  const pr = group.purchase_request
+  const summary = group.rfq_summary
+  const responded = group.rfqs.filter((rfq) => rfq.has_response)
+  const awaiting = group.rfqs.filter((rfq) => !rfq.has_response)
+
+  return (
+    <>
+      <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
+        <ChevronLeft size={14} /> Back to RFQ Management
+      </button>
+      <div className="supplier-header">
+        <h1>Supplier Responses · {pr.pr_no}</h1>
+        <p>{pr.category || 'Category not assigned'}</p>
+      </div>
+
+      <div className="rfq-mgmt-progress" style={{ marginBottom: 16 }}>
+        <span className="rfq-resp-indicator received">✓ {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
+        <span className="rfq-resp-indicator awaiting">⏳ {summary.awaiting_response} Awaiting Response</span>
+      </div>
+
+      {responded.length === 0 ? (
+        <div className="empty-state"><Clock size={48} /><h3>No responses yet</h3><p>No supplier responses have been received yet.</p></div>
+      ) : (
+        <div className="rfq-mgmt-response-list">
+          {responded.map((rfq) => (
+            <div key={rfq.id} className="rfq-mgmt-response-card">
+              <div>
+                <h4>{rfq.supplier.company_name}</h4>
+                <p className="supplier-subtext">{rfq.rfq_no}</p>
+                <span className="rfq-resp-indicator received">✓ Response Received</span>
+                {rfq.submitted_at && <p className="supplier-subtext">Submitted: {new Date(rfq.submitted_at).toLocaleString()}</p>}
+              </div>
+              <div className="rfq-mgmt-row-actions">
+                <button type="button" className="btn-sm btn-primary" onClick={() => onView(rfq.submitted_pdf_url, `Supplier Submitted RFQ · ${rfq.rfq_no}`)}>View Response</button>
+                <a className="btn-sm btn-secondary" href={rfq.submitted_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+                <button type="button" className="btn-sm btn-secondary" onClick={() => onOpenRfq(rfq)}>RFQ Details</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {awaiting.length > 0 && (
+        <>
+          <h3 style={{ marginTop: 24 }}>Awaiting Response</h3>
+          <div className="rfq-mgmt-response-list">
+            {awaiting.map((rfq) => (
+              <div key={rfq.id} className="rfq-mgmt-response-card">
+                <div>
+                  <h4>{rfq.supplier.company_name}</h4>
+                  <p className="supplier-subtext">{rfq.rfq_no}</p>
+                  <span className="rfq-resp-indicator awaiting">⏳ Awaiting Response</span>
+                </div>
+                <div className="rfq-mgmt-row-actions">
+                  {rfq.generated_pdf_url && (
+                    <button type="button" className="btn-sm btn-secondary" onClick={() => onView(rfq.generated_pdf_url, `Generated RFQ · ${rfq.rfq_no}`)}>View RFQ</button>
+                  )}
+                  <button type="button" className="btn-sm btn-secondary" onClick={() => onOpenRfq(rfq)}>RFQ Details</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {awaiting.length === 0 && responded.length > 0 && (
+        <p className="helper-text" style={{ marginTop: 16 }}>All RFQs for this PR have received responses.</p>
+      )}
+
+      {/* future: Compare Quotations — this PR-level view already holds every
+          supplier's submitted RFQ (rfq.submitted_pdf_url) grouped under the PR,
+          so a quotation-extraction / comparison step can be added here without
+          reshaping the data. */}
+    </>
+  )
+}
+
+const RFQDetailView = ({ group, rfq, onBack, onView }) => {
+  const pr = group.purchase_request
+  const supplier = rfq.supplier
+
+  return (
+    <>
+      <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
+        <ChevronLeft size={14} /> Back to RFQ Management
+      </button>
+      <div className="supplier-header">
+        <h1>{rfq.rfq_no}</h1>
+        <p><span className={`status-badge ${rfq.has_response ? 'status-open' : 'status-review'}`}>{rfq.status_label || rfq.status}</span></p>
+      </div>
+
+      <div className="card rfq-review-card">
+        <h2>RFQ Information</h2>
+        <div className="detail-grid">
+          <div><strong>RFQ No.: </strong><span>{rfq.rfq_no}</span></div>
+          <div><strong>Status: </strong><span>{rfq.status_label || rfq.status}</span></div>
+          <div><strong>Created: </strong><span>{rfqMgmtFormatDate(rfq.created_at)}</span></div>
+          <div><strong>Sent: </strong><span>{rfqMgmtFormatDate(rfq.sent_at)}</span></div>
+          <div><strong>Response Received: </strong><span>{rfq.submitted_at ? rfqMgmtFormatDateTime(rfq.submitted_at) : 'Not yet submitted'}</span></div>
+        </div>
+      </div>
+
+      <div className="card rfq-review-card">
+        <h2>Purchase Request</h2>
+        <div className="detail-grid">
+          <div><strong>PR No.: </strong><span>{pr.pr_no}</span></div>
+          <div><strong>PR Date: </strong><span>{pr.date || '—'}</span></div>
+          <div><strong>Category: </strong><span>{pr.category || '—'}</span></div>
+          <div style={{ gridColumn: '1 / -1' }}><strong>Purpose: </strong><span>{pr.purpose || '—'}</span></div>
+        </div>
+      </div>
+
+      <div className="card rfq-review-card">
+        <h2>Supplier</h2>
+        <div className="detail-grid">
+          <div><strong>Company Name: </strong><span>{supplier.company_name}</span></div>
+          <div><strong>Contact Person: </strong><span>{supplier.contact_person || '—'}</span></div>
+          <div><strong>Email: </strong><span>{supplier.email || '—'}</span></div>
+          <div><strong>Phone: </strong><span>{supplier.contact_phone || '—'}</span></div>
+          <div style={{ gridColumn: '1 / -1' }}><strong>Address: </strong><span>{supplier.business_address || '—'}</span></div>
+          <div><strong>TIN: </strong><span>{supplier.tin || '—'}</span></div>
+        </div>
+      </div>
+
+      <div className="card rfq-review-card">
+        <h2>Documents</h2>
+        <div className="rfq-mgmt-doc-row">
+          <div>
+            <strong>Generated RFQ</strong>
+            <p className="supplier-subtext">System-generated RFQ issued to the supplier.</p>
+          </div>
+          <div className="rfq-mgmt-row-actions">
+            {rfq.generated_pdf_url ? (
+              <>
+                <button type="button" className="btn-sm btn-secondary" onClick={() => onView(rfq.generated_pdf_url, `Generated RFQ · ${rfq.rfq_no}`)}>View</button>
+                <a className="btn-sm btn-secondary" href={rfq.generated_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+              </>
+            ) : <span className="supplier-subtext">Not generated</span>}
+          </div>
+        </div>
+        <div className="rfq-mgmt-doc-row">
+          <div>
+            <strong>Supplier Submitted RFQ</strong>
+            <p className="supplier-subtext">Completed, signed RFQ uploaded by the supplier. Stored separately from the generated RFQ.</p>
+            {rfq.submitted_pdf_url && (
+              <p className="supplier-subtext">
+                {rfq.submitted_filename ? `${rfq.submitted_filename} · ` : ''}
+                Received {rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleString() : '—'}
+              </p>
+            )}
+          </div>
+          <div className="rfq-mgmt-row-actions">
+            {rfq.submitted_pdf_url ? (
+              <>
+                <button type="button" className="btn-sm btn-primary" onClick={() => onView(rfq.submitted_pdf_url, `Supplier Submitted RFQ · ${rfq.rfq_no}`)}>View</button>
+                <a className="btn-sm btn-secondary" href={rfq.submitted_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+              </>
+            ) : <span className="supplier-subtext">Not yet submitted</span>}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+const AdminRFQManagement = ({ apiBaseUrl }) => {
+  const [groups, setGroups] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [filter, setFilter] = React.useState('all')
+  const [sort, setSort] = React.useState('newest_pr')
+  const [searchInput, setSearchInput] = React.useState('')
+  const [search, setSearch] = React.useState('')
+  const [expandedPrId, setExpandedPrId] = React.useState(null)
+  const [viewer, setViewer] = React.useState(null)
+  const [detail, setDetail] = React.useState(null) // { mode: 'pr' | 'rfq', group, rfq? }
+
+  const base = apiBaseUrl.replace(/\/$/, '')
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const load = React.useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const params = new URLSearchParams({ group_by: 'pr', sort })
+      if (filter !== 'all') params.set('status', filter)
+      if (search) params.set('search', search)
+      const response = await fetch(`${base}/api/rfqs/responses/?${params.toString()}`, {
+        headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
+      })
+      if (!response.ok) throw new Error('Unable to load RFQ Management data.')
+      const data = await response.json()
+      setGroups(Array.isArray(data.purchase_requests) ? data.purchase_requests : [])
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load RFQ Management data.')
+    } finally {
+      setLoading(false)
+    }
+  }, [base, filter, sort, search])
+
+  React.useEffect(() => { load() }, [load])
+
+  const openDocument = (url, title) => setViewer({ url: bustCache(url), title })
+  const closeViewer = () => setViewer(null)
+
+  let content
+  if (detail?.mode === 'rfq') {
+    content = (
+      <RFQDetailView
+        group={detail.group}
+        rfq={detail.rfq}
+        onBack={() => setDetail(null)}
+        onView={openDocument}
+      />
+    )
+  } else if (detail?.mode === 'pr') {
+    content = (
+      <PRResponsesView
+        group={detail.group}
+        onBack={() => setDetail(null)}
+        onOpenRfq={(rfq) => setDetail({ mode: 'rfq', group: detail.group, rfq })}
+        onView={openDocument}
+      />
+    )
+  } else {
+    content = (
+      <>
+        <div className="supplier-header">
+          <h1>RFQ Management</h1>
+          <p>RFQs grouped by Purchase Request. See how many suppliers were sent an RFQ for each PR and which have responded.</p>
+        </div>
+
+        <div className="rfq-mgmt-toolbar">
+          <div className="rfq-mgmt-filter-group">
+            {RFQ_MGMT_FILTERS.map(([value, label]) => (
+              <button key={value} type="button" className={`btn-sm ${filter === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(value)}>{label}</button>
+            ))}
+          </div>
+          <div className="rfq-mgmt-toolbar-right">
+            <div className="rfq-mgmt-search">
+              <Search size={14} />
+              <input type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search PR no, RFQ no, or supplier" />
+            </div>
+            <select className="rfq-mgmt-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort Purchase Requests">
+              {RFQ_MGMT_SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <button type="button" className="btn-sm btn-secondary" onClick={load} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+
+        {loading ? <SkeletonRows count={4} /> : groups.length === 0 ? (
+          <div className="empty-state">
+            <FileText size={48} />
+            <h3>No RFQs found</h3>
+            <p>{search || filter !== 'all' ? 'No Purchase Requests match the current filters.' : 'No RFQs have been generated yet.'}</p>
+          </div>
+        ) : (
+          <div className="rfq-mgmt-groups">
+            {groups.map((group) => {
+              const pr = group.purchase_request
+              const summary = group.rfq_summary
+              const statusMeta = PR_RFQ_STATUS_META[summary.status] || PR_RFQ_STATUS_META.no_rfqs
+              const expanded = expandedPrId === pr.id
+              return (
+                <div key={pr.id} className={`rfq-mgmt-group ${expanded ? 'expanded' : ''}`}>
+                  <button type="button" className="rfq-mgmt-group-header" onClick={() => setExpandedPrId(expanded ? null : pr.id)} aria-expanded={expanded}>
+                    <span className="rfq-mgmt-chevron">{expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                    <span className="rfq-mgmt-group-title">
+                      <strong>{pr.pr_no}</strong>
+                      <span className="rfq-mgmt-group-category">{pr.category || 'Category not assigned'}</span>
+                    </span>
+                    <span className="rfq-mgmt-group-counts">
+                      {summary.sent} RFQ{summary.sent !== 1 ? 's' : ''} • {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''}
+                    </span>
+                    <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                  </button>
+
+                  {expanded && (
+                    <div className="rfq-mgmt-group-body">
+                      <div className="rfq-mgmt-progress">
+                        <span>{summary.sent} Sent</span>
+                        <span className="rfq-resp-indicator received">✓ {summary.responses_received} Received</span>
+                        <span className="rfq-resp-indicator awaiting">⏳ {summary.awaiting_response} Awaiting</span>
+                        {summary.responses_received > 0 && (
+                          <button type="button" className="btn-sm btn-primary" onClick={() => setDetail({ mode: 'pr', group })}>View All Responses</button>
+                        )}
+                      </div>
+                      <div className="table-shell">
+                        <table className="enterprise-table">
+                          <thead>
+                            <tr><th>Supplier</th><th>RFQ No.</th><th>Sent</th><th>Received</th><th>Status</th><th>Actions</th></tr>
+                          </thead>
+                          <tbody>
+                            {group.rfqs.map((rfq) => {
+                              const indicator = rfqResponseIndicator(rfq)
+                              return (
+                                <tr key={rfq.id}>
+                                  <td>{rfq.supplier.company_name}</td>
+                                  <td><strong>{rfq.rfq_no}</strong></td>
+                                  <td>{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '—'}</td>
+                                  <td>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleDateString() : '—'}</td>
+                                  <td><span className={`rfq-resp-indicator ${indicator.className}`}>{indicator.icon} {indicator.label}</span></td>
+                                  <td>
+                                    <div className="rfq-mgmt-row-actions">
+                                      <button type="button" className="btn-sm btn-secondary" onClick={() => setDetail({ mode: 'rfq', group, rfq })}>View RFQ</button>
+                                      {rfq.generated_pdf_url && (
+                                        <button type="button" className="btn-sm btn-secondary" onClick={() => openDocument(rfq.generated_pdf_url, `Generated RFQ · ${rfq.rfq_no}`)}>View Generated</button>
+                                      )}
+                                      {rfq.submitted_pdf_url ? (
+                                        <>
+                                          <button type="button" className="btn-sm btn-primary" onClick={() => openDocument(rfq.submitted_pdf_url, `Supplier Submitted RFQ · ${rfq.rfq_no}`)}>View Response</button>
+                                          <a className="btn-sm btn-secondary" href={rfq.submitted_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+                                        </>
+                                      ) : (
+                                        <span className="supplier-subtext">No response yet</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div className="supplier-section">
+      {content}
+      <RFQDocumentViewerModal viewer={viewer} onClose={closeViewer} />
+    </div>
+  )
+}
+
 const Admin = () => {
   const navigate = useNavigate()
   const [currentTab, setCurrentTab] = React.useState('suppliers')
@@ -1547,6 +2145,7 @@ const Admin = () => {
   const [prError, setPrError] = React.useState('')
   const [prSavingId, setPrSavingId] = React.useState(null)
   const [prDeletingId, setPrDeletingId] = React.useState(null)
+  const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
   const [editingPr, setEditingPr] = React.useState(null)
   const [editPrForm, setEditPrForm] = React.useState(null)
   const [editPrLoading, setEditPrLoading] = React.useState(false)
@@ -1568,6 +2167,9 @@ const Admin = () => {
   const [selectedSupplierId, setSelectedSupplierId] = React.useState(null)
   const [selectedSupplierDetails, setSelectedSupplierDetails] = React.useState(null)
   const [reviewRemarks, setReviewRemarks] = React.useState('')
+  const [reviewAction, setReviewAction] = React.useState(null)
+  const [supplierDeleteConfirm, setSupplierDeleteConfirm] = React.useState(null)
+  const [supplierDeletingId, setSupplierDeletingId] = React.useState(null)
   const [documentStatusDrafts, setDocumentStatusDrafts] = React.useState({})
   const [previewDoc, setPreviewDoc] = React.useState(null)
   const [previewVisible, setPreviewVisible] = React.useState(false)
@@ -1576,21 +2178,23 @@ const Admin = () => {
   const [buyerAccountSaving, setBuyerAccountSaving] = React.useState(false)
   const [buyerAccountMessage, setBuyerAccountMessage] = React.useState('')
   const [buyerAccountError, setBuyerAccountError] = React.useState('')
+  const [showBuyerPassword, setShowBuyerPassword] = React.useState(false)
   const [buyerAccounts, setBuyerAccounts] = React.useState([])
   const [buyerAccountsLoading, setBuyerAccountsLoading] = React.useState(false)
   const [buyerAccountSearch, setBuyerAccountSearch] = React.useState('')
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
+  const [buyerDeleteConfirm, setBuyerDeleteConfirm] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const prStatusOptions = [
     { value: 'uploaded', label: 'Uploaded' },
     { value: 'in_review', label: 'In Review' },
     { value: 'matched', label: 'Matched' },
-    { value: 'approved', label: 'Approved' },
+    { value: 'approved', label: 'Completed' },
     { value: 'rejected', label: 'Rejected' },
   ]
 
   const handleLogout = () => {
-    localStorage.removeItem('eProcureUser')
+    authStore.clear()
     navigate('/login')
   }
 
@@ -1598,10 +2202,10 @@ const Admin = () => {
     setBuyerAccountsLoading(true)
     try {
       const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/`)
-      if (!response.ok) throw new Error('Unable to load Buyer accounts.')
+      if (!response.ok) throw new Error('Unable to load End User accounts.')
       setBuyerAccounts(await response.json())
     } catch (error) {
-      setBuyerAccountError(error?.message || 'Unable to load Buyer accounts.')
+      setBuyerAccountError(error?.message || 'Unable to load End User accounts.')
     } finally {
       setBuyerAccountsLoading(false)
     }
@@ -1635,12 +2239,12 @@ const Admin = () => {
         }),
       })
       const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.message || 'Unable to create Buyer account.')
-      setBuyerAccountMessage('Buyer account created successfully.')
+      if (!response.ok) throw new Error(result.message || 'Unable to create End User account.')
+      setBuyerAccountMessage('End User account created successfully.')
       setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
       loadBuyerAccounts()
     } catch (error) {
-      setBuyerAccountError(error?.message || 'Unable to create Buyer account.')
+      setBuyerAccountError(error?.message || 'Unable to create End User account.')
     } finally {
       setBuyerAccountSaving(false)
     }
@@ -1653,29 +2257,25 @@ const Admin = () => {
       .filter(Boolean).join(' ').toLowerCase().includes(query))
   }, [buyerAccountSearch, buyerAccounts])
 
-  const toggleBuyerAccount = async (account) => {
+  const handleDeleteBuyerAccount = async (account) => {
     setBuyerAccountActionId(account.id)
     setBuyerAccountError('')
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/status/`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: !account.is_active }),
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/`, {
+        method: 'DELETE',
       })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result.message || 'Unable to update Buyer account.')
-      setBuyerAccounts((current) => current.map((item) => item.id === account.id ? { ...item, is_active: result.is_active } : item))
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.message || 'Unable to delete End User account.')
+      }
+      setBuyerAccounts((current) => current.filter((item) => item.id !== account.id))
+      setBuyerDeleteConfirm(null)
     } catch (error) {
-      setBuyerAccountError(error?.message || 'Unable to update Buyer account.')
+      setBuyerAccountError(error?.message || 'Unable to delete End User account.')
     } finally {
       setBuyerAccountActionId(null)
     }
   }
-
-  const handlePrSaved = React.useCallback((prId) => {
-    setWorkflowPrId(prId)
-    setCurrentTab('assign-categories')
-  }, [])
 
   const handleContinueMatching = React.useCallback((prId) => {
     setWorkflowPrId(prId)
@@ -1761,6 +2361,14 @@ const Admin = () => {
     })
   }
 
+  const mergeDocumentStatuses = (documents, updates) => {
+    if (!Array.isArray(documents) || !Array.isArray(updates)) return documents
+    const statusById = new Map(updates.map((doc) => [doc.id, doc.verification_status]))
+    return documents.map((document) => (
+      statusById.has(document.id) ? { ...document, verification_status: statusById.get(document.id) } : document
+    ))
+  }
+
   const executeReviewDecision = async (supplierId, nextStatus, actionName) => {
     const trimmedRemarks = reviewRemarks.trim()
     if ((nextStatus === 'Rejected' || nextStatus === 'For Compliance') && !trimmedRemarks) {
@@ -1788,9 +2396,12 @@ const Admin = () => {
       const payload = await res.json().catch(() => null)
       const nextReviewRemarks = payload?.remarks || trimmedRemarks
       setSupplierRegistrations((prev) => prev.map((item) => (item.id === supplierId ? { ...item, status: nextStatus, review_remarks: nextReviewRemarks } : item)))
-      setSelectedSupplierDetails((prev) => prev && prev.id === supplierId ? { ...prev, status: nextStatus, review_remarks: nextReviewRemarks } : prev)
+      setSelectedSupplierDetails((prev) => prev && prev.id === supplierId ? { ...prev, status: nextStatus, review_remarks: nextReviewRemarks, documents: mergeDocumentStatuses(prev.documents, payload?.documents) } : prev)
+      setSupplierDetails((prev) => (prev[supplierId] ? { ...prev, [supplierId]: { ...prev[supplierId], status: nextStatus, review_remarks: nextReviewRemarks, documents: mergeDocumentStatuses(prev[supplierId].documents, payload?.documents) } } : prev))
       setReviewRemarks(nextReviewRemarks)
+      setDocumentStatusDrafts({})
       setSupplierError('')
+      setReviewAction(null)
     } catch (error) {
       console.error(error)
       setSupplierError(error?.message || `Failed to ${actionName} supplier`)
@@ -1799,29 +2410,85 @@ const Admin = () => {
     }
   }
 
-  const confirmReviewAction = async (supplierId, nextStatus, actionName, confirmationMessage) => {
-    const trimmedRemarks = reviewRemarks.trim()
-    if ((nextStatus === 'Rejected' || nextStatus === 'For Compliance') && !trimmedRemarks) {
-      setSupplierError('Remarks are required before rejecting or requesting additional documents.')
-      return
+  const handleApplyDocumentChanges = async (supplierId) => {
+    const currentStatus = selectedSupplierDetails?.status
+    if (!supplierId || !currentStatus) return
+
+    setSupplierActioningId(supplierId)
+    setSupplierError('')
+    try {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/status/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: currentStatus,
+          remarks: reviewRemarks.trim(),
+          document_statuses: documentStatusDrafts,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(payload?.message || 'Failed to apply document changes')
+      }
+      setSelectedSupplierDetails((prev) => prev && prev.id === supplierId ? { ...prev, documents: mergeDocumentStatuses(prev.documents, payload?.documents) } : prev)
+      setSupplierDetails((prev) => (prev[supplierId] ? { ...prev, [supplierId]: { ...prev[supplierId], documents: mergeDocumentStatuses(prev[supplierId].documents, payload?.documents) } } : prev))
+      setDocumentStatusDrafts({})
+      setSupplierError('')
+    } catch (error) {
+      console.error(error)
+      setSupplierError(error?.message || 'Failed to apply document changes')
+    } finally {
+      setSupplierActioningId(null)
     }
-
-    const shouldProceed = window.confirm(confirmationMessage)
-    if (!shouldProceed) return
-
-    await executeReviewDecision(supplierId, nextStatus, actionName)
   }
 
-  const handleApprove = async (supplierId) => {
-    await confirmReviewAction(supplierId, 'Approved', 'approve', 'Are you sure you want to approve this supplier?')
+  const openReviewAction = (supplierId, nextStatus, actionName) => {
+    const supplier = supplierRegistrations.find((item) => item.id === supplierId) || selectedSupplierDetails
+    setReviewRemarks(supplier?.review_remarks || reviewRemarks)
+    setReviewAction({ supplierId, nextStatus, actionName, companyName: supplier?.company_name || 'this supplier' })
+    setSupplierError('')
   }
 
-  const handleReject = async (supplierId) => {
-    await confirmReviewAction(supplierId, 'Rejected', 'reject', 'Are you sure you want to reject this supplier?')
+  const handleApprove = (supplierId) => openReviewAction(supplierId, 'Approved', 'approve')
+  const handleReject = (supplierId) => openReviewAction(supplierId, 'Rejected', 'reject')
+  const handleRequestCompliance = (supplierId) => openReviewAction(supplierId, 'For Compliance', 'request additional documents')
+
+  const requestSupplierDelete = (supplierId) => {
+    const supplier = supplierRegistrations.find((item) => item.id === supplierId)
+      || (selectedSupplierDetails?.id === supplierId ? selectedSupplierDetails : null)
+    setSupplierError('')
+    setSupplierDeleteConfirm({ id: supplierId, companyName: supplier?.company_name || 'this supplier' })
   }
 
-  const handleRequestCompliance = async (supplierId) => {
-    await confirmReviewAction(supplierId, 'For Compliance', 'request additional documents', 'Are you sure you want to request additional documents from this supplier?')
+  const handleDeleteSupplier = async (supplierId) => {
+    setSupplierDeletingId(supplierId)
+    setSupplierError('')
+    try {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        throw new Error(payload?.message || 'Failed to delete supplier account')
+      }
+      setSupplierRegistrations((prev) => prev.filter((item) => item.id !== supplierId))
+      setSupplierDetails((prev) => {
+        if (!prev[supplierId]) return prev
+        const next = { ...prev }
+        delete next[supplierId]
+        return next
+      })
+      if (selectedSupplierId === supplierId) {
+        setSelectedSupplierId(null)
+        setSelectedSupplierDetails(null)
+      }
+      setSupplierDeleteConfirm(null)
+    } catch (error) {
+      console.error(error)
+      setSupplierError(error?.message || 'Failed to delete supplier account')
+    } finally {
+      setSupplierDeletingId(null)
+    }
   }
 
   const filteredSuppliers = React.useMemo(() => {
@@ -1887,7 +2554,6 @@ const Admin = () => {
     setSelectedSupplierId(null)
     setSelectedSupplierDetails(null)
     setReviewRemarks('')
-    setDocumentStatusDrafts({})
   }
 
   const loadPrRecords = React.useCallback(async () => {
@@ -1950,9 +2616,6 @@ const Admin = () => {
   }
 
   const handlePrDelete = async (prId) => {
-    const confirmed = window.confirm(`Delete Purchase Request #${prId}? This cannot be undone.`)
-    if (!confirmed) return
-
     setPrDeletingId(prId)
     setPrError('')
     try {
@@ -1964,6 +2627,7 @@ const Admin = () => {
         throw new Error(payload?.message || 'Failed to delete PR')
       }
       setPrRecords((prev) => prev.filter((row) => row.id !== prId))
+      setPrDeleteConfirmId(null)
     } catch (error) {
       console.error(error)
       setPrError(error?.message || 'Failed to delete PR')
@@ -1972,11 +2636,13 @@ const Admin = () => {
     }
   }
 
+  const requestPrDelete = (prId) => setPrDeleteConfirmId(prId)
+
   const prStatusMeta = {
     uploaded: { label: 'Uploaded', className: 'status-review' },
     in_review: { label: 'In Review', className: 'status-review' },
     matched: { label: 'Matched', className: 'status-open' },
-    approved: { label: 'Approved', className: 'status-open' },
+    approved: { label: 'Completed', className: 'status-open' },
     rejected: { label: 'Rejected', className: 'status-merged' },
   }
 
@@ -2125,7 +2791,7 @@ const Admin = () => {
         <div className="admin-sidebar-header">
           <div className="admin-brand">
             <span className="admin-brand-mark">eP</span>
-            <span className="admin-brand-copy">eProcura</span>
+            <span className="admin-brand-copy">eProcura Admin</span>
           </div>
           <button
             className="admin-nav-toggle"
@@ -2158,18 +2824,10 @@ const Admin = () => {
             <button
               className={`admin-nav-item ${currentTab === 'buyer-accounts' ? 'active' : ''}`}
               onClick={() => setCurrentTab('buyer-accounts')}
-              title="Buyer Accounts"
+              title="End User Accounts"
             >
               <Users size={14} />
-              <span className="admin-nav-label">Buyer Accounts</span>
-            </button>
-            <button
-              className={`admin-nav-item ${currentTab === 'pr-upload' ? 'active' : ''}`}
-              onClick={() => setCurrentTab('pr-upload')}
-              title="PR Upload"
-            >
-              <UploadCloud size={14} />
-              <span className="admin-nav-label">PR Upload</span>
+              <span className="admin-nav-label">End User Accounts</span>
             </button>
             <button
               className={`admin-nav-item ${currentTab === 'pr-monitoring' ? 'active' : ''}`}
@@ -2178,6 +2836,14 @@ const Admin = () => {
             >
               <ClipboardList size={14} />
               <span className="admin-nav-label">PR Review & Monitoring</span>
+            </button>
+            <button
+              className={`admin-nav-item ${currentTab === 'rfq-responses' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('rfq-responses')}
+              title="RFQ Management"
+            >
+              <FileText size={14} />
+              <span className="admin-nav-label">RFQ Management</span>
             </button>
           </div>
         </div>
@@ -2375,31 +3041,48 @@ const Admin = () => {
                               <Eye size={14} />
                               <span>View Details</span>
                             </button>
-                            <button
-                              className="supplier-inline-action-btn approve"
-                              type="button"
-                              title="Approve"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleApprove(item.id)
-                              }}
-                              disabled={supplierActioningId === item.id}
-                            >
-                              <Check size={14} />
-                              <span>Approve</span>
-                            </button>
+                            {item.status !== 'Approved' && (
+                              <>
+                                <button
+                                  className="supplier-inline-action-btn approve"
+                                  type="button"
+                                  title="Approve"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleApprove(item.id)
+                                  }}
+                                  disabled={supplierActioningId === item.id}
+                                >
+                                  <Check size={14} />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  className="supplier-inline-action-btn reject"
+                                  type="button"
+                                  title="Reject"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleReject(item.id)
+                                  }}
+                                  disabled={supplierActioningId === item.id}
+                                >
+                                  <X size={14} />
+                                  <span>Reject</span>
+                                </button>
+                              </>
+                            )}
                             <button
                               className="supplier-inline-action-btn reject"
                               type="button"
-                              title="Reject"
+                              title="Delete Account"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                handleReject(item.id)
+                                requestSupplierDelete(item.id)
                               }}
-                              disabled={supplierActioningId === item.id}
+                              disabled={supplierDeletingId === item.id}
                             >
-                              <X size={14} />
-                              <span>Reject</span>
+                              <Trash2 size={14} />
+                              <span>Delete Account</span>
                             </button>
                           </div>
                         </div>
@@ -2449,9 +3132,15 @@ const Admin = () => {
                         </div>
                       </div>
 
-                      <div className="supplier-detail-panel">
-                        <div className="supplier-panel-title">Supplier Categories</div>
-                        <div className="supplier-badge-list">
+                      <div className="supplier-detail-panel supplier-categories-panel">
+                        <div className="supplier-category-heading">
+                          <div>
+                            <div className="supplier-panel-title">Supplier Categories</div>
+                            <div className="supplier-subtext">Registered procurement areas</div>
+                          </div>
+                          <span className="supplier-category-count">{selectedSupplierDetails.categories?.length || 0}</span>
+                        </div>
+                        <div className="supplier-badge-list supplier-category-list">
                           {(selectedSupplierDetails.categories && selectedSupplierDetails.categories.length > 0) ? (
                             selectedSupplierDetails.categories.map((category) => <span key={category} className="supplier-category-badge">{category}</span>)
                           ) : (
@@ -2472,8 +3161,8 @@ const Admin = () => {
                       <div className="supplier-panel-title">Document Verification</div>
                       <div className="supplier-document-list">
                         {(selectedSupplierDetails.documents || []).map((document) => {
-                          const statusMeta = getDocumentStatusMeta(document.verification_status)
                           const currentStatus = documentStatusDrafts[document.id] || document.verification_status || 'Pending'
+                          const statusMeta = getDocumentStatusMeta(currentStatus)
                           return (
                             <div key={document.id} className="supplier-document-card">
                               <div className="supplier-document-head">
@@ -2490,13 +3179,11 @@ const Admin = () => {
                                 <div><span className="supplier-info-label">Upload Date</span><div>{document.uploaded_at ? new Date(document.uploaded_at).toLocaleDateString() : 'N/A'}</div></div>
                               </div>
                               <div className="supplier-document-actions">
-                                <select value={currentStatus} onChange={(event) => handleDocumentStatusChange(document.id, event.target.value)}>
-                                  <option value="Pending">Pending</option>
-                                  <option value="Verified">Verified</option>
-                                  <option value="Rejected">Rejected</option>
-                                </select>
-                                <button className="btn-sm btn-secondary" type="button" onClick={() => openPreview(document)}>Preview</button>
-                                <a className="btn-sm btn-secondary" href={document.file_url || '#'} target="_blank" rel="noreferrer">Download</a>
+                                <div className="document-verification-actions" aria-label={`Verification actions for ${getDocumentLabel(document.doc_type)}`}>
+                                  <button type="button" className={`btn-sm document-status-btn document-status-verify ${currentStatus === 'Verified' ? 'selected' : ''}`} onClick={() => handleDocumentStatusChange(document.id, 'Verified')}>Verify</button>
+                                  <button type="button" className={`btn-sm document-status-btn document-status-reject ${currentStatus === 'Rejected' ? 'selected' : ''}`} onClick={() => handleDocumentStatusChange(document.id, 'Rejected')}>Reject</button>
+                                </div>
+                                <button className="btn-sm btn-secondary document-preview-btn" type="button" onClick={() => openPreview(document)}>Preview</button>
                               </div>
                             </div>
                           )
@@ -2518,22 +3205,32 @@ const Admin = () => {
                       <div className="supplier-action-section">
                         <div className="supplier-action-heading">Actions</div>
                         <div className="supplier-action-row">
+                          {Object.keys(documentStatusDrafts).length > 0 && (
+                            <button className="btn btn-login supplier-action-btn supplier-action-btn-primary" type="button" onClick={() => handleApplyDocumentChanges(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
+                              <Check size={16} />
+                              {supplierActioningId === selectedSupplierDetails.id ? 'Saving...' : 'Apply Document Changes'}
+                            </button>
+                          )}
                           {selectedSupplierDetails.status !== 'Approved' && (
+                            <>
                             <button className="btn btn-login supplier-action-btn supplier-action-btn-primary" type="button" onClick={() => handleApprove(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
                               <Check size={16} />
                               Approve Registration
                             </button>
+                            <button className="btn btn-danger supplier-action-btn supplier-action-btn-danger" type="button" onClick={() => handleReject(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
+                              <X size={16} />
+                              Reject Registration
+                            </button>
+                            </>
                           )}
                           <button className="btn btn-secondary supplier-action-btn supplier-action-btn-outline" type="button" onClick={() => handleRequestCompliance(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
                             <FileText size={16} />
                             Request Additional Documents
                           </button>
-                          {selectedSupplierDetails.status !== 'Approved' && (
-                            <button className="btn btn-danger supplier-action-btn supplier-action-btn-danger" type="button" onClick={() => handleReject(selectedSupplierDetails.id)} disabled={supplierActioningId === selectedSupplierDetails.id}>
-                              <X size={16} />
-                              Reject Registration
-                            </button>
-                          )}
+                          <button className="btn btn-danger supplier-action-btn supplier-action-btn-danger" type="button" onClick={() => requestSupplierDelete(selectedSupplierDetails.id)} disabled={supplierDeletingId === selectedSupplierDetails.id}>
+                            <Trash2 size={16} />
+                            Delete Account
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -2572,46 +3269,52 @@ const Admin = () => {
         {currentTab === 'buyer-accounts' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>Buyer Accounts</h1>
-              <p>Create and manage Buyer or End User accounts for Purchase Request submission.</p>
+              <h1>End User Accounts</h1>
+              <p>Create and manage End User accounts for Purchase Request submission.</p>
             </div>
             <div className="buyer-account-layout">
               <section className="card buyer-account-panel">
                 <div className="panel-header">
                   <div>
-                    <h2>Create Buyer Account</h2>
+                    <h2>Create End User Account</h2>
                     <p className="supplier-subtext">New accounts are created with access to PR upload.</p>
                   </div>
                 </div>
                 <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit}>
                 <label className="form-field">
                   <span>Full Name</span>
-                  <input required value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="Buyer or End User name" />
+                  <input required value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="End User name" />
                 </label>
                 <label className="form-field">
                   <span>Username</span>
-                  <input required value={buyerAccountForm.username} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, username: event.target.value }))} placeholder="buyer.username" />
+                  <input required value={buyerAccountForm.username} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, username: event.target.value }))} placeholder="enduser.username" />
                 </label>
                 <label className="form-field">
                   <span>Email</span>
-                  <input required type="email" value={buyerAccountForm.email} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="buyer@office.edu" />
+                  <input required type="email" value={buyerAccountForm.email} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="enduser@office.edu" />
                 </label>
                 <label className="form-field">
                   <span>Unit / Office</span>
                   <input required value={buyerAccountForm.unitOffice} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, unitOffice: event.target.value }))} placeholder="Procurement Office" />
                 </label>
-                <label className="form-field">
+                <label className="form-field buyer-password-field">
                   <span>Password</span>
-                  <input required type="password" minLength={8} value={buyerAccountForm.password} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value }))} placeholder="At least 8 characters" />
+                  <div className="password-input-wrapper">
+                    <input required type={showBuyerPassword ? 'text' : 'password'} minLength={8} value={buyerAccountForm.password} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value }))} placeholder="At least 8 characters" />
+                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
+                  </div>
                 </label>
-                <label className="form-field">
+                <label className="form-field buyer-password-field">
                   <span>Confirm Password</span>
-                  <input required type="password" minLength={8} value={buyerAccountForm.confirmPassword} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} placeholder="Re-enter password" />
+                  <div className="password-input-wrapper">
+                    <input required type={showBuyerPassword ? 'text' : 'password'} minLength={8} value={buyerAccountForm.confirmPassword} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} placeholder="Re-enter password" />
+                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
+                  </div>
                 </label>
                 {buyerAccountError && <div className="alert alert-error" role="alert">{buyerAccountError}</div>}
                 {buyerAccountMessage && <div className="alert alert-success" role="status">{buyerAccountMessage}</div>}
                 <div className="form-actions">
-                  <button type="submit" className="btn btn-primary" disabled={buyerAccountSaving}>{buyerAccountSaving ? 'Creating Account...' : 'Create Buyer Account'}</button>
+                  <button type="submit" className="btn btn-primary" disabled={buyerAccountSaving}>{buyerAccountSaving ? 'Creating Account...' : 'Create End User Account'}</button>
                 </div>
                 </form>
               </section>
@@ -2620,17 +3323,17 @@ const Admin = () => {
                 <div className="buyer-accounts-list-header">
                   <div>
                     <h2>Managed Accounts</h2>
-                    <p className="supplier-subtext">{buyerAccounts.length} Buyer account{buyerAccounts.length === 1 ? '' : 's'} registered</p>
+                    <p className="supplier-subtext">{buyerAccounts.length} End User account{buyerAccounts.length === 1 ? '' : 's'} registered</p>
                   </div>
                   <div className="buyer-account-search">
                     <Search size={16} />
-                    <input type="search" value={buyerAccountSearch} onChange={(event) => setBuyerAccountSearch(event.target.value)} placeholder="Search accounts" aria-label="Search Buyer accounts" />
+                    <input type="search" value={buyerAccountSearch} onChange={(event) => setBuyerAccountSearch(event.target.value)} placeholder="Search accounts" aria-label="Search End User accounts" />
                   </div>
                 </div>
                 {buyerAccountsLoading ? (
                   <div className="buyer-accounts-empty">Loading accounts...</div>
                 ) : filteredBuyerAccounts.length === 0 ? (
-                  <div className="buyer-accounts-empty">No Buyer accounts found.</div>
+                  <div className="buyer-accounts-empty">No End User accounts found.</div>
                 ) : (
                   <div className="buyer-accounts-list">
                     {filteredBuyerAccounts.map((account) => (
@@ -2641,9 +3344,9 @@ const Admin = () => {
                           <small>{account.unit_office || 'Office not specified'} · {account.email || 'No email'}</small>
                         </div>
                         <div className="buyer-account-record-actions">
-                          <span className={`status-badge ${account.is_active ? 'status-open' : 'status-merged'}`}>{account.is_active ? 'Active' : 'Inactive'}</span>
-                          <button type="button" className="btn-sm btn-secondary" onClick={() => toggleBuyerAccount(account)} disabled={buyerAccountActionId === account.id}>
-                            {buyerAccountActionId === account.id ? 'Updating...' : account.is_active ? 'Deactivate' : 'Activate'}
+                          <button type="button" className="btn-sm btn-danger" onClick={() => setBuyerDeleteConfirm(account)} disabled={buyerAccountActionId === account.id}>
+                            <Trash2 size={14} />
+                            {buyerAccountActionId === account.id ? 'Deleting...' : 'Delete'}
                           </button>
                         </div>
                       </article>
@@ -2655,26 +3358,12 @@ const Admin = () => {
           </div>
         )}
 
-        {currentTab === 'pr-upload' && (
-          <div className="supplier-section">
-            <div className="supplier-header">
-              <h1>PR Upload</h1>
-              <p>Upload Purchase Requests (PR) for automated extraction and review.</p>
-            </div>
-
-            <div className="admin-pr-upload">
-              <div className="note">Drag a PDF or image of the PR into the area below. Extracted fields will appear for review and editing.</div>
-              <DragDropUpload onSaved={handlePrSaved} />
-            </div>
-          </div>
-        )}
-
         {currentTab === 'assign-categories' && workflowPrId && (
           <AssignCategories
             prId={workflowPrId}
             apiBase={apiBaseUrl}
             onComplete={(prId) => setCurrentTab('supplier-matching')}
-            onBack={() => setCurrentTab('pr-upload')}
+            onBack={() => setCurrentTab('pr-monitoring')}
           />
         )}
 
@@ -2692,6 +3381,8 @@ const Admin = () => {
             onBack={() => setCurrentTab('assign-categories')}
           />
         )}
+
+        {currentTab === 'rfq-responses' && <AdminRFQManagement apiBaseUrl={apiBaseUrl} />}
 
         {currentTab === 'pr-monitoring' && (
           <div className="supplier-section">
@@ -2730,18 +3421,21 @@ const Admin = () => {
                       <span className={`status-badge ${getPrStatusMeta(pr.status).className}`}>{getPrStatusMeta(pr.status).label}</span>
                       <button
                         type="button"
-                        className={`btn-sm pr-review-action-btn ${pr.category?.trim() ? 'pr-review-btn' : 'pr-assign-category-btn'}`}
-                        onClick={() => {
-                          if (!pr.category?.trim()) {
-                            setWorkflowPrId(pr.id)
-                            setCurrentTab('assign-categories')
-                          } else {
-                            handleEditPr(pr)
-                          }
-                        }}
+                        className="btn-sm pr-review-action-btn pr-review-btn"
+                        onClick={() => handleEditPr(pr)}
                       >
-                        {pr.category?.trim() ? <Pencil size={14} /> : <ClipboardList size={14} />}
-                        {pr.category?.trim() ? 'Review PR' : 'Assign Category'}
+                        <Pencil size={14} />
+                        Review PR
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-sm btn-danger pr-queue-delete-btn"
+                        title="Delete Purchase Request"
+                        onClick={() => requestPrDelete(pr.id)}
+                        disabled={prDeletingId === pr.id}
+                      >
+                        <Trash2 size={14} />
+                        {prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
                       </button>
                     </div>
                   ))}
@@ -2760,7 +3454,7 @@ const Admin = () => {
                   <span>Grand Total</span>
                   <span>Status</span>
                   <span>Created</span>
-                  <span>Supplier Matching</span>
+                  <span>Next Step</span>
                   <span>Actions</span>
                 </div>
 
@@ -2820,9 +3514,12 @@ const Admin = () => {
                           <button
                             type="button"
                             className="btn-sm btn-primary"
-                            onClick={() => handleContinueMatching(pr.id)}
+                            onClick={() => {
+                              setWorkflowPrId(pr.id)
+                              setCurrentTab(pr.category?.trim() ? 'supplier-matching' : 'assign-categories')
+                            }}
                           >
-                            Continue Matching
+                            {pr.category?.trim() ? 'Continue Matching' : 'Category Selection'}
                           </button>
                         )}
                       </span>
@@ -2889,7 +3586,7 @@ const Admin = () => {
                           title={prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
                           aria-label="Delete"
                           disabled={prDeletingId === pr.id || prSavingId === pr.id}
-                          onClick={() => handlePrDelete(pr.id)}
+                          onClick={() => requestPrDelete(pr.id)}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -2921,31 +3618,35 @@ const Admin = () => {
                         </div>
                       )}
                       <div className="modal-body pr-edit-body">
-                        <label className="form-field">
-                          <span>PR Number</span>
-                          <input value={editPrForm.pr_no} readOnly />
-                        </label>
-                        {!editPrForm.pr_no && (
+                        {editPrForm.pr_no ? (
+                          <label className="form-field">
+                            <span>Assigned PR Number</span>
+                            <input value={editPrForm.pr_no} readOnly />
+                          </label>
+                        ) : (
                           <div className="pr-review-numbering">
-                            <span className="form-field-label">Final PR Number</span>
+                            <span className="form-field-label">Assign Final PR Number</span>
                             <div className="numbering-options">
                               <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'automatic'} onChange={() => setEditPrNumberMode('automatic')} /> Automatic</label>
                               <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'custom'} onChange={() => setEditPrNumberMode('custom')} /> Custom</label>
                             </div>
                             {editPrNumberMode === 'automatic' ? (
-                              <small>Next available number will be assigned when you continue to Supplier Matching.</small>
+                              <div className="pr-review-number-preview">
+                                <span>Next available number</span>
+                                <small>Will be assigned when you continue to Category Selection.</small>
+                              </div>
                             ) : (
-                              <input value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="YYYY-MM-NNN" />
+                              <div className="pr-review-custom-number">
+                                <label htmlFor="review-custom-pr-number">Custom PR Number</label>
+                                <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="YYYY-MM-NNN" inputMode="numeric" />
+                                <small>Use the format YYYY-MM-NNN.</small>
+                              </div>
                             )}
                           </div>
                         )}
                         <label className="form-field">
                           <span>Entity Name *</span>
                           <input value={editPrForm.entity_name} onChange={(event) => setEditPrForm((prev) => ({ ...prev, entity_name: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Category</span>
-                          <input value={editPrForm.category} onChange={(event) => setEditPrForm((prev) => ({ ...prev, category: event.target.value }))} />
                         </label>
                         <label className="form-field">
                           <span>Fund Cluster</span>
@@ -2998,7 +3699,7 @@ const Admin = () => {
                       <div className="modal-actions">
                         <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
                         <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
-                        <button type="button" className="btn btn-primary" onClick={async () => { const saved = await handleSavePrEdit(true); if (saved) { setWorkflowPrId(editingPr.id); setCurrentTab('supplier-matching') } }} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Continuing...' : 'Continue to Supplier Matching'}</button>
+                        <button type="button" className="btn btn-primary" onClick={async () => { const saved = await handleSavePrEdit(true); if (saved) { setWorkflowPrId(editingPr.id); setCurrentTab('assign-categories') } }} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Continuing...' : 'Continue to Category Selection'}</button>
                       </div>
                     </>
                   )}
@@ -3009,7 +3710,7 @@ const Admin = () => {
             <div className="admin-checklist">
               <h3>Monitoring Notes</h3>
               <ul>
-                <li>Use PR Upload tab to ingest new Purchase Requests.</li>
+                <li>Purchase Requests are submitted by End Users; review them here before supplier matching.</li>
                 <li>Use this list as the source set for upcoming supplier matching logic.</li>
                 <li>Refresh after saving a PR to display latest records.</li>
               </ul>
@@ -3064,7 +3765,55 @@ const Admin = () => {
             </div>
           </div>
         )}
+        {prDeleteConfirmId && (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-pr-title" onClick={() => !prDeletingId && setPrDeleteConfirmId(null)}>
+            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header"><h3 id="delete-pr-title">Delete Purchase Request</h3><button type="button" className="modal-close" onClick={() => setPrDeleteConfirmId(null)} disabled={Boolean(prDeletingId)}>×</button></div>
+              <div className="modal-body"><p>Are you sure you want to delete Purchase Request <strong>#{prDeleteConfirmId}</strong>?</p><p className="helper-text">This action cannot be undone.</p></div>
+              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setPrDeleteConfirmId(null)} disabled={Boolean(prDeletingId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handlePrDelete(prDeleteConfirmId)} disabled={Boolean(prDeletingId)}>{prDeletingId ? 'Deleting...' : 'Confirm Delete'}</button></div>
+            </div>
+          </div>
+        )}
+        {supplierDeleteConfirm && (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-supplier-title" onClick={() => !supplierDeletingId && setSupplierDeleteConfirm(null)}>
+            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header"><h3 id="delete-supplier-title">Delete Supplier Account</h3><button type="button" className="modal-close" onClick={() => setSupplierDeleteConfirm(null)} disabled={Boolean(supplierDeletingId)}>×</button></div>
+              <div className="modal-body"><p>Permanently delete <strong>{supplierDeleteConfirm.companyName}</strong>?</p><p className="helper-text">This removes the supplier login, its registration, documents, RFQs, and submitted quotations. This action cannot be undone.</p></div>
+              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setSupplierDeleteConfirm(null)} disabled={Boolean(supplierDeletingId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handleDeleteSupplier(supplierDeleteConfirm.id)} disabled={Boolean(supplierDeletingId)}>{supplierDeletingId ? 'Deleting...' : 'Delete Account'}</button></div>
+            </div>
+          </div>
+        )}
+        {buyerDeleteConfirm && (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-buyer-title" onClick={() => !buyerAccountActionId && setBuyerDeleteConfirm(null)}>
+            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header"><h3 id="delete-buyer-title">Delete End User Account</h3><button type="button" className="modal-close" onClick={() => setBuyerDeleteConfirm(null)} disabled={Boolean(buyerAccountActionId)}>×</button></div>
+              <div className="modal-body"><p>Permanently delete the account for <strong>{buyerDeleteConfirm.full_name || buyerDeleteConfirm.username}</strong>?</p><p className="helper-text">The user will no longer be able to sign in. This action cannot be undone.</p></div>
+              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setBuyerDeleteConfirm(null)} disabled={Boolean(buyerAccountActionId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handleDeleteBuyerAccount(buyerDeleteConfirm)} disabled={Boolean(buyerAccountActionId)}>{buyerAccountActionId ? 'Deleting...' : 'Delete Account'}</button></div>
+            </div>
+          </div>
+        )}
       </div>
+      {reviewAction && (
+        <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={() => !supplierActioningId && setReviewAction(null)}>
+          <div className="supplier-review-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="supplier-preview-header">
+              <div>
+                <div className="supplier-panel-title">{reviewAction.actionName === 'approve' ? 'Approve Supplier' : reviewAction.actionName === 'reject' ? 'Reject Supplier' : 'Request Additional Documents'}</div>
+                <div className="supplier-subtext">{reviewAction.companyName}</div>
+              </div>
+              <button className="icon-action-btn" type="button" onClick={() => setReviewAction(null)} disabled={Boolean(supplierActioningId)} aria-label="Close review action modal"><X size={14} /></button>
+            </div>
+            <p>Confirm this action and provide review remarks for the supplier record.</p>
+            <label className="supplier-review-label" htmlFor="review-action-remarks">Review Remarks{reviewAction.nextStatus !== 'Approved' ? ' *' : ''}</label>
+            <textarea id="review-action-remarks" className="supplier-review-textarea" value={reviewRemarks} onChange={(event) => setReviewRemarks(event.target.value)} placeholder="Enter review remarks" autoFocus />
+            {supplierError && <div className="alert alert-error" style={{ marginTop: 12 }}>{supplierError}</div>}
+            <div className="form-actions">
+              <button type="button" className="btn-secondary" onClick={() => setReviewAction(null)} disabled={Boolean(supplierActioningId)}>Cancel</button>
+              <button type="button" className={reviewAction.nextStatus === 'Rejected' ? 'btn-danger' : 'btn-primary'} onClick={() => executeReviewDecision(reviewAction.supplierId, reviewAction.nextStatus, reviewAction.actionName)} disabled={Boolean(supplierActioningId)}>{supplierActioningId ? 'Saving...' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -3485,7 +4234,7 @@ const Buyer = () => {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('eProcureUser')
+    authStore.clear()
     navigate('/login')
   }
 
@@ -3496,7 +4245,7 @@ const Buyer = () => {
         <div className="admin-sidebar-header">
           <div className="admin-brand">
             <span className="admin-brand-mark">eP</span>
-            <span className="admin-brand-copy">eProcure Buyer</span>
+            <span className="admin-brand-copy">eProcura End User</span>
           </div>
           <button
             className="admin-nav-toggle"
@@ -3531,7 +4280,7 @@ const Buyer = () => {
 
         <div className="admin-navbar-right">
           <div className="admin-user-card" aria-label="Logged in user">
-            <div className="admin-user">{user?.name || user?.username || 'Buyer'}</div>
+            <div className="admin-user">{user?.name || user?.username || 'End User'}</div>
             <div className="admin-user-email">{user?.email || ''}</div>
           </div>
           <button className="admin-nav-logout" onClick={handleLogout} title="Log Out">
@@ -3546,8 +4295,8 @@ const Buyer = () => {
         {currentTab === 'dashboard' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>Buyer Dashboard</h1>
-              <p>Welcome back, {user?.name || 'Buyer'}. Submit and track Purchase Requests.</p>
+              <h1>End User Dashboard</h1>
+              <p>Welcome back, {user?.name || 'End User'}. Submit and track Purchase Requests.</p>
             </div>
 
             <section className="buyer-pr-upload-section">
@@ -3584,36 +4333,194 @@ const Buyer = () => {
   )
 }
 
+const BUYER_PR_STAGES = [
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'under_review', label: 'Under BAC Review' },
+  { key: 'supplier_matching', label: 'Supplier Matching' },
+  { key: 'rfq_sent', label: 'RFQ Sent' },
+  { key: 'supplier_response', label: 'Supplier Response' },
+  { key: 'completed', label: 'Completed' },
+]
+
+const buyerPeso = (value) => {
+  const numeric = Number(value ?? 0)
+  return `₱${(Number.isFinite(numeric) ? numeric : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+const buyerLongDate = (value) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? ''
+    : parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+const buyerStatusBadgeClass = (stage) => {
+  if (stage === 'rejected') return 'status-merged'
+  if (stage === 'completed' || stage === 'supplier_response') return 'status-open'
+  return 'status-review'
+}
+
+const BUYER_STAGE_LABELS = {
+  submitted: 'Submitted',
+  under_review: 'Under BAC Review',
+  supplier_matching: 'Supplier Matching',
+  rfq_sent: 'RFQ Sent',
+  supplier_response: 'Supplier Response',
+  completed: 'Completed',
+  rejected: 'Rejected',
+}
+
+// The backend (pr_list) is the source of truth via display_stage. This is only a
+// fallback so the timeline still advances if that field is momentarily absent
+// (e.g. the API server has not picked up the new response shape yet).
+const buyerStageFor = (record) => {
+  if (record.display_stage) return record.display_stage
+  const status = record.status
+  if (status === 'rejected') return 'rejected'
+  if (status === 'approved') return 'completed'
+  if ((record.rfq_response_count ?? 0) > 0) return 'supplier_response'
+  if ((record.rfq_sent_count ?? 0) > 0) return 'rfq_sent'
+  if (status === 'matched') return 'supplier_matching'
+  if (status === 'in_review') return 'under_review'
+  return 'submitted'
+}
+
+const BuyerPRTimeline = ({ record }) => {
+  const stage = buyerStageFor(record)
+  const timestamps = record.stage_timestamps || {}
+
+  if (stage === 'rejected') {
+    const nodes = [
+      { label: 'Submitted', state: 'done', at: timestamps.submitted },
+      { label: 'Under BAC Review', state: 'done' },
+      { label: 'Rejected', state: 'rejected' },
+    ]
+    return (
+      <ol className="buyer-timeline" aria-label="Purchase Request progress">
+        {nodes.map((node) => (
+          <li key={node.label} className={`buyer-timeline-node is-${node.state}`}>
+            <span className="buyer-timeline-marker" aria-hidden="true">{node.state === 'rejected' ? '✕' : '✓'}</span>
+            <div className="buyer-timeline-body">
+              <span className="buyer-timeline-label">{node.label}</span>
+              {node.at && <span className="buyer-timeline-time">{buyerLongDate(node.at)}</span>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  const currentIndex = Math.max(0, BUYER_PR_STAGES.findIndex((item) => item.key === stage))
+  return (
+    <ol className="buyer-timeline" aria-label="Purchase Request progress">
+      {BUYER_PR_STAGES.map((item, index) => {
+        const state = index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming'
+        const at = timestamps[item.key]
+        return (
+          <li key={item.key} className={`buyer-timeline-node is-${state}`}>
+            <span className="buyer-timeline-marker" aria-hidden="true">
+              {state === 'done' ? '✓' : state === 'current' ? '●' : '○'}
+            </span>
+            <div className="buyer-timeline-body">
+              <span className="buyer-timeline-label">{item.label}</span>
+              {at && (state === 'done' || state === 'current') && (
+                <span className="buyer-timeline-time">{buyerLongDate(at)}</span>
+              )}
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+const BuyerPRStatusCard = ({ record }) => {
+  const [showDetails, setShowDetails] = React.useState(false)
+  const stage = buyerStageFor(record)
+  const statusLabel = record.display_status || BUYER_STAGE_LABELS[stage] || 'Submitted'
+
+  return (
+    <article className="buyer-status-record">
+      <div className="buyer-status-record-head">
+        <div>
+          <strong>{record.pr_no || `Reference #${record.id}`}</strong>
+          <span>{record.entity_name || 'Purchase Request'}</span>
+        </div>
+        <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{statusLabel}</span>
+      </div>
+
+      <dl className="buyer-status-facts">
+        <div><dt>PR Number</dt><dd>{record.pr_no || `Reference #${record.id}`}</dd></div>
+        <div><dt>Requesting Office</dt><dd>{record.office_section || record.entity_name || '—'}</dd></div>
+        {record.date && <div><dt>PR Date</dt><dd>{buyerLongDate(record.date)}</dd></div>}
+        <div><dt>Submitted</dt><dd>{buyerLongDate(record.created_at) || '—'}</dd></div>
+        <div><dt>Total</dt><dd>{buyerPeso(record.grand_total)}</dd></div>
+      </dl>
+
+      <div className="buyer-status-current">
+        <span className="buyer-status-current-kicker">Current Status</span>
+        <span className="buyer-status-current-value">{statusLabel}</span>
+        {record.status_description && <p>{record.status_description}</p>}
+      </div>
+
+      <BuyerPRTimeline record={record} />
+
+      <div className="form-actions">
+        <button type="button" className="btn-sm btn-secondary" onClick={() => setShowDetails((open) => !open)} aria-expanded={showDetails}>
+          {showDetails ? 'Hide Details' : 'View Details'}
+        </button>
+      </div>
+
+      {showDetails && (
+        <div className="buyer-status-details">
+          <div className="buyer-status-facts" style={{ border: 'none', padding: 0, margin: 0 }}>
+            <div><dt>Requesting Office</dt><dd>{record.office_section || '—'}</dd></div>
+            <div><dt>Requested By</dt><dd>{record.requested_by || '—'}</dd></div>
+            <div><dt>Category</dt><dd>{record.category || 'Not yet assigned'}</dd></div>
+            <div><dt>Line Items</dt><dd>{record.items_count ?? 0}</dd></div>
+            <div><dt>RFQs Issued</dt><dd>{record.rfq_sent_count ?? 0}</dd></div>
+            <div><dt>Supplier Responses</dt><dd>{record.rfq_response_count ?? 0}</dd></div>
+          </div>
+          {record.purpose && (
+            <div>
+              <span className="buyer-status-current-kicker">Purpose</span>
+              <p>{record.purpose}</p>
+            </div>
+          )}
+          <p className="supplier-subtext" style={{ margin: 0 }}>
+            Supplier selection and evaluation are handled by the BAC Secretariat and are not shown here.
+          </p>
+        </div>
+      )}
+    </article>
+  )
+}
+
 const BuyerPRStatusViewer = ({ prIds, username }) => {
   const [records, setRecords] = React.useState([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
-  const statusMeta = {
-    uploaded: { label: 'For Review', className: 'status-review', step: 1 },
-    in_review: { label: 'Under Review', className: 'status-review', step: 2 },
-    matched: { label: 'Ready for Matching', className: 'status-open', step: 3 },
-    approved: { label: 'Approved', className: 'status-open', step: 4 },
-    rejected: { label: 'Rejected', className: 'status-merged', step: 4 },
-  }
-
   const loadRecords = React.useCallback(async () => {
     if (!prIds.length && !username) return
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}`)
+      const response = await fetch(
+        `${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}&t=${Date.now()}`,
+        { cache: 'no-store' },
+      )
       if (!response.ok) throw new Error('Unable to load your Purchase Requests')
       const databaseRecords = await response.json()
-      const results = Array.isArray(databaseRecords) ? databaseRecords : []
-      setRecords(results)
+      setRecords(Array.isArray(databaseRecords) ? databaseRecords : [])
     } catch (loadError) {
       setError(loadError?.message || 'Unable to load Purchase Request status')
     } finally {
       setLoading(false)
     }
-  }, [apiBaseUrl, prIds])
+  }, [apiBaseUrl, prIds, username])
 
   React.useEffect(() => {
     loadRecords()
@@ -3627,7 +4534,7 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
     <>
       <div className="supplier-header">
         <h1>Live Status</h1>
-        <p>Track the PRs you submitted and see when BAC review is complete.</p>
+        <p>Track each Purchase Request you submitted through the procurement workflow.</p>
       </div>
       <section className="buyer-status-viewer dashboard-section">
         <div className="supplier-header">
@@ -3641,34 +4548,11 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
           </button>
         </div>
         {error && <div className="alert alert-error">{error}</div>}
+        {!error && !loading && records.length === 0 && (
+          <div className="empty-state"><ClipboardList size={48} /><h3>No Purchase Requests yet</h3><p>Submitted Purchase Requests will appear here with their live procurement status.</p></div>
+        )}
         <div className="buyer-status-list">
-          {records.map((record) => {
-            const meta = statusMeta[record.status] || { label: record.status || 'Unknown', className: 'status-review', step: 1 }
-            return (
-              <article className="buyer-status-record" key={record.id}>
-                <div className="buyer-status-record-head">
-                  <div>
-                    <strong>{record.pr_no || `Reference #${record.id}`}</strong>
-                    <span>{record.entity_name || 'Purchase Request'}</span>
-                  </div>
-                  <span className={`status-badge ${meta.className}`}>{meta.label}</span>
-                </div>
-                <div className="buyer-status-meta">
-                <span>Office: {record.office_section || 'N/A'}</span>
-                <span>Date: {record.date ? new Date(record.date).toLocaleDateString() : 'N/A'}</span>
-                <span>Total: {record.grand_total ?? '0.00'}</span>
-              </div>
-              <div className="buyer-status-progress" aria-label={`Purchase Request status: ${meta.label}`}>
-                {['Submitted', 'BAC Review', 'Supplier Matching', 'Completed'].map((label, index) => (
-                  <div className={`buyer-status-step ${index + 1 <= meta.step ? 'active' : ''}`} key={label}>
-                    <span>{index + 1}</span>
-                    <small>{label}</small>
-                  </div>
-                ))}
-              </div>
-            </article>
-          )
-        })}
+          {records.map((record) => <BuyerPRStatusCard key={record.id} record={record} />)}
         </div>
       </section>
     </>
@@ -3678,35 +4562,14 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
 const Supplier = () => {
   const navigate = useNavigate()
   const user = React.useMemo(() => getStoredUser(), [])
-  const [supplierData, setSupplierData] = React.useState(null)
   const [currentPage, setCurrentPage] = React.useState('dashboard')
   const [navCollapsed, setNavCollapsed] = React.useState(false)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-  const supplierId = user?.supplier_id || localStorage.getItem('supplier_id')
-  const supplierStatus = user?.supplier_status || localStorage.getItem('supplier_status') || 'Pending Review'
-
-  React.useEffect(() => {
-    if (!supplierId) return
-
-    const fetchSupplierData = async () => {
-      try {
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
-        if (response.ok) {
-          const data = await response.json()
-          setSupplierData(data)
-        }
-      } catch (error) {
-        console.error('Failed to fetch supplier data:', error)
-      }
-    }
-
-    fetchSupplierData()
-  }, [supplierId, apiBaseUrl])
+  const supplierId = user?.supplier_id || authStore.get('supplier_id')
+  const supplierStatus = user?.supplier_status || authStore.get('supplier_status') || 'Pending Review'
 
   const handleLogout = () => {
-    localStorage.removeItem('eProcureUser')
-    localStorage.removeItem('supplier_id')
-    localStorage.removeItem('supplier_status')
+    authStore.clear()
     navigate('/login')
   }
 
@@ -3732,31 +4595,6 @@ const Supplier = () => {
     )
   }
 
-  if (!isApproved && currentPage !== 'dashboard' && currentPage !== 'profile') {
-    return (
-      <div className="supplier-content-inner supplier-status-page">
-        <div className="supplier-status-card">
-          <span className={`status-pill ${isRejected ? 'danger' : isCompliance ? 'danger' : isPending ? 'warning' : ''}`}>
-            {supplierStatus}
-          </span>
-          <h2>{isRejected ? 'Registration was not approved' : isCompliance ? 'Additional documents are required' : 'Your supplier account is still under review'}</h2>
-          <p>
-            {isRejected
-              ? 'Your registration has been rejected. Please contact BAC for guidance on reapplication or document updates.'
-              : isCompliance
-                ? 'BAC is requesting additional documentation or clarifications before your supplier account can be activated.'
-                : 'Your registration is being reviewed by BAC administrators. You will receive updates once the review is complete.'}
-          </p>
-          <ul>
-            <li>Use the dashboard to see your current registration status.</li>
-            <li>Review your profile details and uploaded documents.</li>
-            <li>Contact BAC if you need to update or resubmit any required information.</li>
-          </ul>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
       <SupplierNav 
@@ -3765,12 +4603,14 @@ const Supplier = () => {
         onLogout={handleLogout}
         navCollapsed={navCollapsed}
         onToggleNav={() => setNavCollapsed((v) => !v)}
+        supplierId={supplierId}
+        apiBaseUrl={apiBaseUrl}
       />
       <div className="admin-content">
         {currentPage === 'dashboard' && <SupplierDashboard supplierId={supplierId} apiBaseUrl={apiBaseUrl} supplierStatus={supplierStatus} />}
-        {currentPage === 'opportunities' && <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
-        {currentPage === 'quotations' && <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
-        {currentPage === 'rfqs' && <SupplierRFQs supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
+        {currentPage === 'opportunities' && (isApproved ? <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
+        {currentPage === 'quotations' && (isApproved ? <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
+        {currentPage === 'rfqs' && (isApproved ? <SupplierRFQs supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'profile' && <CompanyProfile supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'notifications' && <SupplierNotifications supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
       </div>
@@ -3778,10 +4618,39 @@ const Supplier = () => {
   )
 }
 
+const SupplierAccessStatus = ({ status, isRejected, isCompliance, isPending }) => (
+  <div className="supplier-content-inner supplier-status-page">
+    <div className="supplier-status-card">
+      <span className={`status-pill ${isRejected || isCompliance ? 'danger' : isPending ? 'warning' : ''}`}>
+        {status}
+      </span>
+      <h2>{isRejected ? 'Registration was not approved' : isCompliance ? 'Additional documents are required' : 'Your supplier account is still under review'}</h2>
+      <p>
+        {isRejected
+          ? 'Your registration has been rejected. Please contact BAC for guidance on reapplication or document updates.'
+          : isCompliance
+            ? 'BAC is requesting additional documentation or clarifications before your supplier account can be activated.'
+            : 'Your registration is being reviewed by BAC administrators. You will receive updates once the review is complete.'}
+      </p>
+      <ul>
+        <li>Use the dashboard to see your current registration status.</li>
+        <li>Review your profile details and uploaded documents.</li>
+        <li>Contact BAC if you need to update or resubmit any required information.</li>
+      </ul>
+    </div>
+  </div>
+)
+
+const rfqSupplierStatusLabel = (rfq) => rfq?.status_label || ({
+  draft: 'Draft',
+  sent: 'Awaiting Supplier Response',
+  quotation_received: 'Response Submitted',
+  completed: 'Completed',
+}[rfq?.status] || rfq?.status || 'Unknown')
+
 const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
   const [rfqs, setRfqs] = React.useState([])
-  const [selectedRfq, setSelectedRfq] = React.useState(null)
-  const [showQuotationForm, setShowQuotationForm] = React.useState(false)
+  const [selectedRfqId, setSelectedRfqId] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
@@ -3802,115 +4671,208 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
 
   React.useEffect(() => { loadRFQs() }, [loadRFQs])
 
+  const selectedRfq = rfqs.find((rfq) => rfq.id === selectedRfqId) || null
+
   if (selectedRfq) {
     return (
-      <div className="supplier-content-inner">
-        <button type="button" className="back-link" onClick={() => setSelectedRfq(null)}><ChevronLeft size={18} /> Back to RFQs</button>
-        <div className="supplier-header">
-          <h2>{selectedRfq.rfq_no}</h2>
-          <p>{selectedRfq.subject}</p>
-        </div>
-        <div className="card rfq-review-card">
-          <div className="detail-grid">
-            <div><strong>PR No.: </strong><span>{selectedRfq.purchase_request.pr_no || `PR-${selectedRfq.purchase_request.id}`}</span></div>
-            <div><strong>Requesting Office / Entity: </strong><span>{selectedRfq.purchase_request.office_section || selectedRfq.purchase_request.entity_name}</span></div>
-            <div><strong>Category: </strong><span>{selectedRfq.purchase_request.category || 'N/A'}</span></div>
-            <div><strong>Status: </strong><span>{selectedRfq.status}</span></div>
-          </div>
-          <h3>RFQ Message</h3>
-          <div className="supplier-readonly-card" style={{ whiteSpace: 'pre-wrap' }}>{selectedRfq.message}</div>
-        </div>
-        <div className="card rfq-review-card">
-          <h3>Requested Items</h3>
-          <div className="opportunity-table-wrapper">
-            <table className="opportunity-table">
-              <thead><tr><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
-              <tbody>{selectedRfq.purchase_request.items.map((item) => (
-                <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
-          {selectedRfq.purchase_request.source_file_url && <p><strong>Attachment:</strong> <a href={selectedRfq.purchase_request.source_file_url} target="_blank" rel="noreferrer">{selectedRfq.purchase_request.source_filename || 'Original PR'}</a></p>}
-        </div>
-        <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={() => setSelectedRfq(null)}>Back to RFQs</button>
-          {selectedRfq.status === 'sent' ? (
-            <button type="button" className="btn-primary" onClick={() => setShowQuotationForm(true)}>Submit Quotation</button>
-          ) : (
-            <span className="supplier-subtext">A quotation has already been submitted for this RFQ.</span>
-          )}
-        </div>
-        {showQuotationForm && (
-          <QuotationForm
-            supplierId={supplierId}
-            prId={selectedRfq.purchase_request.id}
-            rfqId={selectedRfq.id}
-            apiBaseUrl={apiBaseUrl}
-            onClose={() => setShowQuotationForm(false)}
-            onSuccess={() => { setShowQuotationForm(false); setSelectedRfq(null); loadRFQs() }}
-          />
-        )}
-      </div>
+      <SupplierRFQDetail
+        rfq={selectedRfq}
+        supplierId={supplierId}
+        apiBaseUrl={apiBaseUrl}
+        onBack={() => setSelectedRfqId(null)}
+        onChange={(updated) => setRfqs((current) => current.map((item) => item.id === updated.id ? updated : item))}
+      />
     )
   }
 
   return (
     <div className="supplier-content-inner">
-      <div className="supplier-header"><h2>Requests for Quotation</h2><p>Review RFQs sent to your company and submit a quotation.</p></div>
+      <div className="supplier-header"><h2>Requests for Quotation</h2><p>Download each RFQ, complete and sign it, then upload the completed document.</p></div>
       {error && <div className="alert alert-error">{error}</div>}
       {loading ? <SkeletonRows count={4} /> : rfqs.length === 0 ? <div className="empty-state"><Send size={48} /><h3>No RFQs received</h3><p>New requests for quotation will appear here.</p></div> : (
-        <div className="supplier-verification-list-card">
-          {rfqs.map((rfq) => (
-            <button type="button" className="dashboard-activity-row" key={rfq.id} onClick={() => setSelectedRfq(rfq)}>
-              <span className="dashboard-activity-id">{rfq.rfq_no}</span>
-              <span className="dashboard-activity-main"><strong>{rfq.subject}</strong><small>PR {rfq.purchase_request.pr_no || rfq.purchase_request.id}</small></span>
-              <span className={`status-badge ${rfq.status === 'sent' ? 'status-open' : 'status-review'}`}>{rfq.status}</span>
-            </button>
-          ))}
+        <div className="rfq-supplier-list">
+          {rfqs.map((rfq) => {
+            const pr = rfq.purchase_request
+            const responded = rfq.status === 'quotation_received' || rfq.status === 'completed'
+            return (
+              <article className="card rfq-supplier-card" key={rfq.id}>
+                <div className="rfq-supplier-card-head">
+                  <div>
+                    <h3>Request for Quotation</h3>
+                    <p className="supplier-subtext">{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
+                  </div>
+                  <span className={`status-badge ${responded ? 'status-open' : 'status-review'}`}>{rfqSupplierStatusLabel(rfq)}</span>
+                </div>
+                <div className="rfq-supplier-card-body">
+                  <div><strong>From:</strong> {pr.office_section || pr.entity_name || 'N/A'}</div>
+                  <div><strong>Category:</strong> {pr.category || 'N/A'}</div>
+                  {rfq.submitted_at && <div><strong>Submitted:</strong> {new Date(rfq.submitted_at).toLocaleString()}</div>}
+                </div>
+                <div className="form-actions">
+                  <button type="button" className="btn-primary" onClick={() => setSelectedRfqId(rfq.id)}>View RFQ</button>
+                  {rfq.generated_pdf_url && (
+                    <a className="btn-secondary" href={rfq.generated_pdf_url} download target="_blank" rel="noreferrer"><Download size={14} /> Download RFQ</a>
+                  )}
+                </div>
+              </article>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-const SupplierRFQDetail = ({ rfq, supplierId, apiBaseUrl, onBack }) => {
-  const [showQuotationForm, setShowQuotationForm] = React.useState(false)
+const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, onChange }) => {
+  const [uploadedRfq, setUploadedRfq] = React.useState(null)
+  const [file, setFile] = React.useState(null)
+  const [uploading, setUploading] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const [notice, setNotice] = React.useState('')
+  const [replacing, setReplacing] = React.useState(false)
+
+  const rfq = uploadedRfq || initialRfq
+  const pr = rfq.purchase_request
+  const generatedUrl = rfq.generated_pdf_url || rfq.pdf_url || ''
+  const submittedUrl = rfq.submitted_pdf_url || ''
+  const hasResponse = Boolean(submittedUrl)
+  const responseOpen = rfq.status === 'sent' || rfq.status === 'quotation_received'
+
+  const handleUpload = async () => {
+    if (!file) { setError('Choose the completed RFQ PDF first.'); return }
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setError('The completed RFQ must be a PDF file.'); return }
+    if (file.size > 10 * 1024 * 1024) { setError('File must be 10 MB or smaller.'); return }
+    setUploading(true); setError(''); setNotice('')
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/${rfq.id}/response/`, { method: 'POST', body })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message || data.error || 'Upload failed. Please try again.')
+      setUploadedRfq(data)
+      setFile(null)
+      setReplacing(false)
+      setNotice(data.replaced ? 'Completed RFQ replaced successfully.' : 'Completed RFQ uploaded successfully.')
+      if (onChange) onChange(data)
+    } catch (uploadError) {
+      setError(uploadError.message || 'Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div className="supplier-content-inner">
-      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} /> Back</button>
-      <div className="supplier-header"><h2>{rfq.rfq_no}</h2><p>{rfq.subject}</p></div>
+      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} /> Back to RFQs</button>
+      <div className="supplier-header">
+        <h2>Request for Quotation</h2>
+        <p>{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      {notice && <div className="alert alert-success">{notice}</div>}
+
       <div className="card rfq-review-card">
         <div className="detail-grid">
-          <div><strong>PR No.</strong><span>{rfq.purchase_request.pr_no || `PR-${rfq.purchase_request.id}`}</span></div>
-          <div><strong>Requesting Office / Entity</strong><span>{rfq.purchase_request.office_section || rfq.purchase_request.entity_name}</span></div>
-          <div><strong>Category</strong><span>{rfq.purchase_request.category || 'N/A'}</span></div>
-          <div><strong>Status</strong><span>{rfq.status}</span></div>
+          <div><strong>RFQ No.: </strong><span>{rfq.rfq_no}</span></div>
+          <div><strong>PR No.: </strong><span>{pr.pr_no || `PR-${pr.id}`}</span></div>
+          <div><strong>From: </strong><span>{pr.office_section || pr.entity_name || 'N/A'}</span></div>
+          <div><strong>Category: </strong><span>{pr.category || 'N/A'}</span></div>
+          <div><strong>Status: </strong><span>{rfqSupplierStatusLabel(rfq)}</span></div>
+          {rfq.submitted_at && <div><strong>Submitted: </strong><span>{new Date(rfq.submitted_at).toLocaleString()}</span></div>}
         </div>
         <h3>RFQ Message</h3>
         <div className="supplier-readonly-card" style={{ whiteSpace: 'pre-wrap' }}>{rfq.message}</div>
       </div>
+
       <div className="card rfq-review-card">
         <h3>Requested Items</h3>
         <div className="opportunity-table-wrapper"><table className="opportunity-table">
           <thead><tr><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
-          <tbody>{rfq.purchase_request.items.map((item) => <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>)}</tbody>
+          <tbody>{pr.items.map((item) => <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>)}</tbody>
         </table></div>
-        {rfq.purchase_request.source_file_url && <p><strong>Attachment:</strong> <a href={rfq.purchase_request.source_file_url} target="_blank" rel="noreferrer">{rfq.purchase_request.source_filename || 'Original PR'}</a></p>}
       </div>
-      <div className="form-actions">
-        {rfq.status === 'sent' ? (
-          <button type="button" className="btn-primary" onClick={() => setShowQuotationForm(true)}>Submit Quotation</button>
+
+      <div className="card rfq-review-card">
+        <h3>Generated RFQ Document</h3>
+        {generatedUrl ? (
+          <>
+            <p className="supplier-subtext">This document is generated by the BAC and cannot be edited online. Print it, fill in the supplier fields, and sign it.</p>
+            <iframe title="RFQ document" src={generatedUrl} style={{ width: '100%', minHeight: 620, border: '1px solid #d1d5db', borderRadius: 8 }} />
+          </>
         ) : (
-          <span className="supplier-subtext">A quotation has already been submitted for this RFQ.</span>
+          <p className="supplier-subtext">The RFQ document is not yet available. Please check back shortly.</p>
         )}
       </div>
-      {showQuotationForm && <QuotationForm supplierId={supplierId} prId={rfq.purchase_request.id} rfqId={rfq.id} apiBaseUrl={apiBaseUrl} onClose={() => setShowQuotationForm(false)} onSuccess={onBack} />}
+
+      <div className="card rfq-review-card">
+        <h3>Completed RFQ Submission</h3>
+        <ol className="rfq-workflow-steps">
+          <li>
+            <div><strong>1. Download</strong><span>Download the RFQ PDF.</span></div>
+            {generatedUrl && <a className="btn-secondary" href={generatedUrl} download target="_blank" rel="noreferrer"><Download size={14} /> Download RFQ PDF</a>}
+          </li>
+          <li><div><strong>2. Complete</strong><span>Print the RFQ and fill in the required supplier fields — brand/model, unit prices, total quotation amounts, and contact information.</span></div></li>
+          <li><div><strong>3. Sign</strong><span>Sign the completed document.</span></div></li>
+          <li><div><strong>4. Submit</strong><span>Scan or photograph it as a single PDF and upload it below.</span></div></li>
+        </ol>
+
+        {hasResponse && !replacing ? (
+          <div className="rfq-response-confirmed">
+            <p className="rfq-response-confirmed-title"><CheckCircle size={18} /> Completed RFQ uploaded successfully</p>
+            <div className="detail-grid" style={{ margin: '4px 0 10px' }}>
+              <div><strong>RFQ No.: </strong><span>{rfq.rfq_no}</span></div>
+              <div><strong>PR No.: </strong><span>{pr.pr_no || `PR-${pr.id}`}</span></div>
+              <div><strong>Submitted: </strong><span>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleString() : '—'}</span></div>
+              {rfq.submitted_filename && <div><strong>File: </strong><span>{rfq.submitted_filename}</span></div>}
+              <div><strong>Response Status: </strong><span>{rfqSupplierStatusLabel(rfq)}</span></div>
+            </div>
+            <div className="form-actions">
+              <a className="btn-secondary" href={submittedUrl} target="_blank" rel="noreferrer">View Submitted RFQ</a>
+              <a className="btn-secondary" href={submittedUrl} download target="_blank" rel="noreferrer">Download Submitted RFQ</a>
+              {responseOpen && <button type="button" className="btn-secondary" onClick={() => { setReplacing(true); setNotice('') }}>Replace Submission</button>}
+            </div>
+          </div>
+        ) : responseOpen ? (
+          <div className="rfq-upload-area">
+            <label className="form-field">
+              <span>Upload Completed RFQ (PDF only, max 10 MB)</span>
+              <input type="file" accept="application/pdf,.pdf" onChange={(event) => { setFile(event.target.files?.[0] || null); setError('') }} />
+            </label>
+            {file && <p className="supplier-subtext">{file.name}</p>}
+            <div className="form-actions">
+              {replacing && <button type="button" className="btn-secondary" onClick={() => { setReplacing(false); setFile(null) }} disabled={uploading}>Cancel</button>}
+              <button type="button" className="btn-primary" onClick={handleUpload} disabled={uploading || !file}>{uploading ? 'Uploading...' : 'Upload Completed RFQ'}</button>
+            </div>
+          </div>
+        ) : (
+          <p className="supplier-subtext">This RFQ is no longer open for a response.</p>
+        )}
+      </div>
     </div>
   )
 }
 
-const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onToggleNav }) => {
+const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onToggleNav, supplierId, apiBaseUrl }) => {
+  const [supplierDetails, setSupplierDetails] = React.useState(null)
+
+  React.useEffect(() => {
+    if (!supplierId) return
+
+    const fetchSupplierDetails = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
+        if (!response.ok) return
+
+        const data = await response.json()
+        setSupplierDetails(data)
+      } catch (error) {
+        console.error('Failed to fetch supplier details:', error)
+      }
+    }
+
+    fetchSupplierDetails()
+  }, [supplierId, apiBaseUrl])
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
@@ -3925,7 +4887,7 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
       <div className="admin-sidebar-header">
         <div className="admin-brand">
           <span className="admin-brand-mark">eP</span>
-          <span className="admin-brand-copy">eProcure Supplier</span>
+          <span className="admin-brand-copy">eProcura Supplier</span>
         </div>
         <button
           className="admin-nav-toggle"
@@ -3958,8 +4920,8 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
 
       <div className="admin-navbar-right">
         <div className="admin-user-card" aria-label="Logged in supplier">
-          <div className="admin-user">Supplier Account</div>
-          <div className="admin-user-email">Portal</div>
+          <div className="admin-user">{supplierDetails?.company_name || 'Supplier Account'}</div>
+          <div className="admin-user-email">{supplierDetails?.email || supplierDetails?.contact_email || 'Portal'}</div>
         </div>
         <button className="admin-nav-logout" onClick={onLogout} title="Log Out">
           <LogOut size={14} />
@@ -4050,16 +5012,6 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
         </div>
 
         <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#dcfce7' }}>
-            <CheckCircle size={24} color="#16a34a" />
-          </div>
-          <div>
-            <div className="stat-value">{summary?.awarded_quotations || 0}</div>
-            <div className="stat-label">Awards Won</div>
-          </div>
-        </div>
-
-        <div className="dashboard-card-stat">
           <div className="stat-icon" style={{ background: '#fed7aa' }}>
             <Clock size={24} color="#ea580c" />
           </div>
@@ -4084,7 +5036,7 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
             <CheckCircle size={24} color="#7c3aed" />
           </div>
           <div>
-            <div className="stat-value">{summary?.verification_status || 'Pending'}</div>
+            <div className="stat-value approval-status-value">{summary?.verification_status || 'Pending'}</div>
             <div className="stat-label">Approval Status</div>
           </div>
         </div>
@@ -4360,6 +5312,7 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
   })
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState(null)
+  const [quotationFile, setQuotationFile] = React.useState(null)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -4381,6 +5334,13 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
       })
 
       if (response.ok) {
+        const result = await response.json()
+        if (quotationFile && result.quotation_id) {
+          const upload = new FormData()
+          upload.append('file', quotationFile)
+          const fileResponse = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/${result.quotation_id}/attachment/`, { method: 'POST', body: upload })
+          if (!fileResponse.ok) throw new Error('Quotation submitted, but the PDF upload failed.')
+        }
         alert('Quotation submitted successfully!')
         onSuccess()
       } else {
@@ -4453,8 +5413,13 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
               rows="4"
               value={formData.remarks}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              placeholder="Any additional notes for the buyer..."
+              placeholder="Any additional notes for the end user..."
             />
+          </div>
+          <div className="form-group">
+            <label htmlFor="quotation-file">Completed RFQ PDF *</label>
+            <input id="quotation-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setQuotationFile(e.target.files?.[0] || null)} />
+            <small>Download the RFQ, fill it out, save it as PDF, then upload it here.</small>
           </div>
 
           <div className="modal-actions">
@@ -4568,6 +5533,50 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
   )
 }
 
+const CategorySelector = ({ categories, selectedCategories, onChange }) => {
+  const selectedIds = new Set(selectedCategories.map((category) => category.id))
+
+  const toggleCategory = (category) => {
+    onChange(selectedIds.has(category.id)
+      ? selectedCategories.filter((current) => current.id !== category.id)
+      : [...selectedCategories, category])
+  }
+
+  return (
+    <div className="profile-category-selector">
+      <label>Supplier Categories</label>
+      <p className="supplier-subtext">Select the products or services your company provides.</p>
+      <div className="profile-category-options">
+        {categories.length > 0 ? categories.map((category) => (
+          <label key={category.id} className="profile-category-option">
+            <input type="checkbox" checked={selectedIds.has(category.id)} onChange={() => toggleCategory(category)} />
+            <span>{category.name}</span>
+          </label>
+        )) : <span className="supplier-subtext">No active categories available.</span>}
+      </div>
+    </div>
+  )
+}
+
+const getSupplierDocumentLabel = (docType) => ({
+  mayor_permit: "Mayor's Permit",
+  business_permit: 'Business Permit',
+  philgeps_registration: 'PhilGEPS Registration',
+  bir_registration: 'BIR Registration',
+  tax_clearance: 'Tax Clearance',
+  dti_registration: 'DTI Registration',
+  sec_registration: 'SEC Registration',
+  cda_registration: 'CDA Registration',
+  other_eligibility: 'Other Eligibility Requirement',
+  other_eligibility_requirement: 'Other Eligibility Requirement',
+}[docType] || String(docType || 'Supplier Document').replace(/_/g, ' '))
+
+const getSupplierDocumentStatusMeta = (status) => {
+  if (status === 'Verified') return { label: 'Verified', className: 'status-open' }
+  if (status === 'Rejected') return { label: 'Rejected', className: 'status-merged' }
+  return { label: 'Pending Re-evaluation', className: 'status-review' }
+}
+
 const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const [profile, setProfile] = React.useState(null)
   const [categories, setCategories] = React.useState([])
@@ -4576,6 +5585,10 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const [formData, setFormData] = React.useState({})
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState(null)
+  const [showResubmitDocuments, setShowResubmitDocuments] = React.useState(false)
+  const [resubmitFiles, setResubmitFiles] = React.useState({})
+  const [resubmitting, setResubmitting] = React.useState('')
+  const [resubmitConfirm, setResubmitConfirm] = React.useState(null)
 
   React.useEffect(() => {
     const fetchProfile = async () => {
@@ -4625,6 +5638,33 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       setMessage({ type: 'error', text: 'An error occurred' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleResubmit = async (docType) => {
+    const file = resubmitFiles[docType]
+    if (!file) return
+    setResubmitting(docType)
+    setMessage(null)
+    try {
+      const body = new FormData()
+      body.append('doc_type', docType)
+      body.append('file', file)
+      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/documents/resubmit/`, { method: 'POST', body })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Unable to resubmit document')
+      setProfile((current) => ({
+        ...current,
+        status: data.supplier_status || 'Pending Review',
+        documents: [data.document, ...(current.documents || [])],
+      }))
+      authStore.set('supplier_status', data.supplier_status || 'Pending Review')
+      setResubmitFiles((current) => ({ ...current, [docType]: null }))
+      setMessage({ type: 'success', text: 'Document resubmitted. Your supplier status is now Pending Review.' })
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+    } finally {
+      setResubmitting('')
     }
   }
 
@@ -4702,13 +5742,43 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
               )}
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setEditMode(true)}
-            >
-              <Edit2 size={16} /> Edit Profile
-            </button>
+            <div className="profile-action-row">
+              <button type="button" className="btn btn-primary profile-edit-btn" onClick={() => setEditMode(true)} aria-label="Edit supplier profile">
+                <Edit2 size={16} /> Edit Profile
+              </button>
+              {profile.status === 'For Compliance' && (
+                <button type="button" className="btn btn-secondary profile-edit-btn" onClick={() => setShowResubmitDocuments(true)}>
+                  <FileText size={16} /> Resubmit Documents
+                </button>
+              )}
+            </div>
+            {profile.status === 'For Compliance' && showResubmitDocuments && (
+              <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={() => setShowResubmitDocuments(false)}>
+              <section className="supplier-preview-modal profile-resubmit-card" onClick={(event) => event.stopPropagation()}>
+                <div className="supplier-preview-header"><div><h3>Resubmit Documents</h3><p className="supplier-subtext">Upload corrected or requested documents for BAC review.</p></div><button type="button" className="icon-action-btn" onClick={() => setShowResubmitDocuments(false)} aria-label="Close resubmit documents">×</button></div>
+                <div className="profile-resubmit-list">
+                  {(profile.documents || []).reduce((documents, document) => documents.some((item) => item.doc_type === document.doc_type) ? documents : [...documents, document], []).map((document) => (
+                    <div className="profile-resubmit-row" key={document.doc_type}>
+                      <div>
+                        <strong>{getSupplierDocumentLabel(document.doc_type)}</strong>
+                        <small className={`status-badge profile-resubmit-status ${getSupplierDocumentStatusMeta(document.verification_status).className}`}>
+                          {getSupplierDocumentStatusMeta(document.verification_status).label}
+                        </small>
+                      </div>
+                      {document.verification_status === 'Verified' ? (
+                        <span className="profile-document-verified">Document verified by BAC</span>
+                      ) : (
+                        <>
+                          <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(event) => setResubmitFiles((current) => ({ ...current, [document.doc_type]: event.target.files[0] }))} />
+              <button type="button" className="btn-sm btn-primary" onClick={() => setResubmitConfirm({ docType: document.doc_type, fileName: resubmitFiles[document.doc_type]?.name })} disabled={!resubmitFiles[document.doc_type] || resubmitting === document.doc_type}>{resubmitting === document.doc_type ? 'Submitting...' : 'Resubmit'}</button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+      </section>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -4731,6 +5801,16 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                 id="business_type"
                 value={formData.business_type || ''}
                 onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="tin">TIN Number</label>
+              <input
+                type="text"
+                id="tin"
+                value={formData.tin || ''}
+                onChange={(e) => setFormData({ ...formData, tin: e.target.value })}
               />
             </div>
 
@@ -4816,6 +5896,15 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
             </button>
           </div>
         </form>
+      )}
+      {resubmitConfirm && (
+        <div className="modal-overlay resubmit-confirm-overlay" role="dialog" aria-modal="true" onClick={() => setResubmitConfirm(null)}>
+          <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header"><h3>Confirm Document Resubmission</h3><button type="button" className="modal-close" onClick={() => setResubmitConfirm(null)}>×</button></div>
+            <div className="modal-body"><p>Resubmit <strong>{getSupplierDocumentLabel(resubmitConfirm.docType)}</strong> for BAC verification?</p><p className="helper-text">File: {resubmitConfirm.fileName}</p></div>
+            <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setResubmitConfirm(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={() => { handleResubmit(resubmitConfirm.docType); setResubmitConfirm(null) }}>Confirm Resubmit</button></div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -4908,19 +5997,19 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
 
 const getStoredUser = () => {
   try {
-    const stored = localStorage.getItem('eProcureUser')
+    const stored = authStore.get('eProcureUser')
     if (!stored) return null
 
     const parsed = JSON.parse(stored)
     if (!parsed || typeof parsed !== 'object' || typeof parsed.role !== 'string' || typeof parsed.username !== 'string') {
-      localStorage.removeItem('eProcureUser')
+      authStore.clear()
       return null
     }
 
     return parsed
   } catch (error) {
     console.warn('Clearing malformed stored user:', error)
-    localStorage.removeItem('eProcureUser')
+    authStore.clear()
     return null
   }
 }
@@ -4948,9 +6037,13 @@ const AppLayout = () => {
   }, [location.pathname])
 
   React.useEffect(() => {
-    const handleStorage = () => setUser(getStoredUser())
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+    const syncUser = () => setUser(getStoredUser())
+    window.addEventListener('storage', syncUser)
+    window.addEventListener('focus', syncUser)
+    return () => {
+      window.removeEventListener('storage', syncUser)
+      window.removeEventListener('focus', syncUser)
+    }
   }, [])
 
   return (
@@ -4973,7 +6066,7 @@ const AppLayout = () => {
                 type="button"
                 className="login-link"
                 onClick={() => {
-                  localStorage.removeItem('eProcureUser')
+                  authStore.clear()
                   setUser(null)
                   navigate('/login')
                 }}

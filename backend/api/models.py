@@ -219,12 +219,31 @@ class RFQ(models.Model):
         (STATUS_COMPLETED, 'Completed'),
     ]
 
+    AWARD_BASIS_LOT = 'LOT'
+    AWARD_BASIS_UNIT = 'UNIT'
+    AWARD_BASIS_CHOICES = [
+        (AWARD_BASIS_LOT, 'By Lot'),
+        (AWARD_BASIS_UNIT, 'By Unit'),
+    ]
+
     rfq_no = models.CharField(max_length=50, unique=True)
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='rfqs')
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='rfqs')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_rfqs')
     subject = models.CharField(max_length=255)
     message = models.TextField()
+    mode_of_procurement = models.CharField(max_length=200, blank=True)
+    award_basis = models.CharField(max_length=10, choices=AWARD_BASIS_CHOICES, default=AWARD_BASIS_LOT)
+    abc = models.CharField(max_length=200, blank=True)
+    quotation_no = models.CharField(max_length=100, blank=True)
+    additional_notes = models.TextField(blank=True)
+    # System-generated RFQ document (BAC → supplier). Never overwritten by a
+    # supplier upload.
+    pdf_file = models.CharField(max_length=500, blank=True)
+    # Completed RFQ document uploaded by the supplier (printed, filled, signed,
+    # scanned). Kept separate from ``pdf_file`` for auditability.
+    submitted_pdf = models.CharField(max_length=500, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_DRAFT)
     sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

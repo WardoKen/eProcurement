@@ -7,14 +7,19 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from io import BytesIO
+
 from django.http import JsonResponse
 from django.core.mail import EmailMessage
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.utils import timezone
+from django.template.loader import render_to_string
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, Min, OuterRef, Q
 from django.conf import settings
+from django.utils.text import slugify
+from xhtml2pdf import pisa
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
@@ -40,10 +45,18 @@ from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quot
 from .supplier_registration import (
     REQUIRED_UPLOAD_KEYS,
     OPTIONAL_UPLOAD_KEYS,
+    MAX_UPLOAD_SIZE,
     get_required_business_document_key,
     sanitize_text,
     validate_supplier_payload,
     _save_supplier_upload,
+)
+
+from api.rfq.services.rfq_generator import generate_rfq_pdf
+from api.rfq.procurement_modes import (
+    procurement_mode_choices,
+    normalize_procurement_mode,
+    is_valid_procurement_mode,
 )
 
 UPLOADS_DIR = Path(settings.BASE_DIR) / 'uploads'
@@ -164,12 +177,16 @@ PR_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{3}$')
 def next_pr_number(today=None, lock=False):
     today = today or timezone.localdate()
     prefix = f'{today:%Y-%m}-'
+    year_prefix = f'{today:%Y}-'
     if lock:
-        PRNumberSequence.objects.select_for_update().get(key='global')
+        # The advisory-lock row is normally seeded by migration 0009, but guard
+        # against environments where it is missing so numbering never 500s.
+        PRNumberSequence.objects.get_or_create(key='global')
+        PRNumberSequence.objects.select_for_update().filter(key='global').first()
 
     highest = 0
-    valid_number = re.compile(rf'^{re.escape(prefix)}(\d{{3}})$')
-    for value in PurchaseRequest.objects.filter(pr_no__startswith=prefix).values_list('pr_no', flat=True):
+    valid_number = re.compile(rf'^{re.escape(year_prefix)}\d{{2}}-(\d{{3}})$')
+    for value in PurchaseRequest.objects.filter(pr_no__startswith=year_prefix).values_list('pr_no', flat=True):
         match = valid_number.fullmatch(value or '')
         if match:
             highest = max(highest, int(match.group(1)))
@@ -226,6 +243,18 @@ def upload_file(request):
     document = payload.get('document', {})
     layout = payload.get('layout', {})
     parsed = parse_purchase_request(document.get('raw_text', ''), layout, payload.get('textract_blocks') or [])
+    # Date values in scanned table cells can be separated from the ``Date:``
+    # label by OCR. Recover the visible date directly from the raw text.
+    parsed_header = parsed.setdefault('header', {})
+    if not parsed_header.get('date'):
+        date_match = re.search(r'\b(\d{1,2})[\-/\.](\d{1,2})[\-/\.](\d{4})\b', document.get('raw_text', ''))
+        if date_match:
+            try:
+                parsed_header['date'] = datetime.strptime(
+                    f'{date_match.group(1)}/{date_match.group(2)}/{date_match.group(3)}', '%m/%d/%Y'
+                ).date().isoformat()
+            except ValueError:
+                pass
     if not is_purchase_request_document(document, parsed):
         file_path.unlink(missing_ok=True)
         return json_error('This file does not appear to be a Purchase Request. Upload a PR document.', 422)
@@ -495,6 +524,53 @@ def get_roles(request):
     return JsonResponse(roles, safe=False)
 
 
+# ── End-user (buyer) facing PR progress ─────────────────────────────────────
+# The buyer sees a high-level procurement status derived from the PR status and
+# the RFQ lifecycle only - never supplier identities, matching scores, or
+# quotations. The backend stays the source of truth for the stage.
+BUYER_PR_STAGES = [
+    'submitted', 'under_review', 'supplier_matching', 'rfq_sent',
+    'supplier_response', 'completed',
+]
+
+BUYER_PR_STAGE_LABELS = {
+    'submitted': 'Submitted',
+    'under_review': 'Under BAC Review',
+    'supplier_matching': 'Supplier Matching',
+    'rfq_sent': 'RFQ Sent',
+    'supplier_response': 'Supplier Response',
+    'completed': 'Completed',
+    'rejected': 'Rejected',
+}
+
+BUYER_PR_STAGE_DESCRIPTIONS = {
+    'submitted': 'Your Purchase Request has been submitted and is queued for BAC review.',
+    'under_review': 'Your Purchase Request is currently being reviewed by the BAC Secretariat.',
+    'supplier_matching': 'Your Purchase Request is being matched with eligible suppliers.',
+    'rfq_sent': 'A Request for Quotation has been issued to qualified suppliers.',
+    'supplier_response': 'A supplier response to the Request for Quotation has been received.',
+    'completed': 'Your Purchase Request has completed the current procurement workflow.',
+    'rejected': 'Your Purchase Request was not approved by the BAC Secretariat.',
+}
+
+
+def _buyer_pr_stage(pr_status, rfq_sent_count, rfq_response_count):
+    """Collapse the internal PR + RFQ state into one buyer-facing stage key."""
+    if pr_status == PurchaseRequest.STATUS_REJECTED:
+        return 'rejected'
+    if pr_status == PurchaseRequest.STATUS_APPROVED:
+        return 'completed'
+    if rfq_response_count:
+        return 'supplier_response'
+    if rfq_sent_count:
+        return 'rfq_sent'
+    if pr_status == PurchaseRequest.STATUS_MATCHED:
+        return 'supplier_matching'
+    if pr_status == PurchaseRequest.STATUS_IN_REVIEW:
+        return 'under_review'
+    return 'submitted'
+
+
 @require_GET
 def pr_list(request):
     category = request.GET.get('category', '').strip()
@@ -503,6 +579,12 @@ def pr_list(request):
         PurchaseRequest.objects.order_by('-created_at')
         .annotate(items_count=Count('line_items'))
         .annotate(has_quotation=Exists(Quotation.objects.filter(purchase_request_id=OuterRef('pk'))))
+        .annotate(assigned_category_exists=Exists(
+            PurchaseRequestItem.objects
+            .filter(purchase_request_id=OuterRef('pk'))
+            .exclude(category__isnull=True)
+            .exclude(category='')
+        ))
     )
     if category:
         qs = qs.filter(category=category)
@@ -516,14 +598,58 @@ def pr_list(request):
             'category',
             'status',
             'purpose',
+            'date',
             'requested_by',
             'approved_by',
             'grand_total',
             'created_at',
             'items_count',
             'has_quotation',
+            'assigned_category_exists',
         )
-    return JsonResponse(list(prs), safe=False)
+    records = list(prs)
+
+    # RFQ rollup per PR in a single grouped query (no N+1). Only non-draft RFQs
+    # count as "sent"; a non-empty submitted_pdf counts as a supplier response.
+    rfq_rollup = {
+        row['purchase_request']: row
+        for row in (
+            RFQ.objects
+            .filter(purchase_request_id__in=[r['id'] for r in records])
+            .exclude(status=RFQ.STATUS_DRAFT)
+            .values('purchase_request')
+            .annotate(
+                sent=Count('id'),
+                responded=Count('id', filter=Q(submitted_pdf__gt='')),
+                first_sent_at=Min('sent_at'),
+                first_response_at=Min('submitted_at'),
+            )
+        )
+    }
+
+    for record in records:
+        if record.pop('assigned_category_exists') is False and record['status'] == PurchaseRequest.STATUS_MATCHED:
+            record['status'] = PurchaseRequest.STATUS_IN_REVIEW
+
+        rollup = rfq_rollup.get(record['id'], {})
+        sent = rollup.get('sent') or 0
+        responded = rollup.get('responded') or 0
+        stage = _buyer_pr_stage(record['status'], sent, responded)
+
+        record['rfq_sent_count'] = sent
+        record['rfq_response_count'] = responded
+        record['display_stage'] = stage
+        record['display_status'] = BUYER_PR_STAGE_LABELS[stage]
+        record['status_description'] = BUYER_PR_STAGE_DESCRIPTIONS[stage]
+        # Real timestamps only - stages without a dedicated timestamp field
+        # (review, matching, completed) are left out rather than invented.
+        record['stage_timestamps'] = {
+            'submitted': record['created_at'],
+            'rfq_sent': rollup.get('first_sent_at'),
+            'supplier_response': rollup.get('first_response_at'),
+        }
+
+    return JsonResponse(records, safe=False)
 
 
 @csrf_exempt
@@ -583,7 +709,7 @@ def pr_update(request, pr_id: int):
                     assigned_number = generate_pr_number()
                 pr.pr_no = assigned_number
             if finalize_review:
-                pr.status = PurchaseRequest.STATUS_MATCHED
+                pr.status = PurchaseRequest.STATUS_IN_REVIEW
             pr.entity_name = entity_name
             pr.source_filename = str(payload.get('source_filename') or pr.source_filename or '').strip()
             pr.category = str(payload.get('category') or '').strip() or None
@@ -685,7 +811,6 @@ def buyer_account_list(request):
         'full_name': account.full_name,
         'email': account.email,
         'unit_office': account.unit_office,
-        'is_active': account.is_active,
         'created_at': account.created_at,
         'last_login': account.last_login,
     } for account in accounts]
@@ -693,22 +818,14 @@ def buyer_account_list(request):
 
 
 @csrf_exempt
-@require_http_methods(['PATCH'])
-def buyer_account_status(request, user_id: int):
-    try:
-        data = json.loads(request.body.decode('utf-8'))
-    except Exception:
-        return json_error('Invalid JSON payload', 400)
-
+@require_http_methods(['DELETE'])
+def buyer_account_delete(request, user_id: int):
     account = User.objects.filter(id=user_id, role__name='buyer').first()
     if not account:
         return json_error('Buyer account not found', 404)
-    if not isinstance(data.get('is_active'), bool):
-        return json_error('is_active must be a boolean', 400)
 
-    account.is_active = data['is_active']
-    account.save(update_fields=['is_active', 'updated_at'])
-    return JsonResponse({'success': True, 'id': account.id, 'is_active': account.is_active})
+    account.delete()
+    return JsonResponse({'success': True, 'id': user_id})
 
 
 @csrf_exempt
@@ -780,6 +897,7 @@ def supplier_list_create(request):
                 'email',
                 'status',
                 'business_type',
+                'tin',
                 'contact_person',
                 'products_services',
                 'created_at',
@@ -910,6 +1028,12 @@ def supplier_register(request):
         if not username or not password or password != confirm_password:
             return JsonResponse({'success': False, 'message': 'Account setup details are incomplete or passwords do not match.'}, status=400)
 
+    # Never overwrite an existing login. Reject up front (before any file is
+    # persisted) if the username is already taken; the unique constraint below
+    # is the final guard against a race.
+    if username and User.objects.filter(username__iexact=username).exists():
+        return JsonResponse({'success': False, 'message': 'This username is already taken. Please choose another.'}, status=409)
+
     try:
         with transaction.atomic():
             supplier = Supplier.objects.create(
@@ -964,18 +1088,15 @@ def supplier_register(request):
 
             if username:
                 role = Role.objects.get_or_create(name='supplier')[0]
-                try:
-                    User.objects.create(
-                        username=username,
-                        password_hash=hash_password(password),
-                        full_name=sanitize_text(payload.get('contactPerson', '')),
-                        role=role,
-                        is_active=True,
-                    )
-                except IntegrityError:
-                    raise IntegrityError('Username already exists')
+                User.objects.create(
+                    username=username,
+                    password_hash=hash_password(password),
+                    full_name=sanitize_text(payload.get('contactPerson', '')),
+                    role=role,
+                    is_active=True,
+                )
     except IntegrityError:
-        return JsonResponse({'success': False, 'message': 'Username already exists.'}, status=409)
+        return JsonResponse({'success': False, 'message': 'This username is already taken. Please choose another.'}, status=409)
     except Exception as exc:
         return JsonResponse({'success': False, 'message': 'Failed to save supplier registration.', 'error': str(exc)}, status=500)
 
@@ -1004,6 +1125,7 @@ def supplier_update_status(request, supplier_id: int):
     if status in {'Rejected', 'For Compliance'} and not remarks:
         return json_error('Remarks are required for this decision.', 400)
 
+    was_approved = supplier.status == 'Approved'
     supplier.status = status
     supplier.review_remarks = remarks
     supplier.save(update_fields=['status', 'review_remarks', 'updated_at'])
@@ -1018,7 +1140,7 @@ def supplier_update_status(request, supplier_id: int):
             document.verification_status = str(document_status).strip()
             document.save(update_fields=['verification_status'])
 
-    if status == 'Approved':
+    if status == 'Approved' and not was_approved:
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_PROFILE_APPROVED,
@@ -1026,7 +1148,59 @@ def supplier_update_status(request, supplier_id: int):
             message='Your supplier profile has been approved by the BAC admin.',
         )
 
-    return JsonResponse({'success': True, 'id': supplier.id, 'status': supplier.status, 'remarks': supplier.review_remarks})
+    documents = [
+        {
+            'id': doc.id,
+            'doc_type': doc.doc_type,
+            'verification_status': doc.verification_status,
+        }
+        for doc in supplier.documents.order_by('-uploaded_at')
+    ]
+    return JsonResponse({
+        'success': True,
+        'id': supplier.id,
+        'status': supplier.status,
+        'remarks': supplier.review_remarks,
+        'documents': documents,
+    })
+
+
+def _supplier_login_accounts(supplier):
+    """User logins that can sign in as this supplier.
+
+    There is no FK between Supplier and User, so this mirrors the loose match
+    used by ``login_view`` (username contained in the supplier email, or the
+    account full name equal to the supplier contact person).
+    """
+    email = (supplier.email or '').strip().lower()
+    contact = (supplier.contact_person or '').strip().lower()
+    matched_ids = []
+    for account in User.objects.filter(role__name='supplier'):
+        username = (account.username or '').strip().lower()
+        full_name = (account.full_name or '').strip().lower()
+        if (email and username and username in email) or (contact and full_name and full_name == contact):
+            matched_ids.append(account.id)
+    return User.objects.filter(id__in=matched_ids)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def supplier_delete(request, supplier_id: int):
+    """Permanently remove a supplier and everything attached to it.
+
+    Cascades to SupplierCategory, SupplierDocument, Quotation, Notification and
+    RFQ rows, and also deletes the supplier's login account(s).
+    """
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return json_error('Supplier not found', 404)
+
+    with transaction.atomic():
+        _supplier_login_accounts(supplier).delete()
+        supplier.delete()
+
+    return JsonResponse({'success': True, 'id': supplier_id})
 
 
 # ─── SUPPLIER PORTAL ENDPOINTS ──────────────────────────────────────────────────
@@ -1040,6 +1214,16 @@ def supplier_matching_opportunities(request, supplier_id):
         return JsonResponse({'error': 'Supplier not found'}, status=404)
 
     if supplier.status != 'Approved':
+        return JsonResponse({'opportunities': []})
+
+    required_document_keys = set(REQUIRED_UPLOAD_KEYS)
+    business_key = get_required_business_document_key(supplier.business_type)
+    if business_key:
+        required_document_keys.add(business_key)
+    verified_documents = set(
+        supplier.documents.filter(verification_status='Verified').values_list('doc_type', flat=True)
+    )
+    if required_document_keys - verified_documents:
         return JsonResponse({'opportunities': []})
 
     supplier_category_ids = set(
@@ -1136,6 +1320,25 @@ def supplier_dashboard_summary(request, supplier_id):
 
 
 @csrf_exempt
+@require_http_methods(['POST'])
+def quotation_attachment_upload(request, supplier_id, quotation_id):
+    try:
+        quotation = Quotation.objects.get(id=quotation_id, supplier_id=supplier_id)
+    except Quotation.DoesNotExist:
+        return JsonResponse({'error': 'Quotation not found'}, status=404)
+    uploaded = request.FILES.get('file')
+    if not uploaded or not uploaded.name.lower().endswith('.pdf'):
+        return JsonResponse({'error': 'A PDF quotation file is required'}, status=400)
+    if uploaded.size > 10 * 1024 * 1024:
+        return JsonResponse({'error': 'File size must not exceed 10 MB'}, status=400)
+    filename = _save_supplier_upload(uploaded)
+    quotation.attachment_filename = filename
+    quotation.save(update_fields=['attachment_filename', 'updated_at'])
+    return JsonResponse({'success': True, 'attachment_filename': filename,
+        'attachment_url': request.build_absolute_uri(f'/uploads/{filename}')})
+
+
+@csrf_exempt
 @require_http_methods(['GET', 'POST'])
 def supplier_quotations(request, supplier_id):
     """Get supplier's quotations or submit a new quotation."""
@@ -1156,6 +1359,8 @@ def supplier_quotations(request, supplier_id):
                 'estimated_delivery_days': q.estimated_delivery_days,
                 'warranty_months': q.warranty_months,
                 'remarks': q.remarks,
+                'attachment_filename': q.attachment_filename,
+                'attachment_url': request.build_absolute_uri(f'/uploads/{q.attachment_filename}') if q.attachment_filename else '',
                 'status': q.status,
                 'created_at': q.created_at.isoformat(),
                 'updated_at': q.updated_at.isoformat(),
@@ -1346,7 +1551,7 @@ def supplier_profile(request, supplier_id):
 
             # Only allow updating specific fields
             allowed_fields = [
-                'company_name', 'business_address', 'contact_person',
+                'company_name', 'business_address', 'tin', 'contact_person',
                 'contact_phone', 'email', 'nature_of_business', 'goods_services', 'business_type'
             ]
 
@@ -1369,6 +1574,7 @@ def supplier_profile(request, supplier_id):
                 'id': supplier.id,
                 'company_name': supplier.company_name,
                 'business_address': supplier.business_address,
+                'tin': supplier.tin,
                 'contact_person': supplier.contact_person,
                 'contact_phone': supplier.contact_phone,
                 'nature_of_business': supplier.nature_of_business,
@@ -1382,6 +1588,43 @@ def supplier_profile(request, supplier_id):
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+@require_POST
+def supplier_resubmit_document(request, supplier_id):
+    """Store a replacement supplier document for BAC verification."""
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return JsonResponse({'error': 'Supplier not found'}, status=404)
+
+    document_type = str(request.POST.get('doc_type') or '').strip()
+    uploaded = request.FILES.get('file')
+    if not document_type or not uploaded:
+        return JsonResponse({'error': 'Document type and file are required'}, status=400)
+    if not uploaded.name.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png')):
+        return JsonResponse({'error': 'Only PDF, JPG, JPEG, and PNG files are allowed'}, status=400)
+    if uploaded.size > 10 * 1024 * 1024:
+        return JsonResponse({'error': 'File size must not exceed 10 MB'}, status=400)
+
+    filename = _save_supplier_upload(uploaded)
+    document = SupplierDocument.objects.create(
+        supplier=supplier,
+        doc_type=document_type,
+        filename=filename,
+        original_name=uploaded.name,
+        verification_status='Pending',
+    )
+    # A replacement document must send the supplier account back through BAC review.
+    if supplier.status == 'For Compliance':
+        supplier.status = 'Pending Review'
+        supplier.save(update_fields=['status'])
+    return JsonResponse({'success': True, 'supplier_status': supplier.status, 'document': {
+        'id': document.id, 'doc_type': document.doc_type,
+        'filename': document.filename, 'original_name': document.original_name,
+        'verification_status': document.verification_status,
+        'uploaded_at': document.uploaded_at.isoformat(),
+        'file_url': request.build_absolute_uri(f'/uploads/{document.filename}'),
+    }})
 
 
 @require_GET
@@ -1405,6 +1648,14 @@ def purchase_request_details(request, pr_id):
             'category': item.category,
         })
 
+    quotations = [{
+        'id': q.id, 'supplier_id': q.supplier_id,
+        'supplier_name': q.supplier.company_name,
+        'quoted_amount': float(q.quoted_amount), 'status': q.status,
+        'attachment_filename': q.attachment_filename,
+        'attachment_url': request.build_absolute_uri(f'/uploads/{q.attachment_filename}') if q.attachment_filename else '',
+    } for q in pr.quotations.select_related('supplier').all()]
+
     return JsonResponse({
         'id': pr.id,
         'pr_no': pr.pr_no,
@@ -1425,6 +1676,7 @@ def purchase_request_details(request, pr_id):
         'status': pr.status,
         'created_at': pr.created_at.isoformat(),
         'items': items,
+        'quotations': quotations,
     })
 
 
@@ -1488,14 +1740,25 @@ def pr_items_assign_categories(request, pr_id):
             .distinct()
         )
         pr.category = ', '.join(assigned_categories) or None
-        pr.save(update_fields=['category'])
+        all_items_categorized = (
+            pr.line_items.exists()
+            and not pr.line_items.filter(category__isnull=True).exists()
+            and not pr.line_items.filter(category='').exists()
+        )
+        pr.status = PurchaseRequest.STATUS_MATCHED if all_items_categorized else PurchaseRequest.STATUS_IN_REVIEW
+        pr.save(update_fields=['category', 'status'])
 
-    return JsonResponse({'success': True, 'category': pr.category or ''})
+    return JsonResponse({'success': True, 'category': pr.category or '', 'status': pr.status})
 
 
 @require_GET
 def pr_supplier_match(request, pr_id):
-    """Return suppliers matched by the item categories assigned to a PR."""
+    """Return category matches filtered by supplier compliance eligibility.
+
+    A supplier is eligible only when the supplier is approved and every
+    registration compliance document required for its business type has been
+    uploaded and verified by BAC.
+    """
     try:
         pr = PurchaseRequest.objects.get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
@@ -1512,13 +1775,34 @@ def pr_supplier_match(request, pr_id):
 
     matching_supplier_ids = set(
         SupplierCategory.objects
-        .filter(category__name__in=categories)
+        .filter(category__name__in=categories, supplier__status='Approved')
         .values_list('supplier_id', flat=True)
     )
     all_suppliers = list(Supplier.objects.filter(id__in=matching_supplier_ids).values(
-        'id', 'company_name', 'email', 'contact_person', 'contact_phone',
-        'business_address', 'goods_services', 'nature_of_business', 'status',
+        'id', 'company_name', 'tin', 'email', 'contact_person', 'contact_phone',
+        'business_address', 'goods_services', 'nature_of_business', 'business_type', 'status',
     ))
+
+    # These are the documents that establish baseline supplier eligibility.
+    # The business-registration document varies by legal entity.
+    required_document_keys = set(REQUIRED_UPLOAD_KEYS)
+    supplier_records = {}
+    for supplier in Supplier.objects.filter(id__in=matching_supplier_ids):
+        required_keys = set(required_document_keys)
+        business_key = get_required_business_document_key(supplier.business_type)
+        if business_key:
+            required_keys.add(business_key)
+        verified_documents = set(
+            supplier.documents.filter(verification_status='Verified')
+            .values_list('doc_type', flat=True)
+        )
+        missing_documents = sorted(required_keys - verified_documents)
+        supplier_records[supplier.id] = {
+            'eligible': not missing_documents,
+            'missing_documents': missing_documents,
+            'required_documents': sorted(required_keys),
+            'compliance_percentage': round(((len(required_keys) - len(missing_documents)) / len(required_keys)) * 100) if required_keys else 100,
+        }
 
     results = []
     for cat in categories:
@@ -1527,9 +1811,24 @@ def pr_supplier_match(request, pr_id):
             .filter(category__name=cat)
             .values_list('supplier_id', flat=True)
         )
-        matched = [{**supplier, 'match_score': 1} for supplier in all_suppliers if supplier['id'] in category_supplier_ids]
+        matched = []
+        for supplier in all_suppliers:
+            compliance = supplier_records.get(supplier['id'])
+            if supplier['id'] not in category_supplier_ids or not compliance or not compliance['eligible']:
+                continue
+            matched.append({
+                **supplier,
+                'match_score': 1,
+                'category_match': True,
+                'compliance_status': 'Eligible',
+                **compliance,
+            })
 
-        results.append({'category': cat, 'suppliers': matched})
+        results.append({
+            'category': cat,
+            'suppliers': matched,
+            'eligibility_rule': 'Approved supplier with all required compliance documents verified',
+        })
 
     return JsonResponse(results, safe=False)
 
@@ -1562,6 +1861,27 @@ def pr_unmatched_list(request):
     return JsonResponse(result, safe=False)
 
 
+# Supplier-facing labels for the RFQ lifecycle. Reuses the existing status
+# values (draft / sent / quotation_received / completed) - no parallel system.
+RFQ_STATUS_LABELS = {
+    RFQ.STATUS_DRAFT: 'Draft',
+    RFQ.STATUS_SENT: 'Awaiting Supplier Response',
+    RFQ.STATUS_QUOTATION_RECEIVED: 'Response Submitted',
+    RFQ.STATUS_COMPLETED: 'Completed',
+}
+
+
+def _pr_rfq_progress_status(sent, received):
+    """PR-level RFQ progress derived from issued vs. responded counts."""
+    if sent <= 0:
+        return 'no_rfqs'
+    if received <= 0:
+        return 'awaiting_responses'
+    if received < sent:
+        return 'responses_in_progress'
+    return 'all_responses_received'
+
+
 def _rfq_payload(rfq, request):
     pr = rfq.purchase_request
     items = [{
@@ -1571,12 +1891,38 @@ def _rfq_payload(rfq, request):
         'unit': item.unit or '',
         'category': item.category or '',
     } for item in pr.line_items.all()]
+    pdf_url = ''
+    if rfq.pdf_file:
+        pdf_url = request.build_absolute_uri(f'/uploads/{rfq.pdf_file}')
+    submitted_pdf_url = ''
+    submitted_filename = ''
+    if rfq.submitted_pdf:
+        submitted_pdf_url = request.build_absolute_uri(f'/uploads/{rfq.submitted_pdf}')
+        # Stored as "<uuid hex>_<original name>" - show the supplier's own name.
+        stored_name = Path(rfq.submitted_pdf).name
+        submitted_filename = re.sub(r'^[0-9a-f]{32}_', '', stored_name) or stored_name
+    abc_value = rfq.abc or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00')
     return {
         'id': rfq.id,
         'rfq_no': rfq.rfq_no,
         'status': rfq.status,
+        'status_label': RFQ_STATUS_LABELS.get(rfq.status, rfq.get_status_display()),
         'subject': rfq.subject,
         'message': rfq.message,
+        'abc': abc_value,
+        'quotation_no': rfq.quotation_no or rfq.rfq_no,
+        'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
+        'award_basis': rfq.award_basis or RFQ.AWARD_BASIS_LOT,
+        'additional_notes': rfq.additional_notes,
+        'pdf_file': rfq.pdf_file,
+        'pdf_url': pdf_url,
+        # Generated RFQ (BAC -> supplier); alias kept for clarity in new UI.
+        'generated_pdf_url': pdf_url,
+        # Completed RFQ uploaded by the supplier.
+        'submitted_pdf_url': submitted_pdf_url,
+        'submitted_filename': submitted_filename,
+        'submitted_at': rfq.submitted_at.isoformat() if rfq.submitted_at else None,
+        'has_response': bool(rfq.submitted_pdf),
         'created_at': rfq.created_at.isoformat(),
         'sent_at': rfq.sent_at.isoformat() if rfq.sent_at else None,
         'purchase_request': {
@@ -1587,14 +1933,15 @@ def _rfq_payload(rfq, request):
             'office_section': pr.office_section or '',
             'purpose': pr.purpose or '',
             'category': pr.category or '',
-            'source_filename': pr.source_filename,
-            'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
             'items': items,
         },
         'supplier': {
             'id': rfq.supplier.id,
             'company_name': rfq.supplier.company_name,
+            'business_address': rfq.supplier.business_address,
+            'tin': rfq.supplier.tin,
             'contact_person': rfq.supplier.contact_person,
+            'contact_phone': rfq.supplier.contact_phone,
             'email': rfq.supplier.email,
         },
     }
@@ -1604,9 +1951,27 @@ def _rfq_number():
     return f"RFQ-{timezone.now().year}-{RFQ.objects.filter(created_at__year=timezone.now().year).count() + 1:04d}"
 
 
+def _request_role(request):
+    return (request.META.get('HTTP_X_USER_ROLE') or '').strip().lower()
+
+
+def _request_username(request):
+    return (request.META.get('HTTP_X_USER_USERNAME') or '').strip()
+
+
+@require_GET
+def procurement_modes_view(request):
+    """Controlled list of procurement modes for the RFQ preparation dropdown."""
+    return JsonResponse({'modes': procurement_mode_choices()})
+
+
 @csrf_exempt
 @require_http_methods(['GET', 'POST', 'PATCH'])
 def admin_rfq(request, pr_id):
+    request_role = _request_role(request)
+    if request_role and request_role != 'admin':
+        return json_error('Admin access required to generate an RFQ.', 403)
+
     try:
         pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
@@ -1647,6 +2012,17 @@ def admin_rfq(request, pr_id):
     rfq = RFQ.objects.filter(id=rfq_id, purchase_request=pr).first() if rfq_id else None
     if rfq and rfq.supplier_id != supplier.id:
         return json_error('RFQ does not belong to the selected supplier.', 400)
+
+    # Prevent duplicate RFQs for the same supplier on the same PR. A still-draft
+    # RFQ is reused; one that has already been issued blocks a new request.
+    if not rfq:
+        existing_for_supplier = (
+            RFQ.objects.filter(purchase_request=pr, supplier=supplier).order_by('-created_at').first()
+        )
+        if existing_for_supplier and existing_for_supplier.status != RFQ.STATUS_DRAFT:
+            return json_error('An RFQ has already been sent to this supplier for this Purchase Request.', 409)
+        rfq = existing_for_supplier
+
     default_subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
     default_message = (
         f"Dear {supplier.contact_person or supplier.company_name},\n\n"
@@ -1657,19 +2033,65 @@ def admin_rfq(request, pr_id):
         "Thank you.\n\nRegards,\nBAC Secretariat"
     )
 
+    valid_award_bases = {choice[0] for choice in RFQ.AWARD_BASIS_CHOICES}
+
+    def _resolve_award_basis(raw, fallback):
+        candidate = str(raw or '').strip().upper()
+        return candidate if candidate in valid_award_bases else fallback
+
+    should_send = bool(payload.get('send'))
+    generate_pdf = bool(payload.get('generate_pdf') or payload.get('preview'))
+
+    # Mode of Procurement - admin-selected, validated against the configured
+    # controlled list (api/rfq/procurement_modes.py). Never inferred from the PR
+    # and kept independent of the PR category.
+    if 'mode_of_procurement' in payload:
+        mode_of_procurement = normalize_procurement_mode(payload.get('mode_of_procurement'))
+        if mode_of_procurement and not is_valid_procurement_mode(mode_of_procurement):
+            return json_error('Invalid mode of procurement selected.', 400)
+    else:
+        mode_of_procurement = normalize_procurement_mode(rfq.mode_of_procurement if rfq else '')
+
+    if (generate_pdf or should_send) and not is_valid_procurement_mode(mode_of_procurement):
+        return json_error('Please select a mode of procurement.', 400)
+
+    rfq_created = rfq is None
     if not rfq:
+        abc_value = str(payload.get('abc') or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00'))
         rfq = RFQ.objects.create(
             rfq_no=_rfq_number(),
             purchase_request=pr,
             supplier=supplier,
+            created_by=User.objects.filter(username=_request_username(request)).first(),
             subject=str(payload.get('subject') or default_subject).strip(),
             message=str(payload.get('message') or default_message).strip(),
+            abc=abc_value.strip(),
+            additional_notes=str(payload.get('additional_notes') or '').strip(),
+            mode_of_procurement=mode_of_procurement,
+            award_basis=_resolve_award_basis(payload.get('award_basis'), RFQ.AWARD_BASIS_LOT),
+            quotation_no=str(payload.get('quotation_no') or '').strip(),
         )
-    elif request.method == 'PATCH':
+    else:
+        abc_value = str(payload.get('abc') or (rfq.abc or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00'))).strip()
         rfq.subject = str(payload.get('subject') or rfq.subject).strip()
         rfq.message = str(payload.get('message') or rfq.message).strip()
+        rfq.abc = abc_value
+        rfq.quotation_no = str(payload.get('quotation_no') or rfq.quotation_no or '').strip()
+        rfq.mode_of_procurement = mode_of_procurement
+        rfq.award_basis = _resolve_award_basis(payload.get('award_basis'), rfq.award_basis or RFQ.AWARD_BASIS_LOT)
+        rfq.additional_notes = str(payload.get('additional_notes') or rfq.additional_notes).strip()
+        rfq.created_by = rfq.created_by or User.objects.filter(username=_request_username(request)).first()
+        if request.method == 'PATCH':
+            rfq.save(update_fields=['subject', 'message', 'abc', 'quotation_no', 'additional_notes', 'mode_of_procurement', 'award_basis', 'created_by', 'updated_at'])
 
-    should_send = bool(payload.get('send'))
+    if generate_pdf:
+        try:
+            file_url, _ = generate_rfq_pdf(rfq)
+            rfq.pdf_file = file_url.replace('/uploads/', '').lstrip('/')
+        except ValueError:
+            return json_error('RFQ PDF generation failed. Please verify the PR data and try again.', 500)
+        rfq.save(update_fields=['pdf_file', 'updated_at'])
+
     if should_send:
         if not rfq.subject or not rfq.message:
             return json_error('RFQ subject and message are required.', 400)
@@ -1682,10 +2104,10 @@ def admin_rfq(request, pr_id):
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[supplier.email],
         )
-        if pr.source_filename:
-            attachment_path = UPLOADS_DIR / Path(pr.source_filename).name
-            if attachment_path.is_file():
-                email.attach_file(attachment_path)
+        if rfq.pdf_file:
+            pdf_path = UPLOADS_DIR / rfq.pdf_file
+            if pdf_path.is_file():
+                email.attach_file(pdf_path, mimetype='application/pdf')
         try:
             email.send(fail_silently=False)
         except Exception:
@@ -1693,18 +2115,22 @@ def admin_rfq(request, pr_id):
 
         rfq.status = RFQ.STATUS_SENT
         rfq.sent_at = timezone.now()
-        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'updated_at'])
+        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'quotation_no', 'additional_notes', 'pdf_file', 'updated_at'])
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_RFQ_RECEIVED,
             title='New Request for Quotation',
-            message=f'RFQ {rfq.rfq_no} for PR {pr.pr_no or pr.id} is ready for your quotation.',
+            message=(
+                f'RFQ {rfq.rfq_no} for PR {pr.pr_no or pr.id} is ready. Download it, '
+                'complete and sign the document, then upload the completed RFQ.'
+            ),
             related_pr_id=pr.id,
+            related_rfq_id=rfq.id,
         )
     else:
-        rfq.save(update_fields=['subject', 'message', 'updated_at'])
+        rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'quotation_no', 'additional_notes', 'pdf_file', 'updated_at'])
 
-    return JsonResponse(_rfq_payload(rfq, request), status=201 if request.method == 'POST' and not rfq_id else 200)
+    return JsonResponse(_rfq_payload(rfq, request), status=201 if rfq_created else 200)
 
 
 @require_GET
@@ -1715,3 +2141,161 @@ def supplier_rfqs(request, supplier_id):
         return json_error('Supplier not found', 404)
     rfqs = RFQ.objects.filter(supplier=supplier).select_related('purchase_request').prefetch_related('purchase_request__line_items')
     return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfqs]})
+
+
+# Statuses in which a supplier may still upload / replace their completed RFQ.
+RFQ_RESPONSE_OPEN_STATUSES = {RFQ.STATUS_SENT, RFQ.STATUS_QUOTATION_RECEIVED}
+
+
+@csrf_exempt
+@require_POST
+def supplier_rfq_response(request, supplier_id, rfq_id):
+    """Supplier uploads (or replaces) the completed, signed RFQ PDF.
+
+    The generated RFQ (``rfq.pdf_file``) is never touched - the completed
+    document is stored separately in ``rfq.submitted_pdf``.
+    """
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return json_error('Supplier not found', 404)
+
+    # Authorisation: the RFQ must belong to this supplier.
+    rfq = RFQ.objects.filter(id=rfq_id, supplier=supplier).select_related('purchase_request').first()
+    if not rfq:
+        return json_error('RFQ not found for this supplier.', 404)
+
+    if rfq.status not in RFQ_RESPONSE_OPEN_STATUSES:
+        return json_error('This RFQ is no longer open for a response.', 409)
+
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        return json_error('A completed RFQ PDF file is required.', 400)
+    if not uploaded.name.lower().endswith('.pdf') or (
+        uploaded.content_type and uploaded.content_type not in ('application/pdf', 'application/octet-stream')
+    ):
+        return json_error('The completed RFQ must be a PDF file.', 400)
+    if uploaded.size > MAX_UPLOAD_SIZE:
+        return json_error('File size must not exceed 10 MB.', 400)
+
+    is_replacement = bool(rfq.submitted_pdf)
+    filename = _save_supplier_upload(uploaded)
+    rfq.submitted_pdf = filename
+    rfq.submitted_at = timezone.now()
+    rfq.status = RFQ.STATUS_QUOTATION_RECEIVED
+    rfq.save(update_fields=['submitted_pdf', 'submitted_at', 'status', 'updated_at'])
+
+    Notification.objects.create(
+        supplier=supplier,
+        notification_type=Notification.TYPE_QUOTATION_SUBMITTED,
+        title='Completed RFQ uploaded' if not is_replacement else 'Completed RFQ replaced',
+        message=(
+            f'Your completed RFQ for {rfq.rfq_no} (PR {rfq.purchase_request.pr_no or rfq.purchase_request_id}) '
+            'has been received by the BAC Secretariat.'
+        ),
+        related_pr_id=rfq.purchase_request_id,
+        related_rfq_id=rfq.id,
+    )
+
+    return JsonResponse({'success': True, 'replaced': is_replacement, **_rfq_payload(rfq, request)})
+
+
+@require_GET
+def admin_rfq_responses(request):
+    """All issued RFQs with their generated + submitted documents, for the BAC
+    RFQ Management screen. Role-gated like the other admin RFQ endpoints.
+
+    Default response is the flat ``{"rfqs": [...]}`` list. Pass ``group_by=pr`` to
+    receive the same RFQs grouped under their Purchase Request with per-PR
+    sent / received / awaiting counts, which is what the PR-centered RFQ
+    Management interface consumes.
+    """
+    request_role = _request_role(request)
+    if request_role and request_role != 'admin':
+        return json_error('Admin access required.', 403)
+
+    status_filter = (request.GET.get('status') or '').strip().lower()
+    search = (request.GET.get('search') or '').strip()
+    group_by = (request.GET.get('group_by') or '').strip().lower()
+    sort = (request.GET.get('sort') or '').strip().lower()
+
+    rfqs = (
+        RFQ.objects
+        .exclude(status=RFQ.STATUS_DRAFT)
+        .select_related('purchase_request', 'supplier')
+        .prefetch_related('purchase_request__line_items')
+        .order_by('-sent_at', '-created_at')
+    )
+    if status_filter == 'awaiting':
+        rfqs = rfqs.filter(status=RFQ.STATUS_SENT)
+    elif status_filter == 'received':
+        # "Responses Received" covers every RFQ the supplier has answered. The
+        # ``completed`` status (post-evaluation, not implemented in this capstone)
+        # is included here so it never needs a separate filter.
+        rfqs = rfqs.filter(status__in=[RFQ.STATUS_QUOTATION_RECEIVED, RFQ.STATUS_COMPLETED], submitted_pdf__gt='')
+
+    if search:
+        rfqs = rfqs.filter(
+            Q(rfq_no__icontains=search)
+            | Q(purchase_request__pr_no__icontains=search)
+            | Q(supplier__company_name__icontains=search)
+        )
+
+    rfq_list = list(rfqs)
+
+    if group_by != 'pr':
+        return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfq_list]})
+
+    # Group the already-fetched RFQs by Purchase Request. No extra queries: the
+    # PR and its line items were select_related / prefetch_related above.
+    groups = {}
+    order = []
+    for rfq in rfq_list:
+        pr = rfq.purchase_request
+        if pr.id not in groups:
+            groups[pr.id] = []
+            order.append(pr.id)
+        groups[pr.id].append(rfq)
+
+    grouped_payload = []
+    for pr_id in order:
+        group_rfqs = groups[pr_id]
+        pr = group_rfqs[0].purchase_request
+        sent = len(group_rfqs)
+        received = sum(1 for r in group_rfqs if r.submitted_pdf)
+        awaiting = sent - received
+        activity_stamps = [r.submitted_at or r.sent_at or r.created_at for r in group_rfqs]
+        last_activity = max(activity_stamps) if activity_stamps else None
+        grouped_payload.append({
+            'purchase_request': {
+                'id': pr.id,
+                'pr_no': pr.pr_no or f'PR-{pr.id}',
+                'date': pr.date.isoformat() if pr.date else '',
+                'category': pr.category or '',
+                'purpose': pr.purpose or '',
+                'entity_name': pr.entity_name,
+                'office_section': pr.office_section or '',
+                'status': pr.status,
+                'created_at': pr.created_at.isoformat(),
+            },
+            'rfq_summary': {
+                'sent': sent,
+                'responses_received': received,
+                'awaiting_response': awaiting,
+                'status': _pr_rfq_progress_status(sent, received),
+                'last_activity': last_activity.isoformat() if last_activity else None,
+            },
+            'rfqs': [_rfq_payload(r, request) for r in group_rfqs],
+        })
+
+    if sort == 'oldest_pr':
+        grouped_payload.sort(key=lambda g: g['purchase_request']['created_at'])
+    elif sort == 'recent_activity':
+        grouped_payload.sort(key=lambda g: g['rfq_summary']['last_activity'] or '', reverse=True)
+    elif sort == 'response_status':
+        rank = {'awaiting_responses': 0, 'responses_in_progress': 1, 'all_responses_received': 2, 'no_rfqs': 3}
+        grouped_payload.sort(key=lambda g: rank.get(g['rfq_summary']['status'], 9))
+    else:  # 'newest_pr' (default)
+        grouped_payload.sort(key=lambda g: g['purchase_request']['created_at'], reverse=True)
+
+    return JsonResponse({'purchase_requests': grouped_payload})

@@ -39,7 +39,7 @@ ROOT_URLCONF = 'eprocure.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [str(BASE_DIR / 'api' / 'rfq' / 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -98,3 +98,13 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', '1').lower() in ('1', 'true', 'yes')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'BAC Secretariat <no-reply@eprocure.local>')
 
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'authorization',
+    'content-type',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-user-role',
+    'x-user-username',
+]

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Request for Quotation - {{ rfq_no }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 32pt 36pt 32pt 36pt;
+      }
+
+      body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #000;
+        line-height: 1.3;
+      }
+
+      p {
+        margin: 0 0 6pt 0;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 8pt;
+      }
+
+      .header .t1 {
+        font-size: 11pt;
+        font-weight: bold;
+      }
+
+      .header .t2 {
+        font-size: 9pt;
+        font-weight: bold;
+      }
+
+      .header .t3 {
+        font-size: 8pt;
+      }
+
+      table.topgrid {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4pt;
+      }
+
+      table.topgrid td {
+        vertical-align: top;
+      }
+
+      .supplier-cell {
+        padding-right: 16pt;
+      }
+
+      .supplier-cell .s-row {
+        margin: 9pt 0;
+      }
+
+      table.meta {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #000;
+      }
+
+      table.meta td {
+        border: 1px solid #000;
+        font-weight: bold;
+        font-size: 8.5pt;
+        vertical-align: top;
+      }
+
+      table.meta td.meta-label {
+        text-align: right;
+        width: 78pt;
+      }
+
+      table.meta td.meta-value {
+        text-align: left;
+      }
+
+      .invitation {
+        margin: 12pt 0 10pt 0;
+      }
+
+      .invitation .indented {
+        text-align: justify;
+      }
+
+      .highlight {
+        color: #c00000;
+      }
+
+      table.sig-block {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14pt;
+      }
+
+      table.sig-block td {
+        vertical-align: bottom;
+      }
+
+      td.sig-cell {
+        width: 240pt;
+        text-align: center;
+      }
+
+      .sig-img {
+        width: 130pt;
+        height: 65pt;
+      }
+
+      .sig-name {
+        font-weight: bold;
+        border-top: 1px solid #000;
+        padding-top: 2pt;
+      }
+
+      .sig-name.no-sig {
+        margin-top: 34pt;
+      }
+
+      .sig-role {
+        font-size: 8pt;
+      }
+
+      /* Width matches the printable area (A4 595pt - 72pt margins). The same
+         value is set as the width="" attribute below so xhtml2pdf can resolve
+         the per-column widths; a wider table would be scaled down to fit. */
+      table.items {
+        width: 523pt;
+        border-collapse: collapse;
+        margin-top: 8pt;
+        font-size: 9pt;
+      }
+
+      table.items th,
+      table.items td {
+        border: 1px solid #000;
+        vertical-align: top;
+        padding: 4pt;
+        /* xhtml2pdf wraps every cell in a KeepInFrame whose default mode is
+           "shrink" - that is what scales a long description down to an
+           unreadable size. "overflow" keeps the body font intact and lets the
+           row grow as tall as the text needs. */
+        -pdf-keep-in-frame-mode: overflow;
+      }
+
+      table.items th {
+        text-align: center;
+        font-weight: bold;
+        font-size: 8.5pt;
+      }
+
+      table.items td.c {
+        text-align: center;
+      }
+
+      table.items td.r {
+        text-align: right;
+        font-weight: bold;
+      }
+
+      /* Item and Description: the widest textual column. Author line breaks in
+         item_description are converted to <br> by the template; long words
+         still wrap inside the column. */
+      table.items td.desc-cell {
+        word-wrap: break-word;
+      }
+
+      .advisory,
+      .lot-note {
+        margin: 10pt 0 0 0;
+      }
+
+      .advisory {
+        text-align: justify;
+      }
+
+      .lot-note {
+        text-align: center;
+      }
+
+      table.lower {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16pt;
+      }
+
+      table.lower td {
+        vertical-align: top;
+      }
+
+      .terms-title {
+        text-decoration: underline;
+        margin-bottom: 6pt;
+      }
+
+      .terms-line {
+        margin: 5pt 0;
+      }
+
+      /* Signature blocks: an open area to sign in, a rule, then the caption
+         directly beneath the rule it labels. */
+      .sign-box {
+        border-bottom: 1px solid #000;
+        font-size: 1pt;
+        line-height: 1pt;
+        margin: 26pt 18pt 0 18pt;
+      }
+
+      .sign-label {
+        text-align: center;
+        font-weight: bold;
+        margin: 2pt 18pt 0 18pt;
+      }
+
+      .canvassed {
+        margin-top: 20pt;
+      }
+
+      .canvassed .sign-box {
+        margin: 22pt 320pt 0 0;
+      }
+
+      .canvassed .sign-label {
+        margin: 2pt 320pt 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="t1">Republic of the Philippines</div>
+      <div class="t2">CEBU TECHNOLOGICAL UNIVERSITY - TUBURAN CAMPUS</div>
+      <div class="t2">Bids and Awards Committee - Goods and Services</div>
+      <div class="t3">Tel. No: (032) 463-9313</div>
+    </div>
+
+    <table class="topgrid">
+      <tr>
+        <td class="supplier-cell" width="55%">
+          <div class="s-row"><strong>Company Name:</strong>&nbsp;{{ supplier.company_name|default:'' }}</div>
+          <div class="s-row"><strong>Address:</strong>&nbsp;{{ supplier.business_address|default:'' }}</div>
+          <div class="s-row"><strong>TIN:</strong>&nbsp;{{ supplier.tin|default:'' }}</div>
+        </td>
+        <td width="45%">
+          <table class="meta" cellpadding="3">
+            <tr>
+              <td class="meta-label">Date:</td>
+              <td class="meta-value">{{ pr_date }}</td>
+            </tr>
+            <tr>
+              <td class="meta-label">PR No:</td>
+              <td class="meta-value">{{ pr_no }}</td>
+            </tr>
+            <tr>
+              <td class="meta-label">Quotation No:</td>
+              <td class="meta-value">{{ quotation_no }}</td>
+            </tr>
+            <tr>
+              <td class="meta-label">Mode of Procurement:</td>
+              <td class="meta-value">{{ mode_of_procurement }}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div class="invitation">
+      <p>Gentlemen and Ladies:</p>
+      <p class="indented">Invitation for Request for Quotation for the project: <strong class="highlight">{{ pr_no }}</strong> the approved budget for the contract (ABC) is: <strong class="highlight">{{ abc|default:'Php0.00' }}</strong> Please quote your lowest price for the item (s) listed, state the shortest delivery time, and submit your quotation duly signed by you or your authorized representative. Insert your duly completed quotation into the attached return envelope and seal it.</p>
+    </div>
+
+    <table class="sig-block">
+      <tr>
+        <td>&nbsp;</td>
+        <td class="sig-cell">
+          {% if signature_url %}
+            <img class="sig-img" src="{{ signature_url }}" alt="{{ signatory_name|default:'LURIZA L. PRESBITERO' }}" />
+          {% else %}
+            <div class="sig-name no-sig">{{ signatory_name|default:'LURIZA L. PRESBITERO' }}</div>
+            <div class="sig-role">{{ signatory_role|default:'Member, BAC Secretariat' }}</div>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+
+    <table class="items" width="523" repeat="1">
+      <thead>
+        <tr>
+          <th style="width: 34pt;">Item No.</th>
+          <th style="width: 243pt;">Item and Description</th>
+          <th style="width: 44pt;">Qty/Unit</th>
+          <th style="width: 62pt;">Brand/Model (Offered by Supplier)</th>
+          <th style="width: 52pt;">Unit Price</th>
+          <th style="width: 88pt;">Total Price Quotation (Offered by Supplier)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% comment %}
+          Empty cells carry &nbsp; so xhtml2pdf does not reset the column
+          widths defined on the header row down to just the cell padding.
+        {% endcomment %}
+        {% for item in items %}
+          <tr>
+            <td class="c">{{ item.index }}</td>
+            <td class="desc-cell">{{ item.item_description|linebreaksbr }}</td>
+            <td class="c">{{ item.quantity_display }}{% if item.unit %}/{{ item.unit }}{% endif %}</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+          </tr>
+        {% empty %}
+          <tr><td class="c" colspan="6">No items available.</td></tr>
+        {% endfor %}
+        <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td class="r">TOTAL AMOUNT:</td>
+          <td>&nbsp;</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="advisory">Please be advised that in the event that you will be declared as the Lowest Complying and Responsive Supplier, said items will be awarded to you, subject to the submission of the documentary requirements (1. <strong><u>PhilGEPS Registration Certificate/ Number</u></strong>, 2. <strong><u>Mayor&rsquo;s Permit</u></strong>, 3. <strong><u>Income Tax Return</u></strong>, 4. <strong><u>Omnibus Sworn Statement</u></strong>). A Notice of Award and Purchase Order will then be issued.</div>
+    {% if award_basis == 'UNIT' %}
+      <div class="lot-note">NOTE: Award to the Lowest Complying Supplier shall be on a <strong><u>PER UNIT</u></strong> basis. (Suppliers may quote for one or more items).</div>
+    {% else %}
+      <div class="lot-note">NOTE: Award to the Lowest Complying Supplier shall be on a <strong><u>LOT</u></strong> basis. (Please quote all items to avoid disqualification).</div>
+    {% endif %}
+
+    <table class="lower">
+      <tr>
+        <td width="52%">
+          <div class="terms-title">Terms and Conditions:</div>
+          <div class="terms-line">&bull;&nbsp;&nbsp;Terms of Payment: ____________</div>
+          <div class="terms-line">&bull;&nbsp;&nbsp;Delivery Schedule: ____________</div>
+          <div class="terms-line">&bull;&nbsp;&nbsp;Price validity is 120 days from date of quotation</div>
+        </td>
+        <td width="48%">
+          <div class="sign-box">&nbsp;</div>
+          <div class="sign-label">Printed Name/ Signature</div>
+          <div class="sign-box">&nbsp;</div>
+          <div class="sign-label">Tel No./ Mobile No.</div>
+          <div class="sign-box">&nbsp;</div>
+          <div class="sign-label">Date</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="canvassed">
+      <div>Canvassed by:</div>
+      <div class="sign-box">&nbsp;</div>
+      <div class="sign-label">Name, Signature and Date</div>
+    </div>
+  </body>
+</html>

@@ -1,11 +1,14 @@
 import json
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
-from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, Role, Supplier, SupplierCategory, User
+from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, Role, Supplier, SupplierCategory, SupplierDocument, User
 from api.supplier_registration import get_required_business_document_key, validate_supplier_payload
 from api.views import hash_password
 
@@ -121,6 +124,48 @@ class SupplierAdminReviewTests(TestCase):
         supplier = Supplier.objects.get(email='jane@example.com')
         self.assertTrue(SupplierCategory.objects.filter(supplier=supplier, category=category).exists())
 
+    def _register_supplier(self, *, username, email, company='Acme Supply', password='Supplier123!'):
+        Role.objects.get_or_create(name='supplier')
+        category = Category.objects.filter(name='Office Supplies').first() or Category.objects.create(name='Office Supplies')
+
+        def pdf(name):
+            return SimpleUploadedFile(name, b'pdf', content_type='application/pdf')
+
+        return self.client.post(
+            '/api/suppliers/register',
+            data={
+                'companyName': company, 'businessType': 'Sole Proprietorship', 'businessAddress': '123 Main',
+                'contactPerson': 'Jane Doe', 'contactNumber': '+639171234567', 'email': email,
+                'productsServices': 'Office supplies', 'category_ids': str(category.id),
+                'username': username, 'password': password, 'confirmPassword': password,
+                'mayor_permit': pdf('mayor.pdf'), 'business_permit': pdf('business.pdf'),
+                'philgeps_registration': pdf('philgeps.pdf'), 'bir_registration': pdf('bir.pdf'),
+                'tax_clearance': pdf('tax.pdf'), 'dti_registration': pdf('dti.pdf'),
+            },
+            format='multipart',
+        )
+
+    def test_supplier_registration_rejects_duplicate_username_without_overwriting(self):
+        first = self._register_supplier(username='dup-user', email='first@example.com', company='First Co')
+        self.assertEqual(first.status_code, 201)
+        original = User.objects.get(username='dup-user')
+
+        second = self._register_supplier(username='dup-user', email='second@example.com', company='Second Co')
+        self.assertEqual(second.status_code, 409)
+
+        reloaded = User.objects.get(username='dup-user')
+        self.assertEqual(User.objects.filter(username='dup-user').count(), 1)
+        self.assertEqual(reloaded.id, original.id)
+        self.assertEqual(reloaded.password_hash, original.password_hash)
+        # the entire second registration is rolled back, not just the account
+        self.assertFalse(Supplier.objects.filter(email='second@example.com').exists())
+
+    def test_supplier_registration_rejects_username_that_differs_only_by_case(self):
+        self.assertEqual(self._register_supplier(username='CaseUser', email='a@example.com').status_code, 201)
+        clash = self._register_supplier(username='caseuser', email='b@example.com')
+        self.assertEqual(clash.status_code, 409)
+        self.assertEqual(User.objects.filter(username__iexact='caseuser').count(), 1)
+
     def test_supplier_login_response_includes_linked_supplier_status(self):
         role = Role.objects.get_or_create(name='supplier')[0]
         User.objects.create(
@@ -213,6 +258,115 @@ class SupplierAdminReviewTests(TestCase):
         supplier.refresh_from_db()
         self.assertEqual(supplier.status, 'For Compliance')
 
+    def test_admin_can_verify_documents_without_changing_approved_status(self):
+        supplier = Supplier.objects.create(
+            company_name='Acme Supply',
+            business_type='Sole Proprietorship',
+            email='acme@example.com',
+            status='Approved',
+        )
+        document = SupplierDocument.objects.create(
+            supplier=supplier,
+            doc_type='philgeps_registration',
+            filename='philgeps.pdf',
+            verification_status='Pending',
+        )
+        Notification.objects.all().delete()
+
+        response = self.client.patch(
+            f'/api/suppliers/{supplier.id}/status/',
+            data=json.dumps({
+                'status': 'Approved',
+                'document_statuses': {str(document.id): 'Verified'},
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        document.refresh_from_db()
+        supplier.refresh_from_db()
+        self.assertEqual(document.verification_status, 'Verified')
+        self.assertEqual(supplier.status, 'Approved')
+        self.assertEqual(response.json()['documents'][0]['verification_status'], 'Verified')
+        # Re-confirming an already-approved supplier must not re-notify them.
+        self.assertFalse(Notification.objects.filter(notification_type=Notification.TYPE_PROFILE_APPROVED).exists())
+
+    def test_supplier_status_no_longer_accepts_deactivated(self):
+        supplier = Supplier.objects.create(company_name='Acme Supply', email='acme@example.com', status='Approved')
+        response = self.client.patch(
+            f'/api/suppliers/{supplier.id}/status/',
+            data=json.dumps({'status': 'Deactivated', 'remarks': 'no longer trading'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.status, 'Approved')
+
+
+class AccountDeletionTests(TestCase):
+    def _supplier_role(self):
+        return Role.objects.get_or_create(name='supplier')[0]
+
+    def test_admin_can_delete_supplier_and_all_attached_records(self):
+        pr = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-09-001')
+        supplier = Supplier.objects.create(company_name='Acme', email='acme@example.com', status='Approved')
+        category = Category.objects.create(name='Office Supplies')
+        SupplierCategory.objects.create(supplier=supplier, category=category)
+        SupplierDocument.objects.create(supplier=supplier, doc_type='philgeps_registration', filename='p.pdf')
+        rfq = RFQ.objects.create(rfq_no='RFQ-2026-9001', purchase_request=pr, supplier=supplier,
+                                 subject='RFQ', message='Please quote', status=RFQ.STATUS_SENT)
+        Quotation.objects.create(supplier=supplier, purchase_request=pr, rfq=rfq, quoted_amount=100)
+        Notification.objects.create(supplier=supplier, notification_type=Notification.TYPE_RFQ_RECEIVED,
+                                    title='t', message='m')
+        login = User.objects.create(username='acme', password_hash='x', full_name='', role=self._supplier_role())
+
+        response = self.client.delete(f'/api/suppliers/{supplier.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Supplier.objects.filter(id=supplier.id).exists())
+        self.assertFalse(SupplierCategory.objects.exists())
+        self.assertFalse(SupplierDocument.objects.exists())
+        self.assertFalse(RFQ.objects.exists())
+        self.assertFalse(Quotation.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+        self.assertFalse(User.objects.filter(id=login.id).exists())
+        # unrelated records survive
+        self.assertTrue(PurchaseRequest.objects.filter(id=pr.id).exists())
+
+    def test_deleting_supplier_keeps_unrelated_supplier_login(self):
+        keep = Supplier.objects.create(company_name='Keep Co', email='keepco@example.com', status='Approved')
+        drop = Supplier.objects.create(company_name='Drop Co', email='dropco@example.com', status='Rejected')
+        keep_login = User.objects.create(username='keepco', password_hash='x', role=self._supplier_role())
+        drop_login = User.objects.create(username='dropco', password_hash='x', role=self._supplier_role())
+
+        response = self.client.delete(f'/api/suppliers/{drop.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(id=keep_login.id).exists())
+        self.assertFalse(User.objects.filter(id=drop_login.id).exists())
+        self.assertTrue(Supplier.objects.filter(id=keep.id).exists())
+
+    def test_delete_missing_supplier_returns_404(self):
+        self.assertEqual(self.client.delete('/api/suppliers/999999/').status_code, 404)
+
+    def test_admin_can_delete_buyer_account(self):
+        role = Role.objects.get_or_create(name='buyer')[0]
+        buyer = User.objects.create(username='buyer1', password_hash='x', role=role)
+        other = User.objects.create(username='buyer2', password_hash='x', role=role)
+
+        response = self.client.delete(f'/api/buyer-accounts/{buyer.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(id=buyer.id).exists())
+        self.assertTrue(User.objects.filter(id=other.id).exists())
+
+    def test_cannot_delete_non_buyer_via_buyer_endpoint(self):
+        admin = User.objects.create(username='admin1', password_hash='x',
+                                    role=Role.objects.get_or_create(name='admin')[0])
+        response = self.client.delete(f'/api/buyer-accounts/{admin.id}/')
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(User.objects.filter(id=admin.id).exists())
+
 
 class RFQWorkflowTests(TestCase):
     def setUp(self):
@@ -249,12 +403,37 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(RFQ.objects.count(), 1)
         self.assertEqual(PurchaseRequest.objects.count(), 1)
         self.assertEqual(response.json()['status'], RFQ.STATUS_DRAFT)
+        self.assertEqual(response.json()['award_basis'], 'LOT')
+
+    def test_award_basis_defaults_to_lot_and_can_be_set_to_unit(self):
+        create = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'award_basis': 'unit'}),
+            content_type='application/json',
+        )
+        self.assertEqual(create.status_code, 201)
+        rfq_id = create.json()['id']
+        self.assertEqual(create.json()['award_basis'], 'UNIT')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'UNIT')
+
+        patch = self.client.patch(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id, 'award_basis': 'garbage'}),
+            content_type='application/json',
+        )
+        self.assertEqual(patch.status_code, 200)
+        # An unrecognised value keeps the previously stored basis.
+        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'UNIT')
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_sending_rfq_creates_notification_and_email(self):
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'send': True}),
+            data=json.dumps({
+                'supplier_id': self.supplier.id,
+                'mode_of_procurement': 'Small Value Procurement',
+                'send': True,
+            }),
             content_type='application/json',
         )
 
@@ -264,6 +443,44 @@ class RFQWorkflowTests(TestCase):
         from django.core import mail
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [self.supplier.email])
+        self.assertEqual(mail.outbox[0].attachments, [])
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_cannot_create_second_rfq_for_supplier_after_sending(self):
+        sent = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'S', 'message': 'M',
+                             'mode_of_procurement': 'Small Value Procurement', 'send': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(sent.status_code, 201)
+
+        duplicate = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'S2', 'message': 'M2'}),
+            content_type='application/json',
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(RFQ.objects.filter(purchase_request=self.pr, supplier=self.supplier).count(), 1)
+
+    def test_second_post_without_rfq_id_reuses_existing_draft(self):
+        first = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'First', 'message': 'M'}),
+            content_type='application/json',
+        )
+        self.assertEqual(first.status_code, 201)
+        rfq_id = first.json()['id']
+
+        second = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'Second', 'message': 'M'}),
+            content_type='application/json',
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()['id'], rfq_id)
+        self.assertEqual(RFQ.objects.filter(purchase_request=self.pr, supplier=self.supplier).count(), 1)
+        self.assertEqual(RFQ.objects.get(id=rfq_id).subject, 'Second')
 
     def test_rfq_rejects_supplier_without_matching_category(self):
         other_supplier = Supplier.objects.create(company_name='Other Supplier', email='other@example.com', status='Approved')
@@ -275,6 +492,50 @@ class RFQWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('eligible', response.json()['message'])
+
+    def test_admin_can_generate_rfq_pdf_preview(self):
+        admin_role = Role.objects.get_or_create(name='admin')[0]
+        admin_user = User.objects.create(
+            username='adminrfq',
+            password_hash='hashed',
+            full_name='BAC Admin',
+            email='admin@example.com',
+            role=admin_role,
+        )
+
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({
+                'supplier_id': self.supplier.id,
+                'subject': 'Request for Quotation',
+                'message': 'Please quote for the requested items.',
+                'mode_of_procurement': 'Small Value Procurement',
+                'generate_pdf': True,
+                'preview': True,
+                'quotation_no': 'RFQ-2026-001',
+            }),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='admin',
+            HTTP_X_USER_USERNAME=admin_user.username,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['abc'], '₱0.00')
+        self.assertIn('/uploads/rfq/', response.json()['pdf_url'])
+        rfq = RFQ.objects.get(id=response.json()['id'])
+        self.assertTrue(rfq.pdf_file)
+        self.assertTrue(Path(settings.BASE_DIR, 'uploads', 'rfq', Path(rfq.pdf_file).name).exists())
+
+    def test_non_admin_cannot_generate_rfq_pdf(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'generate_pdf': True}),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='supplier',
+            HTTP_X_USER_USERNAME='supplierdemo',
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_quotation_can_reference_sent_rfq(self):
         rfq = RFQ.objects.create(
@@ -308,6 +569,266 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 201)
 
 
+class RFQModeOfProcurementTests(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name='Air Conditioning')
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU Tuburan Campus',
+            pr_no='2026-08-001',
+            category='Airconditioning and Airconditioning Systems',
+            purpose='Campus cooling requirements',
+        )
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr,
+            item_description='4.0HP Floor Standing Inverter Air Conditioning Unit',
+            quantity=1, unit='unit', category='Air Conditioning',
+        )
+        self.supplier = Supplier.objects.create(
+            company_name='CoolTech Climate Solutions Inc.',
+            contact_person='Juan Dela Cruz', email='supplier@example.com', status='Approved',
+        )
+        SupplierCategory.objects.create(supplier=self.supplier, category=self.category)
+
+    def _create_draft(self, **extra):
+        payload = {'supplier_id': self.supplier.id, 'subject': 'RFQ', 'message': 'Please quote'}
+        payload.update(extra)
+        return self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/', data=json.dumps(payload), content_type='application/json',
+            HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+        )
+
+    def test_procurement_modes_endpoint_lists_configured_options(self):
+        response = self.client.get('/api/procurement-modes/')
+        self.assertEqual(response.status_code, 200)
+        modes = response.json()['modes']
+        self.assertIn('Small Value Procurement', modes)
+
+    def test_generate_requires_a_mode(self):
+        response = self._create_draft(generate_pdf=True, preview=True)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['message'], 'Please select a mode of procurement.')
+        self.assertEqual(RFQ.objects.count(), 0)
+
+    def test_arbitrary_mode_is_rejected(self):
+        response = self._create_draft(mode_of_procurement='Totally Made Up Mode')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Invalid mode of procurement', response.json()['message'])
+
+    def test_selected_mode_is_stored_and_returned_and_persists(self):
+        create = self._create_draft(mode_of_procurement='Small Value Procurement')
+        self.assertEqual(create.status_code, 201)
+        rfq_id = create.json()['id']
+        self.assertEqual(create.json()['mode_of_procurement'], 'Small Value Procurement')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).mode_of_procurement, 'Small Value Procurement')
+
+        reopened = self.client.get(
+            f'/api/pr/{self.pr.id}/rfq/', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+        )
+        self.assertEqual(reopened.json()['rfqs'][0]['mode_of_procurement'], 'Small Value Procurement')
+
+    def test_changing_mode_updates_same_rfq_without_new_record(self):
+        create = self._create_draft(mode_of_procurement='Small Value Procurement',
+                                    generate_pdf=True, preview=True)
+        self.assertEqual(create.status_code, 201)
+        rfq_id = create.json()['id']
+
+        updated = self.client.patch(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id,
+                             'mode_of_procurement': 'Shopping', 'generate_pdf': True, 'preview': True}),
+            content_type='application/json', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()['mode_of_procurement'], 'Shopping')
+        self.assertEqual(RFQ.objects.count(), 1)
+        self.assertEqual(RFQ.objects.get(id=rfq_id).mode_of_procurement, 'Shopping')
+        self.assertIn('/uploads/rfq/', updated.json()['pdf_url'])
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_save_then_send_flow_locks_the_rfq(self):
+        # Save (mirrors the "Save RFQ" button: always regenerates the preview).
+        create = self._create_draft(mode_of_procurement='Shopping', generate_pdf=True, preview=True)
+        self.assertEqual(create.status_code, 201)
+        rfq_id = create.json()['id']
+        self.assertEqual(create.json()['status'], RFQ.STATUS_DRAFT)
+        self.assertIn('/uploads/rfq/', create.json()['pdf_url'])
+
+        # Send (mirrors the "Send RFQ to Supplier" button payload).
+        sent = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id, 'subject': 'RFQ',
+                             'message': 'Please quote', 'mode_of_procurement': 'Shopping',
+                             'generate_pdf': True, 'preview': False, 'send': True}),
+            content_type='application/json', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+        )
+        self.assertEqual(sent.status_code, 200)
+        self.assertEqual(sent.json()['status'], RFQ.STATUS_SENT)
+        self.assertEqual(sent.json()['mode_of_procurement'], 'Shopping')
+        self.assertEqual(RFQ.objects.count(), 1)
+        from django.core import mail
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_pdf_template_prints_the_selected_mode(self):
+        from django.template.loader import render_to_string
+        html = render_to_string('rfq/rfq.html', {
+            'rfq_no': 'RFQ-1', 'pr_no': '2026-08-001', 'pr_date': '', 'quotation_no': '',
+            'mode_of_procurement': 'Negotiated Procurement', 'award_basis': 'LOT',
+            'supplier': {}, 'abc': 'Php0.00', 'additional_notes': '', 'items': [],
+            'signatory_name': 'X', 'signatory_role': 'Y', 'signature_url': '',
+        })
+        self.assertIn('Negotiated Procurement', html)
+
+    def test_mode_does_not_touch_pr_category_or_matching(self):
+        create = self._create_draft(mode_of_procurement='Shopping')
+        self.assertEqual(create.status_code, 201)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.category, 'Airconditioning and Airconditioning Systems')
+        self.assertEqual(create.json()['purchase_request']['category'],
+                         'Airconditioning and Airconditioning Systems')
+
+
+class SupplierRFQResponseTests(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name='Air Conditioning')
+        self.pr = PurchaseRequest.objects.create(entity_name='CTU Tuburan Campus', pr_no='2026-08-001',
+                                                 category='Air Conditioning', office_section='Campus Admin')
+        PurchaseRequestItem.objects.create(purchase_request=self.pr, item_description='Aircon unit',
+                                           quantity=1, unit='unit', category='Air Conditioning')
+        self.supplier = Supplier.objects.create(company_name='CoolTech Inc.', email='cooltech@example.com',
+                                                status='Approved')
+        self.other_supplier = Supplier.objects.create(company_name='Rival Co', email='rival@example.com',
+                                                      status='Approved')
+        self.rfq = RFQ.objects.create(rfq_no='RFQ-2026-0001', purchase_request=self.pr, supplier=self.supplier,
+                                      subject='RFQ', message='Please quote', status=RFQ.STATUS_SENT,
+                                      pdf_file='rfq/RFQ-2026-0001-1.pdf')
+
+    def _pdf(self, name='completed.pdf'):
+        return SimpleUploadedFile(name, b'%PDF-1.4 completed rfq', content_type='application/pdf')
+
+    def _upload(self, supplier, rfq, file=None):
+        return self.client.post(
+            f'/api/suppliers/{supplier.id}/rfqs/{rfq.id}/response/',
+            data={'file': file or self._pdf()},
+            format='multipart',
+        )
+
+    def test_supplier_uploads_completed_rfq(self):
+        response = self._upload(self.supplier, self.rfq)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.rfq.refresh_from_db()
+        self.assertTrue(self.rfq.submitted_pdf)
+        self.assertIsNotNone(self.rfq.submitted_at)
+        self.assertEqual(self.rfq.status, RFQ.STATUS_QUOTATION_RECEIVED)
+        self.assertEqual(body['status_label'], 'Response Submitted')
+        self.assertTrue(body['submitted_pdf_url'])
+        self.assertTrue(body['has_response'])
+        self.assertTrue(Notification.objects.filter(
+            supplier=self.supplier, notification_type=Notification.TYPE_QUOTATION_SUBMITTED,
+            related_rfq_id=self.rfq.id).exists())
+
+    def test_generated_rfq_is_preserved_after_submission(self):
+        self._upload(self.supplier, self.rfq)
+        self.rfq.refresh_from_db()
+        self.assertEqual(self.rfq.pdf_file, 'rfq/RFQ-2026-0001-1.pdf')
+        self.assertNotEqual(self.rfq.submitted_pdf, self.rfq.pdf_file)
+
+    def test_upload_rejects_non_pdf(self):
+        bad = SimpleUploadedFile('quote.png', b'not a pdf', content_type='image/png')
+        response = self._upload(self.supplier, self.rfq, file=bad)
+        self.assertEqual(response.status_code, 400)
+        self.rfq.refresh_from_db()
+        self.assertFalse(self.rfq.submitted_pdf)
+
+    def test_supplier_cannot_upload_to_another_suppliers_rfq(self):
+        response = self._upload(self.other_supplier, self.rfq)
+        self.assertEqual(response.status_code, 404)
+        self.rfq.refresh_from_db()
+        self.assertFalse(self.rfq.submitted_pdf)
+
+    def test_upload_rejected_when_rfq_is_draft(self):
+        self.rfq.status = RFQ.STATUS_DRAFT
+        self.rfq.save(update_fields=['status'])
+        response = self._upload(self.supplier, self.rfq)
+        self.assertEqual(response.status_code, 409)
+
+    def test_replace_submission(self):
+        first = self._upload(self.supplier, self.rfq)
+        self.assertFalse(first.json()['replaced'])
+        self.rfq.refresh_from_db()
+        original_name = self.rfq.submitted_pdf
+
+        second = self._upload(self.supplier, self.rfq, file=self._pdf('revised.pdf'))
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()['replaced'])
+        self.rfq.refresh_from_db()
+        self.assertNotEqual(self.rfq.submitted_pdf, original_name)
+
+    def test_supplier_only_sees_own_rfqs(self):
+        RFQ.objects.create(rfq_no='RFQ-2026-0002', purchase_request=self.pr, supplier=self.other_supplier,
+                           subject='RFQ', message='m', status=RFQ.STATUS_SENT)
+        response = self.client.get(f'/api/suppliers/{self.supplier.id}/rfqs/')
+        self.assertEqual(response.status_code, 200)
+        ids = {r['id'] for r in response.json()['rfqs']}
+        self.assertEqual(ids, {self.rfq.id})
+
+    def test_admin_rfq_responses_shows_both_documents(self):
+        self._upload(self.supplier, self.rfq)
+        response = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='admin')
+        self.assertEqual(response.status_code, 200)
+        row = next(r for r in response.json()['rfqs'] if r['id'] == self.rfq.id)
+        self.assertTrue(row['generated_pdf_url'])
+        self.assertTrue(row['submitted_pdf_url'])
+        self.assertEqual(row['supplier']['company_name'], 'CoolTech Inc.')
+        self.assertEqual(row['purchase_request']['pr_no'], '2026-08-001')
+
+    def test_admin_rfq_responses_filter_and_auth(self):
+        awaiting = self.client.get('/api/rfqs/responses/?status=awaiting', HTTP_X_USER_ROLE='admin')
+        self.assertEqual({r['id'] for r in awaiting.json()['rfqs']}, {self.rfq.id})
+
+        self._upload(self.supplier, self.rfq)
+        received = self.client.get('/api/rfqs/responses/?status=received', HTTP_X_USER_ROLE='admin')
+        self.assertEqual({r['id'] for r in received.json()['rfqs']}, {self.rfq.id})
+        awaiting_after = self.client.get('/api/rfqs/responses/?status=awaiting', HTTP_X_USER_ROLE='admin')
+        self.assertEqual(awaiting_after.json()['rfqs'], [])
+
+        forbidden = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='supplier')
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_existing_quotation_endpoint_still_works(self):
+        response = self.client.post(
+            f'/api/suppliers/{self.supplier.id}/quotations/',
+            data=json.dumps({'purchase_request_id': self.pr.id, 'rfq_id': self.rfq.id, 'quoted_amount': 5000}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Quotation.objects.filter(supplier=self.supplier, purchase_request=self.pr).count(), 1)
+
+    def test_upload_exposes_supplier_file_name(self):
+        response = self._upload(self.supplier, self.rfq, file=self._pdf('Completed RFQ - CoolTech.pdf'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['submitted_filename'], 'Completed_RFQ_-_CoolTech.pdf')
+
+    def test_upload_creates_no_duplicate_pr_rfq_or_quotation(self):
+        pr_count, rfq_count = PurchaseRequest.objects.count(), RFQ.objects.count()
+        self._upload(self.supplier, self.rfq)
+        self._upload(self.supplier, self.rfq, file=self._pdf('again.pdf'))  # resubmission
+        self.client.get(f'/api/suppliers/{self.supplier.id}/rfqs/')          # refresh
+        self.assertEqual(PurchaseRequest.objects.count(), pr_count)
+        self.assertEqual(RFQ.objects.count(), rfq_count)
+        # The capstone stops at "Admin can view the completed RFQ" - uploading a
+        # completed RFQ must never fabricate a Quotation record.
+        self.assertEqual(Quotation.objects.filter(rfq=self.rfq).count(), 0)
+
+    def test_upload_keeps_rfq_pr_and_supplier_association(self):
+        self._upload(self.supplier, self.rfq)
+        self.rfq.refresh_from_db()
+        self.assertEqual(self.rfq.purchase_request_id, self.pr.id)
+        self.assertEqual(self.rfq.supplier_id, self.supplier.id)
+        self.assertTrue(self.rfq.submitted_pdf)
+        self.assertNotEqual(self.rfq.submitted_pdf, self.rfq.pdf_file)
+
+
 class PurchaseRequestNumberTests(TestCase):
     def create_pr(self, entity='Test Entity'):
         return self.client.post(
@@ -335,7 +856,7 @@ class PurchaseRequestNumberTests(TestCase):
         self.assertEqual(response.json()['pr_no'], '2026-08-051')
 
     @patch('api.views.timezone.localdate', return_value=date(2026, 8, 24))
-    def test_ignores_other_months_and_invalid_numbers(self, _localdate):
+    def test_ignores_other_years_and_invalid_numbers(self, _localdate):
         PurchaseRequest.objects.create(entity_name='July', pr_no='2026-07-099')
         PurchaseRequest.objects.create(entity_name='Other year', pr_no='2025-12-999')
         PurchaseRequest.objects.create(entity_name='Current', pr_no='2026-08-005')
@@ -343,15 +864,23 @@ class PurchaseRequestNumberTests(TestCase):
 
         response = self.create_pr()
 
-        self.assertEqual(response.json()['pr_no'], '2026-08-006')
+        self.assertEqual(response.json()['pr_no'], '2026-08-100')
 
     @patch('api.views.timezone.localdate', return_value=date(2026, 9, 1))
-    def test_resets_for_new_month(self, _localdate):
+    def test_continues_sequence_for_new_month(self, _localdate):
         PurchaseRequest.objects.create(entity_name='August', pr_no='2026-08-051')
 
         response = self.create_pr()
 
-        self.assertEqual(response.json()['pr_no'], '2026-09-001')
+        self.assertEqual(response.json()['pr_no'], '2026-09-052')
+
+    @patch('api.views.timezone.localdate', return_value=date(2027, 1, 1))
+    def test_resets_for_new_year(self, _localdate):
+        PurchaseRequest.objects.create(entity_name='Previous year', pr_no='2026-12-051')
+
+        response = self.create_pr()
+
+        self.assertEqual(response.json()['pr_no'], '2027-01-001')
 
     @patch('api.views.timezone.localdate', return_value=date(2026, 8, 24))
     def test_saves_valid_custom_number_and_uses_it_for_next_automatic_number(self, _localdate):
@@ -432,7 +961,7 @@ class PurchaseRequestNumberTests(TestCase):
         pr.refresh_from_db()
         self.assertEqual(PurchaseRequest.objects.count(), 1)
         self.assertEqual(pr.entity_name, 'Corrected Buyer Entity')
-        self.assertEqual(pr.status, 'matched')
+        self.assertEqual(pr.status, 'in_review')
         self.assertEqual(pr.pr_no, '2026-08-001')
 
 
@@ -481,3 +1010,347 @@ class SupplierMatchingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item['company_name'] for item in response.json()[0]['suppliers']], [matching_supplier.company_name])
         self.assertNotIn(unrelated_supplier.company_name, [item['company_name'] for item in response.json()[0]['suppliers']])
+
+
+class RFQManagementGroupingTests(TestCase):
+    """PR-centered RFQ Management view: GET /api/rfqs/responses/?group_by=pr."""
+
+    def setUp(self):
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU Tuburan Campus', pr_no='2026-08-001',
+            category='Airconditioning and Airconditioning Systems', office_section='Campus Admin',
+        )
+        PurchaseRequestItem.objects.create(purchase_request=self.pr, item_description='Aircon unit',
+                                           quantity=1, unit='unit', category=self.pr.category)
+        self.supplier_a = Supplier.objects.create(company_name='CoolTech Climate Solutions',
+                                                  email='a@example.com', status='Approved')
+        self.supplier_b = Supplier.objects.create(company_name='ABC HVAC Solutions',
+                                                  email='b@example.com', status='Approved')
+        self.supplier_c = Supplier.objects.create(company_name='Metro Cooling Services',
+                                                  email='c@example.com', status='Approved')
+
+    def _rfq(self, supplier, no, status=RFQ.STATUS_SENT, submitted=False):
+        rfq = RFQ.objects.create(
+            rfq_no=no, purchase_request=self.pr, supplier=supplier,
+            subject='RFQ', message='Please quote', status=status,
+            pdf_file=f'rfq/{no}.pdf', sent_at=timezone.now(),
+        )
+        if submitted:
+            rfq.submitted_pdf = f'supplier_uploads/{no}-completed.pdf'
+            rfq.submitted_at = timezone.now()
+            rfq.status = RFQ.STATUS_QUOTATION_RECEIVED
+            rfq.save(update_fields=['submitted_pdf', 'submitted_at', 'status'])
+        return rfq
+
+    def _groups(self, query=''):
+        response = self.client.get(f'/api/rfqs/responses/?group_by=pr{query}', HTTP_X_USER_ROLE='admin')
+        self.assertEqual(response.status_code, 200)
+        return response.json()['purchase_requests']
+
+    def test_one_pr_one_rfq(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        groups = self._groups()
+        self.assertEqual(len(groups), 1)
+        summary = groups[0]['rfq_summary']
+        self.assertEqual((summary['sent'], summary['responses_received'], summary['awaiting_response']), (1, 0, 1))
+        self.assertEqual(summary['status'], 'awaiting_responses')
+        self.assertEqual(groups[0]['purchase_request']['pr_no'], '2026-08-001')
+
+    def test_multiple_rfqs_grouped_under_one_pr(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        self._rfq(self.supplier_b, 'RFQ-2026-0002')
+        self._rfq(self.supplier_c, 'RFQ-2026-0003')
+        groups = self._groups()
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]['rfqs']), 3)
+        self.assertEqual(groups[0]['rfq_summary']['sent'], 3)
+
+    def test_partial_responses(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001', submitted=True)
+        self._rfq(self.supplier_b, 'RFQ-2026-0002', submitted=True)
+        self._rfq(self.supplier_c, 'RFQ-2026-0003')
+        summary = self._groups()[0]['rfq_summary']
+        self.assertEqual((summary['sent'], summary['responses_received'], summary['awaiting_response']), (3, 2, 1))
+        self.assertEqual(summary['status'], 'responses_in_progress')
+
+    def test_all_responses_received(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001', submitted=True)
+        self._rfq(self.supplier_b, 'RFQ-2026-0002', submitted=True)
+        self._rfq(self.supplier_c, 'RFQ-2026-0003', submitted=True)
+        summary = self._groups()[0]['rfq_summary']
+        self.assertEqual((summary['sent'], summary['responses_received'], summary['awaiting_response']), (3, 3, 0))
+        self.assertEqual(summary['status'], 'all_responses_received')
+
+    def test_draft_rfqs_are_excluded(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        self._rfq(self.supplier_b, 'RFQ-2026-0002', status=RFQ.STATUS_DRAFT)
+        groups = self._groups()
+        self.assertEqual(groups[0]['rfq_summary']['sent'], 1)
+        self.assertEqual({r['rfq_no'] for r in groups[0]['rfqs']}, {'RFQ-2026-0001'})
+
+    def test_search_by_pr_rfq_and_supplier(self):
+        other_pr = PurchaseRequest.objects.create(entity_name='Other', pr_no='2026-08-002', category='Office Supplies')
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        RFQ.objects.create(rfq_no='RFQ-2026-0009', purchase_request=other_pr, supplier=self.supplier_b,
+                           subject='RFQ', message='m', status=RFQ.STATUS_SENT, sent_at=timezone.now())
+
+        self.assertEqual({g['purchase_request']['pr_no'] for g in self._groups('&search=2026-08-001')}, {'2026-08-001'})
+        self.assertEqual({g['purchase_request']['pr_no'] for g in self._groups('&search=RFQ-2026-0009')}, {'2026-08-002'})
+        self.assertEqual({g['purchase_request']['pr_no'] for g in self._groups('&search=CoolTech')}, {'2026-08-001'})
+
+    def test_documents_stay_separate_after_submission(self):
+        rfq = self._rfq(self.supplier_a, 'RFQ-2026-0001', submitted=True)
+        payload = self._groups()[0]['rfqs'][0]
+        self.assertTrue(payload['generated_pdf_url'])
+        self.assertTrue(payload['submitted_pdf_url'])
+        self.assertNotEqual(payload['generated_pdf_url'], payload['submitted_pdf_url'])
+        rfq.refresh_from_db()
+        self.assertEqual(rfq.pdf_file, 'rfq/RFQ-2026-0001.pdf')
+
+    def test_grouped_view_requires_admin(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        forbidden = self.client.get('/api/rfqs/responses/?group_by=pr', HTTP_X_USER_ROLE='supplier')
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_flat_response_is_unchanged_without_group_by(self):
+        self._rfq(self.supplier_a, 'RFQ-2026-0001')
+        response = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='admin')
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn('rfqs', body)
+        self.assertNotIn('purchase_requests', body)
+
+
+class RFQItemTableRenderingTests(TestCase):
+    """The generated RFQ item table is built from PurchaseRequestItem rows and
+    keeps long descriptions readable (no font shrinking)."""
+
+    LONG_DESCRIPTION = (
+        'Supply and Delivery of 4.0HP FLOOR STANDING, INVERTER TYPE AIR CONDITIONING UNIT '
+        'including labor charges for the installation, testing and commissioning:\n\n'
+        'Capacity: 3 Tons of Refrigeration (3TR) / 4.0 HP\n'
+        'Cooling Capacity: Approx. 36,000 BTU/h\n'
+        'Refrigerant: R32\n'
+        'Power Supply: 220-240V / 60Hz / 1 Phase\n'
+        'Noise Level: not more than 55 dB(A)\n'
+        'Inclusions: complete set of mounting brackets, interconnecting pipes and wiring\n'
+        'Warranty: minimum of one (1) year on parts and services and five (5) years on the compressor\n'
+    ) * 2
+
+    def setUp(self):
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU Tuburan Campus', pr_no='2026-08-010',
+            category='Airconditioning and Airconditioning Systems', purpose='Campus cooling',
+            grand_total=250000,
+        )
+        self.supplier = Supplier.objects.create(company_name='CoolTech Climate Solutions',
+                                                email='cooltech@example.com', status='Approved')
+
+    def _rfq(self):
+        return RFQ.objects.create(
+            rfq_no='RFQ-2026-0010', purchase_request=self.pr, supplier=self.supplier,
+            subject='RFQ', message='Please quote', status=RFQ.STATUS_DRAFT,
+            mode_of_procurement='Small Value Procurement',
+        )
+
+    def _pdf_lines(self, path):
+        """[(text, min_font_size)] for every visible text line in the PDF."""
+        from pdfminer.high_level import extract_pages
+        from pdfminer.layout import LTChar, LTTextContainer
+
+        lines = []
+        for page in extract_pages(str(path)):
+            for element in page:
+                if not isinstance(element, LTTextContainer):
+                    continue
+                for text_line in element:
+                    chars = [c for c in getattr(text_line, '_objs', []) if isinstance(c, LTChar)]
+                    text = ''.join(c.get_text() for c in chars).strip()
+                    if text:
+                        lines.append((text, min(round(c.size, 1) for c in chars)))
+        return lines
+
+    def test_quantity_formatting_trims_trailing_zeros(self):
+        from api.rfq.services.rfq_generator import _format_quantity
+        from decimal import Decimal
+        self.assertEqual(_format_quantity(Decimal('1.00')), '1')
+        self.assertEqual(_format_quantity(Decimal('2.50')), '2.5')
+        self.assertEqual(_format_quantity(Decimal('10.00')), '10')
+        self.assertEqual(_format_quantity(Decimal('0')), '0')
+
+    def test_each_pr_item_becomes_one_row_with_sequential_numbering(self):
+        PurchaseRequestItem.objects.create(purchase_request=self.pr, item_description='Ballpoint pen, black', quantity=50, unit='box')
+        PurchaseRequestItem.objects.create(purchase_request=self.pr, item_description='Bond paper A4\nsubstance 20', quantity=100, unit='ream')
+        PurchaseRequestItem.objects.create(purchase_request=self.pr, item_description=self.LONG_DESCRIPTION, quantity=4, unit='unit')
+
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(self._rfq())
+        lines = self._pdf_lines(path)
+        text = '\n'.join(t for t, _ in lines)
+
+        # One row per DB item with its structured quantity / unit.
+        self.assertIn('Ballpoint pen, black', text)
+        self.assertIn('50/box', text)
+        self.assertIn('100/ream', text)
+        self.assertIn('4/unit', text)
+        # Multiline description keeps its own line break, not a new item.
+        self.assertIn('Bond paper A4', text)
+        self.assertIn('substance 20', text)
+        # Item numbers come from the PR item sequence (1, 2, 3) and render as
+        # their own short cell, never derived from OCR line numbers.
+        self.assertEqual(
+            sorted({t for t, _ in lines if t in {'1', '2', '3'}}),
+            ['1', '2', '3'],
+        )
+
+    def test_long_description_is_rendered_in_full_and_stays_readable(self):
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description=self.LONG_DESCRIPTION, quantity=4, unit='unit',
+        )
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(self._rfq())
+        lines = self._pdf_lines(path)
+        text = '\n'.join(t for t, _ in lines)
+
+        # Full technical spec present - nothing truncated.
+        for fragment in ('FLOOR STANDING', 'Refrigerant: R32', '220-240V / 60Hz / 1 Phase',
+                         'five (5) years on the compressor'):
+            self.assertIn(fragment, text)
+
+        # No microscopic text: every line that carries description wording is >= 8pt.
+        description_sizes = [
+            size for t, size in lines
+            if any(k in t for k in ('Refrigerant', 'Cooling Capacity', 'Power Supply', 'Warranty', 'FLOOR STANDING'))
+        ]
+        self.assertTrue(description_sizes)
+        self.assertGreaterEqual(min(description_sizes), 8.0)
+
+    def test_supplier_fill_in_columns_are_left_blank(self):
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Aircon unit', quantity=1, unit='unit',
+            unit_cost=45000, total_cost=45000,
+        )
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(self._rfq())
+        text = '\n'.join(t for t, _ in self._pdf_lines(path))
+        # PR unit / total cost must never be pre-filled as a quotation value.
+        self.assertNotIn('45000', text.replace(',', ''))
+        self.assertNotIn('45,000', text)
+
+    def test_template_converts_description_newlines_to_breaks(self):
+        from django.template.loader import render_to_string
+        html = render_to_string('rfq/rfq.html', {
+            'rfq_no': 'R', 'pr_no': 'P', 'pr_date': '', 'quotation_no': '',
+            'mode_of_procurement': 'Shopping', 'award_basis': 'LOT', 'supplier': {},
+            'abc': 'Php0.00', 'additional_notes': '',
+            'items': [{'index': 1, 'item_description': 'Line one\nLine two',
+                       'quantity': 1, 'quantity_display': '1', 'unit': 'lot', 'stock_property_no': ''}],
+            'signatory_name': 'X', 'signatory_role': 'Y', 'signature_url': '',
+        })
+        self.assertIn('Line one<br>Line two', html.replace('<br />', '<br>'))
+
+
+class BuyerLiveStatusTests(TestCase):
+    """End-user Live Status: GET /api/pr/list/?submitted_by= exposes a
+    high-level, supplier-free procurement stage per Purchase Request."""
+
+    def _pr(self, no, status, submitted_by='buyer1', **kwargs):
+        return PurchaseRequest.objects.create(
+            entity_name='CTU Tuburan Campus', pr_no=no, status=status,
+            office_section='General Services Office', submitted_by=submitted_by,
+            date=date(2026, 9, 7), grand_total=478500, **kwargs,
+        )
+
+    def _rfq(self, pr, no, sent=False, responded=False):
+        rfq = RFQ.objects.create(
+            rfq_no=no, purchase_request=pr,
+            supplier=Supplier.objects.create(company_name=f'Supplier {no}', status='Approved'),
+            subject='RFQ', message='m',
+            status=RFQ.STATUS_SENT if sent or responded else RFQ.STATUS_DRAFT,
+            sent_at=timezone.now() if sent or responded else None,
+        )
+        if responded:
+            rfq.submitted_pdf = f'uploads/{no}.pdf'
+            rfq.submitted_at = timezone.now()
+            rfq.status = RFQ.STATUS_QUOTATION_RECEIVED
+            rfq.save(update_fields=['submitted_pdf', 'submitted_at', 'status'])
+        return rfq
+
+    def _record(self, pr, submitted_by='buyer1'):
+        response = self.client.get(f'/api/pr/list/?submitted_by={submitted_by}')
+        self.assertEqual(response.status_code, 200)
+        return next(r for r in response.json() if r['id'] == pr.id)
+
+    def test_stage_submitted(self):
+        pr = self._pr('2026-09-001', PurchaseRequest.STATUS_UPLOADED)
+        self.assertEqual(self._record(pr)['display_stage'], 'submitted')
+
+    def test_stage_under_bac_review(self):
+        pr = self._pr('2026-09-002', PurchaseRequest.STATUS_IN_REVIEW)
+        rec = self._record(pr)
+        self.assertEqual(rec['display_stage'], 'under_review')
+        self.assertEqual(rec['display_status'], 'Under BAC Review')
+
+    def test_stage_supplier_matching(self):
+        pr = self._pr('2026-09-003', PurchaseRequest.STATUS_MATCHED)
+        PurchaseRequestItem.objects.create(purchase_request=pr, item_description='x', category='Cat')
+        self._rfq(pr, 'RFQ-1')  # a draft RFQ must not advance the stage
+        self.assertEqual(self._record(pr)['display_stage'], 'supplier_matching')
+
+    def test_stage_rfq_sent(self):
+        pr = self._pr('2026-09-004', PurchaseRequest.STATUS_MATCHED)
+        PurchaseRequestItem.objects.create(purchase_request=pr, item_description='x', category='Cat')
+        self._rfq(pr, 'RFQ-1', sent=True)
+        self._rfq(pr, 'RFQ-2', sent=True)
+        rec = self._record(pr)
+        self.assertEqual(rec['display_stage'], 'rfq_sent')
+        self.assertEqual((rec['rfq_sent_count'], rec['rfq_response_count']), (2, 0))
+        self.assertTrue(rec['stage_timestamps']['rfq_sent'])
+
+    def test_stage_supplier_response(self):
+        pr = self._pr('2026-09-005', PurchaseRequest.STATUS_MATCHED)
+        PurchaseRequestItem.objects.create(purchase_request=pr, item_description='x', category='Cat')
+        self._rfq(pr, 'RFQ-1', responded=True)
+        self._rfq(pr, 'RFQ-2', sent=True)
+        rec = self._record(pr)
+        self.assertEqual(rec['display_stage'], 'supplier_response')
+        self.assertEqual((rec['rfq_sent_count'], rec['rfq_response_count']), (2, 1))
+        self.assertTrue(rec['stage_timestamps']['supplier_response'])
+
+    def test_stage_completed(self):
+        pr = self._pr('2026-09-006', PurchaseRequest.STATUS_APPROVED)
+        self.assertEqual(self._record(pr)['display_stage'], 'completed')
+
+    def test_stage_rejected(self):
+        pr = self._pr('2026-09-007', PurchaseRequest.STATUS_REJECTED)
+        rec = self._record(pr)
+        self.assertEqual(rec['display_stage'], 'rejected')
+        self.assertEqual(rec['display_status'], 'Rejected')
+
+    def test_multiple_prs_each_keep_their_own_stage(self):
+        a = self._pr('2026-09-010', PurchaseRequest.STATUS_UPLOADED)
+        b = self._pr('2026-09-011', PurchaseRequest.STATUS_MATCHED)
+        PurchaseRequestItem.objects.create(purchase_request=b, item_description='x', category='Cat')
+        self._rfq(b, 'RFQ-B', sent=True)
+        stages = {r['pr_no']: r['display_stage'] for r in self.client.get('/api/pr/list/?submitted_by=buyer1').json()}
+        self.assertEqual(stages['2026-09-010'], 'submitted')
+        self.assertEqual(stages['2026-09-011'], 'rfq_sent')
+
+    def test_response_never_exposes_supplier_information(self):
+        pr = self._pr('2026-09-020', PurchaseRequest.STATUS_MATCHED)
+        PurchaseRequestItem.objects.create(purchase_request=pr, item_description='x', category='Cat')
+        rfq = self._rfq(pr, 'RFQ-SECRET-2026', responded=True)
+        Quotation.objects.create(supplier=rfq.supplier, purchase_request=pr, rfq=rfq, quoted_amount=987654)
+        record = self._record(pr)
+        blob = json.dumps(record)
+        # No supplier identity, RFQ number, quotation figure, or match score.
+        for leak in ('SecretSupplier', rfq.supplier.company_name, 'RFQ-SECRET-2026',
+                     '987654', 'match_score', 'quoted_amount', 'compliance'):
+            self.assertNotIn(leak, blob)
+        # Only the high-level stage vocabulary is present.
+        self.assertNotIn('rfq_no', record)
+        self.assertNotIn('supplier', record)  # no per-supplier key on the record
+
+    def test_pr_date_is_returned_for_the_timeline(self):
+        pr = self._pr('2026-09-030', PurchaseRequest.STATUS_IN_REVIEW)
+        self.assertEqual(self._record(pr)['date'], '2026-09-07')

@@ -12,7 +12,7 @@ class HeaderParser:
             'fundCluster': self._find_label_value(['Fund Cluster', 'Cluster'], lines),
             'officeSection': self._find_label_value(['Office/Section', 'Office / Section', 'Office', 'Section'], lines),
             'prNumber': self._normalize_pr_number(self._find_label_value(['PR No', 'P.R. No', 'PR Number', 'Purchase Request No', 'PR. No'], lines)),
-            'date': self._parse_date_formats(self._find_label_value(['Date', 'Date Prepared', 'Date of PR'], lines)),
+            'date': self._parse_date_formats(self._find_label_value(['Date Prepared', 'Date of PR', 'Date'], lines)),
             'responsibilityCenterCode': self._find_label_value(['Responsibility Center Code', 'RCC', 'Responsibility Center', 'Cost Center'], lines),
         }
         return fields
@@ -65,6 +65,9 @@ class HeaderParser:
             return ''
         patterns = [
             (r'(\d{1,2})/(\d{1,2})/(\d{4})', self._parse_mdY),
+            (r'(\d{1,2})-(\d{1,2})-(\d{4})', self._parse_mdY),
+            (r'(\d{1,2})\.(\d{1,2})\.(\d{4})', self._parse_mdY),
+            (r'(\d{1,2})/(\d{1,2})/(\d{2})', self._parse_short_mdY),
             (r'(\d{4})-(\d{1,2})-(\d{1,2})', self._parse_yMd),
             (r'([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})', self._parse_month_day_year),
             (r'(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})', self._parse_day_month_year),
@@ -80,6 +83,11 @@ class HeaderParser:
 
     def _parse_mdY(self, match) -> str:
         return f'{match.group(3)}-{int(match.group(1)):02d}-{int(match.group(2)):02d}'
+
+    def _parse_short_mdY(self, match) -> str:
+        year = int(match.group(3))
+        year += 2000 if year < 70 else 1900
+        return f'{year}-{int(match.group(1)):02d}-{int(match.group(2)):02d}'
 
     def _parse_yMd(self, match) -> str:
         return f'{match.group(1)}-{int(match.group(2)):02d}-{int(match.group(3)):02d}'
