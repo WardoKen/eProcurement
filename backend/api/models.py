@@ -112,6 +112,11 @@ class PurchaseRequest(models.Model):
     twg_verified_by = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_UPLOADED)
     grand_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    # The submitting Buyer's acknowledgement of the Purchase Request Submission
+    # Declaration. Recorded for audit; the submitter and time are ``submitted_by``
+    # and ``declaration_acknowledged_at`` / ``created_at``.
+    declaration_acknowledged = models.BooleanField(default=False)
+    declaration_acknowledged_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -153,6 +158,8 @@ class Quotation(models.Model):
 
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='quotations')
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='quotations')
+    # ``rfq`` may be null for legacy quotations. Included in the uniqueness key so
+    # a supplier can quote separately for each category-group RFQ on one PR.
     rfq = models.ForeignKey('RFQ', on_delete=models.SET_NULL, null=True, blank=True, related_name='quotations')
     quoted_amount = models.DecimalField(max_digits=14, decimal_places=2)
     estimated_delivery_days = models.IntegerField(blank=True, null=True)
@@ -167,7 +174,7 @@ class Quotation(models.Model):
         return f"Q-{self.id} ({self.supplier.company_name} / PR {self.purchase_request_id})"
 
     class Meta:
-        unique_together = ('supplier', 'purchase_request')
+        unique_together = ('supplier', 'purchase_request', 'rfq')
 
 
 class Notification(models.Model):
@@ -220,20 +227,59 @@ class RFQ(models.Model):
     ]
 
     AWARD_BASIS_LOT = 'LOT'
-    AWARD_BASIS_UNIT = 'UNIT'
+    AWARD_BASIS_LINE = 'LINE'
     AWARD_BASIS_CHOICES = [
         (AWARD_BASIS_LOT, 'By Lot'),
-        (AWARD_BASIS_UNIT, 'By Unit'),
+        (AWARD_BASIS_LINE, 'By Line'),
     ]
 
-    rfq_no = models.CharField(max_length=50, unique=True)
+    # How the supplier came to be attached to this RFQ. ``category_match`` is the
+    # normal path (supplier registered under the PR procurement category);
+    # ``manual_bac`` records a deliberate BAC Secretariat override where the
+    # supplier is outside the PR category. This is transaction-specific and never
+    # alters the supplier's registered categories.
+    SELECTION_CATEGORY_MATCH = 'category_match'
+    SELECTION_MANUAL_BAC = 'manual_bac'
+    SELECTION_TYPE_CHOICES = [
+        (SELECTION_CATEGORY_MATCH, 'Category Match'),
+        (SELECTION_MANUAL_BAC, 'Manual BAC Selection'),
+    ]
+
+    # How the RFQ reaches the supplier. ``system`` is the normal registered
+    # workflow; ``manual`` is a BAC-issued RFQ for an unregistered supplier that
+    # the BAC downloads, prints and hands over in person.
+    DELIVERY_SYSTEM = 'system'
+    DELIVERY_MANUAL = 'manual'
+    DELIVERY_METHOD_CHOICES = [
+        (DELIVERY_SYSTEM, 'System'),
+        (DELIVERY_MANUAL, 'Manual'),
+    ]
+
+    # Null while the RFQ is still a draft - the RFQ-YYYY-NNNN number (also printed
+    # as the Quotation No.) is only assigned when the BAC issues the RFQ, so a
+    # preview never consumes a number.
+    rfq_no = models.CharField(max_length=50, unique=True, null=True, blank=True)
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='rfqs')
-    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='rfqs')
+    # The procurement category group this RFQ serves. A mixed-category PR produces
+    # one RFQ per (supplier, category); the RFQ only ever contains that category's
+    # items (see ``RFQItem``). Null only for pre-migration RFQs.
+    category = models.ForeignKey(
+        Category, on_delete=models.PROTECT, null=True, blank=True, related_name='rfqs'
+    )
+    # Null for a manual / unregistered supplier - that supplier has no eProcure
+    # account. Its name lives in ``manual_supplier_name`` as internal metadata
+    # only and never appears in the generated RFQ PDF.
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, null=True, blank=True, related_name='rfqs')
+    manual_supplier_name = models.CharField(max_length=255, blank=True)
+    delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHOD_CHOICES, default=DELIVERY_SYSTEM)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_rfqs')
     subject = models.CharField(max_length=255)
     message = models.TextField()
     mode_of_procurement = models.CharField(max_length=200, blank=True)
     award_basis = models.CharField(max_length=10, choices=AWARD_BASIS_CHOICES, default=AWARD_BASIS_LOT)
+    selection_type = models.CharField(
+        max_length=32, choices=SELECTION_TYPE_CHOICES, default=SELECTION_CATEGORY_MATCH
+    )
     abc = models.CharField(max_length=200, blank=True)
     quotation_no = models.CharField(max_length=100, blank=True)
     additional_notes = models.TextField(blank=True)
@@ -249,5 +295,37 @@ class RFQ(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def supplier_display_name(self) -> str:
+        if self.supplier_id:
+            return self.supplier.company_name
+        return self.manual_supplier_name or 'Unregistered supplier'
+
+    @property
+    def is_manual(self) -> bool:
+        return self.delivery_method == self.DELIVERY_MANUAL or (self.supplier_id is None)
+
     def __str__(self):
-        return f"{self.rfq_no} ({self.supplier.company_name})"
+        return f"{self.rfq_no or 'RFQ (draft)'} ({self.supplier_display_name})"
+
+
+class RFQItem(models.Model):
+    """The exact subset of PurchaseRequestItems an RFQ covers.
+
+    Grouping items by category is a transaction concept - the PR items themselves
+    are never duplicated. This pure join row makes "which PR items belong to this
+    RFQ" deterministic. When an RFQ has no ``rfq_items`` (legacy), consumers fall
+    back to every item on the PR.
+    """
+
+    rfq = models.ForeignKey(RFQ, on_delete=models.CASCADE, related_name='rfq_items')
+    purchase_request_item = models.ForeignKey(
+        PurchaseRequestItem, on_delete=models.CASCADE, related_name='rfq_items'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('rfq', 'purchase_request_item')
+
+    def __str__(self):
+        return f"{self.rfq_id} - item {self.purchase_request_item_id}"

@@ -27,6 +27,34 @@ def _is_effectively_blank(value: str) -> bool:
     return bool(re.fullmatch(r"[:\-_/\\|.\s]+", cleaned))
 
 
+# Name particles that are legitimately lower-case in Philippine / Spanish names.
+_NAME_PARTICLES = {"de", "del", "dela", "la", "las", "los", "y", "ng", "san", "sta", "sto", "da", "di", "van", "von"}
+
+
+def _clean_signatory_name(value: str) -> str:
+    """Drop stray lower-case tokens that OCR reads out of a handwritten signature.
+
+    CTU signatory names are printed in upper case (e.g. ``MARIA L. SANTOS``).
+    When a signature is drawn over the block, Textract often recognises the
+    scribble as a short word ("the", "now", "you") and wedges it into the name.
+    If the name is predominantly upper case, remove interior all-lower-case
+    tokens that are not recognised name particles.
+    """
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return text
+    tokens = text.split(" ")
+    upper_like = [t for t in tokens if re.search(r"[A-Z]", t) and t.upper() == t]
+    if len(upper_like) < 2:
+        return text
+    kept = [
+        t for t in tokens
+        if not (t.isalpha() and t.islower() and t.lower() not in _NAME_PARTICLES)
+    ]
+    cleaned = " ".join(kept).strip()
+    return cleaned or text
+
+
 def _normalize_code_like(value: str, allow_dash: bool = True) -> str:
     """Normalize OCR artifacts for code-like fields by removing punctuation noise."""
     cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
@@ -904,22 +932,26 @@ def _map_structured_to_legacy(structured: Dict[str, Any], fallback: Dict[str, An
     date = pick("date", "date")
     rcc = _normalize_code_like(pick("responsibility_center_code", "responsibilityCenterCode"), allow_dash=True)
     purpose = pick("purpose", "purpose")
-    requested_by = pick_signatory("requested_by", "requested_by_name")
-    budget_officer = pick_signatory("budget_officer", "funds_available_name")
-    approved_by = pick_signatory("approved_by", "approved_by_name")
-    twg = pick_signatory("twg", "twg_name")
+    requested_by = _clean_signatory_name(pick_signatory("requested_by", "requested_by_name"))
+    budget_officer = _clean_signatory_name(pick_signatory("budget_officer", "funds_available_name"))
+    approved_by = _clean_signatory_name(pick_signatory("approved_by", "approved_by_name"))
+    twg = _clean_signatory_name(pick_signatory("twg", "twg_name"))
 
     signatory_designations = structured.get("signatory_designations", {}) or {}
     signatory_names = structured.get("signatory_names", {}) or {}
 
     def choose_designation(key: str, selected_name: str, fallback_key: str) -> str:
-        section_name = str(signatory_names.get(key, "") or "").strip().lower()
-        section_designation = str(signatory_designations.get(key, "") or "").strip()
+        # Compare against the same cleaned form used for the displayed name, so
+        # stripping OCR-noise tokens from a name never detaches its designation.
+        section_name = _clean_signatory_name(signatory_names.get(key, "") or "").lower()
+        section_designation = _clean_signatory_name(signatory_designations.get(key, "") or "")
         selected_norm = str(selected_name or "").strip().lower()
 
-        if section_designation and section_name and selected_norm and section_name in selected_norm:
+        if section_designation and section_name and selected_norm and (
+            section_name in selected_norm or selected_norm in section_name
+        ):
             return section_designation
-        return str(fallback.get(fallback_key, "") or "")
+        return _clean_signatory_name(fallback.get(fallback_key, "") or "")
 
     requested_designation = choose_designation("requested_by", requested_by, "requested_by_designation")
     budget_designation = choose_designation("budget_officer", budget_officer, "funds_available_designation")

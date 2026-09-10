@@ -1,8 +1,9 @@
 import React from 'react'
+import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
-const MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+const REQUIREMENT_KIND = UPLOAD_KINDS.SUPPLIER_REQUIREMENT
+const REQUIREMENT_ACCEPT = acceptAttr(REQUIREMENT_KIND)
 
 const businessDocLabels = {
   'Sole Proprietorship': 'DTI Registration',
@@ -17,15 +18,6 @@ function getBusinessDocKey(businessType) {
   if (businessType === 'Corporation' || businessType === 'Partnership') return 'sec_registration'
   if (businessType === 'Cooperative') return 'cda_registration'
   return null
-}
-
-function isSupportedFile(file) {
-  if (!file) return false
-  const name = (file.name || '').toLowerCase()
-  const extension = name.slice(name.lastIndexOf('.'))
-  const isValidExtension = ALLOWED_EXTENSIONS.includes(extension)
-  const isValidMime = ['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)
-  return isValidExtension && (isValidMime || extension === '.pdf')
 }
 
 function validateEmail(email) {
@@ -95,26 +87,24 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   }
 
   function handleRequiredFileChange(key, file) {
-    if (file && !isSupportedFile(file)) {
-      setErrors([`${file.name} must be a PDF, JPG, JPEG, or PNG file.`])
-      return
-    }
-    if (file && file.size > MAX_UPLOAD_SIZE) {
-      setErrors([`${file.name} exceeds the 10MB upload limit.`])
-      return
+    if (file) {
+      const check = validateFile(file, REQUIREMENT_KIND)
+      if (!check.ok) {
+        setErrors([`${file.name}: ${check.error}`])
+        return
+      }
     }
     setRequiredFiles((current) => ({ ...current, [key]: file }))
     setErrors([])
   }
 
   function handleOtherEligibilityFileChange(file) {
-    if (file && !isSupportedFile(file)) {
-      setErrors([`${file.name} must be a PDF, JPG, JPEG, or PNG file.`])
-      return
-    }
-    if (file && file.size > MAX_UPLOAD_SIZE) {
-      setErrors([`${file.name} exceeds the 10MB upload limit.`])
-      return
+    if (file) {
+      const check = validateFile(file, REQUIREMENT_KIND)
+      if (!check.ok) {
+        setErrors([`${file.name}: ${check.error}`])
+        return
+      }
     }
     setOtherEligibilityFile(file)
     setErrors([])
@@ -462,7 +452,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             <h2>Document Uploads</h2>
             <span className="section-badge">Step 3</span>
           </div>
-          <p className="helper-text">Upload the required BAC eligibility documents in PDF, JPG, JPEG, or PNG format. Maximum size is 10 MB per file.</p>
+          <p className="helper-text">Upload the required BAC eligibility documents. Accepted file types: {acceptedTypesLabel(REQUIREMENT_KIND)}. Maximum size is 10 MB per file.</p>
           <div className="upload-grid">
             {documentCards.map((doc) => (
               <label key={doc.key} className="upload-card">
@@ -473,10 +463,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                   </div>
                   <span className="upload-card-badge">Required</span>
                 </div>
-                <input type="file" accept=".pdf,image/jpeg,.jpg,.jpeg,.png" onChange={(event) => handleRequiredFileChange(doc.key, event.target.files[0])} />
+                <input type="file" accept={REQUIREMENT_ACCEPT} onChange={(event) => handleRequiredFileChange(doc.key, event.target.files[0])} />
                 {requiredFiles[doc.key] ? (
                   <div className="file-chip">
-                    <span>{requiredFiles[doc.key].name}</span>
+                    <span>✓ {requiredFiles[doc.key].name} · {fileTypeLabel(requiredFiles[doc.key])} • {formatFileSize(requiredFiles[doc.key].size)}</span>
                     <button type="button" onClick={() => handleRequiredFileChange(doc.key, null)}>Remove</button>
                   </div>
                 ) : (
@@ -494,10 +484,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               </div>
               <span className="upload-card-badge optional">Optional</span>
             </div>
-            <input type="file" accept=".pdf,image/jpeg,.jpg,.jpeg,.png" onChange={(event) => handleOtherEligibilityFileChange(event.target.files[0])} />
+            <input type="file" accept={REQUIREMENT_ACCEPT} onChange={(event) => handleOtherEligibilityFileChange(event.target.files[0])} />
             {otherEligibilityFile ? (
               <div className="file-chip">
-                <span>{otherEligibilityFile.name}</span>
+                <span>✓ {otherEligibilityFile.name} · {fileTypeLabel(otherEligibilityFile)} • {formatFileSize(otherEligibilityFile.size)}</span>
                 <button type="button" onClick={() => setOtherEligibilityFile(null)}>Remove</button>
               </div>
             ) : (

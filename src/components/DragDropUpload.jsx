@@ -1,16 +1,60 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  FileText,
   Plus,
   Save,
   LoaderCircle,
   CheckCircle,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
   Search,
   Trash2,
   Upload,
 } from 'lucide-react'
 
+import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
+
 const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '').trim()
+
+// Textarea that grows with its content so the visible box always matches what
+// has been typed. Modern browsers get this natively via `field-sizing: content`
+// (see index.css); this keeps the rest in sync and caps the height at `maxRows`.
+function AutoGrowTextarea({ value, maxRows = 12, className, ...rest }) {
+  const ref = useRef(null)
+
+  const resize = () => {
+    const el = ref.current
+    if (!el || CSS.supports?.('field-sizing', 'content')) return
+    const style = window.getComputedStyle(el)
+    const lineHeight = parseFloat(style.lineHeight) || 20
+    const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    const verticalBorder = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+    const maxHeight = lineHeight * maxRows + verticalPadding + verticalBorder
+    el.style.height = 'auto'
+    const nextHeight = Math.min(el.scrollHeight + verticalBorder, maxHeight)
+    el.style.height = `${nextHeight}px`
+    el.style.overflowY = el.scrollHeight + verticalBorder > maxHeight ? 'auto' : 'hidden'
+  }
+
+  useEffect(() => {
+    resize()
+    const onResize = () => resize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  return (
+    <textarea
+      {...rest}
+      ref={ref}
+      className={className}
+      value={value}
+      onInput={resize}
+      rows={1}
+    />
+  )
+}
 
 const getCurrentDate = () => {
   const date = new Date()
@@ -20,12 +64,6 @@ const getCurrentDate = () => {
 }
 
 const PR_NUMBER_PATTERN = /^\d{4}-\d{2}-\d{3}$/
-const ACCEPTED_FILE_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png']
-
-function isAcceptedFile(file) {
-  const extension = `.${file.name.split('.').pop().toLowerCase()}`
-  return ACCEPTED_FILE_EXTENSIONS.includes(extension)
-}
 
 function normalizeOcrDate(value, rawText = '') {
   const source = String(value || '').trim() || String(rawText || '')
@@ -75,9 +113,44 @@ const FieldShell = ({
   )
 }
 
-const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys }) => (
-  <section className="signature-card">
-    <h4>{title}</h4>
+// Maps each signatory block to the key used by the backend signature detector.
+const SIGNATURE_KEY_BY_BLOCK = {
+  requested_by_name: 'requested_by',
+  funds_available_name: 'funds_available',
+  approved_by_name: 'approved_by',
+  twg_name: 'twg',
+}
+
+const SIGNATURE_STATUS_META = {
+  present: { label: 'With Signature', className: 'sig-status-present', Icon: CheckCircle },
+  absent: { label: 'Without Signature', className: 'sig-status-absent', Icon: XCircle },
+  unverifiable: { label: 'Unable to Verify', className: 'sig-status-unverifiable', Icon: AlertTriangle },
+}
+
+const signatureStatusMeta = (state) => SIGNATURE_STATUS_META[state] || SIGNATURE_STATUS_META.unverifiable
+
+const SignatureStatusChip = ({ state }) => {
+  const meta = signatureStatusMeta(state)
+  const { Icon } = meta
+  return (
+    <span className={`sig-status-chip ${meta.className}`}>
+      <Icon size={13} aria-hidden="true" />
+      {meta.label}
+    </span>
+  )
+}
+
+const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys, signatureState }) => (
+  <section className={`signature-card ${signatureState ? signatureStatusMeta(signatureState.state).className : ''}`}>
+    <div className="signature-card-head">
+      <h4>
+        {title}
+        {signatureState && !signatureState.required && <span className="sig-optional-note"> (optional)</span>}
+      </h4>
+      {signatureState
+        ? <SignatureStatusChip state={signatureState.state} />
+        : <span className="sig-status-chip sig-status-pending">Not checked</span>}
+    </div>
     <FieldShell
       id={designationKey}
       label="Designation"
@@ -95,6 +168,139 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
   </section>
 )
 
+const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
+  const summary = validation?.summary
+  const signatories = validation?.signatories || {}
+  const order = ['requested_by', 'funds_available', 'approved_by', 'twg']
+  const rows = order.map((key) => signatories[key]).filter(Boolean)
+
+  const statusTone = summary?.status === 'complete'
+    ? 'sig-panel-complete'
+    : summary?.status === 'unverifiable'
+      ? 'sig-panel-unverifiable'
+      : 'sig-panel-incomplete'
+
+  return (
+    <section className={`card signature-validation-panel ${statusTone}`}>
+      <div className="signature-validation-head">
+        <h4>Signature Validation</h4>
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          onClick={onRecheck}
+          disabled={rechecking || !hasDocument}
+        >
+          {rechecking ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
+          {rechecking ? 'Rechecking…' : 'Recheck Signatures'}
+        </button>
+      </div>
+
+      {!validation ? (
+        <p className="helper-text">Upload a Purchase Request to check its signatures.</p>
+      ) : (
+        <>
+          <ul className="signature-validation-list">
+            {rows.map((row) => {
+              const meta = signatureStatusMeta(row.state)
+              const { Icon } = meta
+              return (
+                <li key={row.key} className={meta.className}>
+                  <Icon size={16} aria-hidden="true" />
+                  <div>
+                    <strong>{row.label}{!row.required ? ' (optional)' : ''}</strong>
+                    <span>
+                      {row.name ? row.name : 'Name not extracted'}
+                      {' — '}
+                      {row.state === 'present' && 'signature detected'}
+                      {row.state === 'absent' && 'no signature detected'}
+                      {row.state === 'unverifiable' && 'signature could not be verified'}
+                    </span>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {summary && (
+            <div className="signature-validation-summary">
+              <strong>
+                {summary.required_detected} of {summary.required_total} required signatures detected
+              </strong>
+              <p>{summary.message}</p>
+              {summary.missing_signatures?.length > 0 && (
+                <p className="sig-missing">
+                  Missing signatures:
+                  <span> {summary.missing_signatures.join(', ')}</span>
+                </p>
+              )}
+              {summary.unverifiable_signatures?.length > 0 && (
+                <p className="sig-missing">
+                  Could not verify:
+                  <span> {summary.unverifiable_signatures.join(', ')}</span>
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+const DECLARATION_POINTS = [
+  'The information submitted is true, accurate, and complete to the best of my knowledge.',
+  'This Purchase Request represents a legitimate procurement requirement of the requesting office/unit and is not fictitious or submitted for an unauthorized purpose.',
+  'The uploaded Purchase Request is the correct document intended for this transaction and has not been intentionally altered or falsified.',
+  'The names and signatures appearing in the Purchase Request belong to the respective authorized signatories, to the best of my knowledge, and I have no knowledge of any unauthorized or falsified signature.',
+  'I understand that the Purchase Request may be reviewed and validated by the appropriate university personnel before proceeding to the succeeding procurement stages.',
+  'I accept responsibility for the accuracy and authenticity of the information and document I have submitted.',
+]
+
+const SubmissionCheckPanel = ({ checks }) => (
+  <section className="card submission-check-panel">
+    <h4>Submission Check</h4>
+    <ul className="submission-check-list">
+      {checks.map((check) => (
+        <li key={check.key} className={check.ok ? 'submission-check-ok' : 'submission-check-fail'}>
+          {check.ok
+            ? <CheckCircle size={16} aria-hidden="true" />
+            : <XCircle size={16} aria-hidden="true" />}
+          <span>{check.label}</span>
+        </li>
+      ))}
+    </ul>
+    {checks.some((c) => !c.ok) && (
+      <p className="submission-check-note">
+        <AlertTriangle size={14} aria-hidden="true" />
+        Please resolve the items above before submitting.
+      </p>
+    )}
+  </section>
+)
+
+const SubmissionDeclaration = ({ acknowledged, onToggle, checksPass }) => (
+  <section className="card submission-declaration">
+    <h4>Purchase Request Submission Declaration</h4>
+    <p className="submission-declaration-lead">By submitting this Purchase Request, I certify and acknowledge that:</p>
+    <ol className="submission-declaration-points">
+      {DECLARATION_POINTS.map((point, index) => <li key={index}>{point}</li>)}
+    </ol>
+    <label className="submission-declaration-ack">
+      <input
+        type="checkbox"
+        checked={acknowledged}
+        onChange={(event) => onToggle(event.target.checked)}
+      />
+      <span>I have read and understood this declaration.</span>
+    </label>
+    {acknowledged && !checksPass && (
+      <p className="helper-text" style={{ margin: '6px 0 0' }}>
+        The submission checks above must also pass before the Purchase Request can be saved.
+      </p>
+    )}
+  </section>
+)
+
 export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'), onSaved = null, reviewOnly = false, submittedBy = '' }) {
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState(null)
@@ -109,6 +315,10 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const [rawText, setRawText] = useState('')
   const [editedFieldKeys, setEditedFieldKeys] = useState(new Set())
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [signatureValidation, setSignatureValidation] = useState(null)
+  const [rechecking, setRechecking] = useState(false)
+  const [saveBlockedMessage, setSaveBlockedMessage] = useState('')
+  const [declarationAcknowledged, setDeclarationAcknowledged] = useState(false)
   const [numberingMode, setNumberingMode] = useState('automatic')
   const [suggestedPrNumber, setSuggestedPrNumber] = useState('')
   const [customPrNumber, setCustomPrNumber] = useState('')
@@ -218,9 +428,10 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   }
 
   function handleFile(nextFile) {
-    if (!isAcceptedFile(nextFile)) {
+    const check = validateFile(nextFile, UPLOAD_KINDS.PR)
+    if (!check.ok) {
       setFile(null)
-      setUploadMessage('Unsupported file type. Upload a PDF, JPG, or PNG file.')
+      setUploadMessage(check.error)
       setUploadSuccess(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
@@ -236,7 +447,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     setHasUnsavedChanges(false)
     setCustomPrNumber('')
     setNumberError('')
-
+    // Signature results and the declaration always belong to a specific
+    // uploaded document - never carry them across a new upload.
+    setSignatureValidation(null)
+    setSaveBlockedMessage('')
+    setDeclarationAcknowledged(false)
   }
 
   function onChooseClick() {
@@ -256,8 +471,9 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   }
 
   async function uploadFile(nextFile) {
-    if (!isAcceptedFile(nextFile)) {
-      setUploadMessage('Unsupported file type. Upload a PDF, JPG, or PNG file.')
+    const check = validateFile(nextFile, UPLOAD_KINDS.PR)
+    if (!check.ok) {
+      setUploadMessage(check.error)
       return
     }
 
@@ -293,6 +509,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       setFields({ ...extractedFields, sourceFilename: data?.filename || '', lineItems: normalizeLineItems(requested) })
       setRawText(data?.rawText || '')
       setUploadMessage(`Uploaded: ${data?.filename || nextFile.name}`)
+      setSignatureValidation(data?.signature_validation || null)
+      setSaveBlockedMessage('')
 
       setUploadSuccess(true)
       setUploadSuccessModalOpen(true)
@@ -314,8 +532,46 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     setUploadSuccessModalOpen(false)
     setEditedFieldKeys(new Set())
     setHasUnsavedChanges(false)
+    setSignatureValidation(null)
+    setSaveBlockedMessage('')
+    setDeclarationAcknowledged(false)
 
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function recheckSignatures() {
+    const sourceFilename = fields.sourceFilename || ''
+    if (!sourceFilename) {
+      setSaveBlockedMessage('No uploaded document is associated with this form yet. Upload the PR first.')
+      return
+    }
+    setRechecking(true)
+    setSaveBlockedMessage('')
+    try {
+      const res = await fetch(`${apiBase}/api/pr/recheck-signatures/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: sourceFilename, fields }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        const detail = data?.message || data?.error
+        throw new Error(
+          detail
+            ? `Signature recheck failed: ${detail}`
+            : `Signature recheck failed (HTTP ${res.status}). Make sure the backend is running the latest code.`,
+        )
+      }
+      if (data?.signature_validation) {
+        setSignatureValidation(data.signature_validation)
+      } else {
+        throw new Error('Signature recheck returned no result.')
+      }
+    } catch (err) {
+      setSaveBlockedMessage(err?.message || 'Signature recheck failed')
+    } finally {
+      setRechecking(false)
+    }
   }
 
   async function savePurchaseRequest() {
@@ -323,8 +579,17 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       setNumberError('Use the format YYYY-MM-NNN.')
       return
     }
+    if (!systemChecksPass) {
+      setSaveBlockedMessage('Please resolve the submission checks before submitting the Purchase Request.')
+      return
+    }
+    if (!declarationAcknowledged) {
+      setSaveBlockedMessage('Please acknowledge the Purchase Request Submission Declaration before submitting.')
+      return
+    }
 
     setSaving(true)
+    setSaveBlockedMessage('')
 
     try {
       const items = (fields.lineItems || []).map((it) => {
@@ -353,6 +618,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           submittedBy,
           requested_items: items,
           grand_total: grand.toFixed(2),
+          declaration_acknowledged: declarationAcknowledged === true,
         },
       }
 
@@ -364,7 +630,23 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        window.alert(err?.message || 'Failed to save PR')
+        if (err?.signature_validation) {
+          setSignatureValidation(err.signature_validation)
+        }
+        if (err?.declaration_required) {
+          setSaveBlockedMessage(err.error || 'Please acknowledge the Purchase Request Submission Declaration before submitting.')
+          return
+        }
+        if (err?.error && (err.missing_signatures || err.unverifiable_signatures)) {
+          const missing = err.missing_signatures || []
+          setSaveBlockedMessage(
+            missing.length
+              ? `Purchase Request cannot be saved yet. Missing signatures: ${missing.join(', ')}.`
+              : err.error,
+          )
+          return
+        }
+        window.alert(err?.message || err?.error || 'Failed to save PR')
         return
       }
 
@@ -379,6 +661,41 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     } finally {
       setSaving(false)
     }
+  }
+
+  const hasExtractedData = Object.keys(fields).length > 0
+  // Block the save only when we have a validation result that says the required
+  // signatures are not all present. If the check produced no result at all, let
+  // the backend guard be the gate (it re-verifies on save) rather than trapping
+  // the user behind a permanently-disabled button.
+  const signaturesChecked = Boolean(signatureValidation?.summary)
+  const signaturesComplete = !signaturesChecked || signatureValidation.summary.can_save === true
+
+  const lineItems = Array.isArray(fields.lineItems) ? fields.lineItems : []
+  const requiredInfoComplete = Boolean(
+    (fields.entityName || '').trim()
+    && lineItems.length > 0
+    && lineItems.every((item) => (item.description || '').trim()),
+  )
+  const documentAccepted = Boolean(fields.sourceFilename)
+  const sigSummary = signatureValidation?.summary
+  const systemChecks = [
+    { key: 'info', label: 'Required information completed', ok: requiredInfoComplete },
+    { key: 'file', label: 'Supported document accepted', ok: documentAccepted },
+    {
+      key: 'sig',
+      label: sigSummary
+        ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected`
+        : 'Required signatures detected',
+      ok: signaturesComplete && (!sigSummary || sigSummary.can_save === true),
+    },
+  ]
+  const systemChecksPass = systemChecks.every((check) => check.ok)
+  const canSubmit = systemChecksPass && declarationAcknowledged && !saving
+
+  const signatureBlockState = (nameKey) => {
+    const key = SIGNATURE_KEY_BY_BLOCK[nameKey]
+    return signatureValidation?.signatories?.[key] || null
   }
 
   return (
@@ -407,23 +724,24 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           aria-label="Upload Purchase Request file"
           data-drag={dragOver ? 'true' : 'false'}
         >
-          <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style={{ display: 'none' }} onChange={onFileInputChange} />
+          <input ref={fileInputRef} type="file" accept={acceptAttr(UPLOAD_KINDS.PR)} style={{ display: 'none' }} onChange={onFileInputChange} />
 
           {!file && (
             <div className="dropzone-inner">
               <Upload size={36} />
               <strong>Drop PR document here</strong>
-              <span>PDF, JPG, or PNG files supported. Click to browse local files.</span>
+              <span>Click to browse local files.</span>
+              <span className="dropzone-accepted">Accepted file types: {acceptedTypesLabel(UPLOAD_KINDS.PR)}</span>
             </div>
           )}
 
           {file && (
             <div className="dropzone-file-row">
               <div className="file-meta">
-                <FileText size={18} />
+                <CheckCircle size={18} className="file-meta-ok" />
                 <div>
                   <strong>{file.name}</strong>
-                  <span>{(file.size / 1024).toFixed(1)} KB</span>
+                  <span>{fileTypeLabel(file)} • {formatFileSize(file.size)}</span>
                 </div>
               </div>
 
@@ -505,12 +823,28 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
           <div className="modal-content save-success-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <h3 id="save-success-title">Purchase Request Saved</h3>
+              <h3 id="save-success-title">Purchase Request Submitted</h3>
             </div>
             <div className="modal-body upload-success-modal-body">
               <CheckCircle size={42} aria-hidden="true" />
-              <p>Your Purchase Request was saved successfully.</p>
-              {savedPr?.pr_no && <p className="helper-text">PR Number: <strong>{savedPr.pr_no}</strong></p>}
+              <p>Purchase Request submitted successfully.</p>
+              <dl className="save-success-facts">
+                <div>
+                  <dt>PR No.</dt>
+                  <dd>{savedPr?.pr_no || 'Assigned after BAC review'}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{savedPr?.status ? savedPr.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Submitted'}</dd>
+                </div>
+                <div>
+                  <dt>Submission date</dt>
+                  <dd>{savedPr?.created_at ? new Date(savedPr.created_at).toLocaleString() : new Date().toLocaleString()}</dd>
+                </div>
+              </dl>
+              <p className="helper-text" style={{ margin: '4px 0 0' }}>
+                The Purchase Request can now proceed to the next stage of the procurement workflow.
+              </p>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-success" onClick={() => {
@@ -652,6 +986,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
+              signatureState={signatureBlockState('requested_by_name')}
             />
             <SignatureBlock
               title="Funds Available"
@@ -660,6 +995,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
+              signatureState={signatureBlockState('funds_available_name')}
             />
             <SignatureBlock
               title="Approved By"
@@ -668,6 +1004,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
+              signatureState={signatureBlockState('approved_by_name')}
             />
             <SignatureBlock
               title="Technical Working Group"
@@ -676,8 +1013,18 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
+              signatureState={signatureBlockState('twg_name')}
             />
           </div>
+
+          {(signatureValidation || hasExtractedData) && (
+            <SignatureValidationPanel
+              validation={signatureValidation}
+              onRecheck={recheckSignatures}
+              rechecking={rechecking}
+              hasDocument={Boolean(fields.sourceFilename)}
+            />
+          )}
 
           <div className="requested-items-block">
             <div className="items-header">
@@ -714,7 +1061,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                   <tr>
                     <th style={{ width: '70px' }}>Item No.</th>
                     <th style={{ width: '15%' }}>Stock/Property No.</th>
-                    <th style={{ width: '8%' }}>Unit</th>
+                    <th className="requested-item-unit-cell" style={{ width: '9%' }}>Unit</th>
                     <th style={{ width: '48%' }}>Description</th>
                     <th style={{ width: '7%' }}>Qty</th>
                     <th style={{ width: '10%' }}>Unit Cost</th>
@@ -738,7 +1085,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                             aria-label={`Stock number for item ${idx + 1}`}
                           />
                         </td>
-                        <td>
+                        <td className="requested-item-unit-cell">
                           <input
                             value={item.unit || ''}
                             onChange={(e) => {
@@ -750,7 +1097,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                           />
                         </td>
                         <td className="requested-item-description-cell">
-                          <textarea
+                          <AutoGrowTextarea
                             value={item.description || ''}
                             onChange={(e) => {
                               const updated = [...(fields.lineItems || [])]
@@ -847,11 +1194,45 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               </table>
             </div>
 
+            {hasExtractedData && (
+              <>
+                <SubmissionCheckPanel checks={systemChecks} />
+                <SubmissionDeclaration
+                  acknowledged={declarationAcknowledged}
+                  onToggle={(value) => { setDeclarationAcknowledged(value); if (value) setSaveBlockedMessage('') }}
+                  checksPass={systemChecksPass}
+                />
+              </>
+            )}
+
             <div className="save-row">
-              <button type="button" className="btn btn-success" onClick={savePurchaseRequest} disabled={saving}>
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={savePurchaseRequest}
+                disabled={saving || (hasExtractedData && !canSubmit)}
+                title={hasExtractedData && !canSubmit
+                  ? 'Complete the submission checks and acknowledge the declaration to enable saving'
+                  : undefined}
+              >
                 {saving ? <LoaderCircle size={16} className="spin" /> : <Save size={16} />}
                 {saving ? 'Saving...' : 'Save Purchase Request'}
               </button>
+              {hasExtractedData && !canSubmit && (
+                <p className="save-blocked-note">
+                  <AlertTriangle size={14} aria-hidden="true" />
+                  {saveBlockedMessage
+                    || (!systemChecksPass
+                      ? 'Resolve the submission checks above before submitting.'
+                      : 'Check the acknowledgement box to submit the Purchase Request.')}
+                </p>
+              )}
+              {saveBlockedMessage && canSubmit && (
+                <p className="save-blocked-note">
+                  <AlertTriangle size={14} aria-hidden="true" />
+                  {saveBlockedMessage}
+                </p>
+              )}
             </div>
           </div>
 

@@ -46,8 +46,20 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
     # Authoritative source for the RFQ item table: the structured
     # PurchaseRequestItem rows saved by the PR workflow. Each database item maps
     # to exactly one RFQ row - the raw OCR / PR text is never used here.
+    #
+    # A category-group RFQ lists ONLY its own items (recorded in ``rfq_items``).
+    # Legacy RFQs created before category grouping have no ``rfq_items`` rows and
+    # fall back to every item on the PR.
+    linked = list(
+        rfq.rfq_items.select_related('purchase_request_item')
+        .order_by('purchase_request_item_id')
+    )
+    source_items = (
+        [li.purchase_request_item for li in linked] if linked
+        else list(pr.line_items.all())
+    )
     items = []
-    for idx, item in enumerate(pr.line_items.all(), start=1):
+    for idx, item in enumerate(source_items, start=1):
         items.append({
             'index': idx,
             'item_description': (item.item_description or 'N/A').strip(),
@@ -61,18 +73,25 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
         'rfq_no': rfq.rfq_no or 'RFQ',
         'pr_no': pr.pr_no or f'PR-{pr.id}',
         'pr_date': (pr.date.isoformat() if pr.date else ''),
-        'quotation_no': rfq.quotation_no or rfq.rfq_no or '',
+        # The RFQ number doubles as the Quotation No. on the printed form - a
+        # single RFQ-YYYY-NNNN sequence shared by registered and manual RFQs. A
+        # draft preview has no number yet.
+        'quotation_no': rfq.rfq_no or 'To be assigned',
         # Admin-selected value; never defaulted here so a blank never slips into
         # a generated document. The RFQ API enforces a valid selection before
         # a PDF is produced.
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
         'award_basis': (rfq.award_basis or 'LOT').upper(),
+        # Company Name, Address and TIN are deliberately left blank on the
+        # generated RFQ - the supplier writes them in by hand on the printed
+        # copy they download. A manual / unregistered supplier has no Supplier
+        # record at all; its name is internal metadata and never reaches the PDF.
         'supplier': {
-            'company_name': supplier.company_name or '',
-            'business_address': supplier.business_address or '',
-            'tin': supplier.tin or '',
-            'contact_person': supplier.contact_person or '',
-            'email': supplier.email or '',
+            'company_name': '',
+            'business_address': '',
+            'tin': '',
+            'contact_person': getattr(supplier, 'contact_person', '') or '',
+            'email': getattr(supplier, 'email', '') or '',
         },
         'abc': abc_value,
         'additional_notes': rfq.additional_notes or '',

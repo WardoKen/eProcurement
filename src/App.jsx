@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import {
   Check,
@@ -43,6 +44,7 @@ import {
 import logo from './assets/logo.png'
 import DragDropUpload from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
+import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
 
 // Auth/session state lives in sessionStorage so it is cleared when the browser
@@ -948,28 +950,6 @@ const Login = () => {
 
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-      const tempAccounts = {
-        buyer: { username: 'buyer1', password: 'buyer123', role: 'buyer', name: 'BAC End User' },
-        supplier: { username: 'supplier1', password: 'supplier123', role: 'supplier', name: 'Supplier Partner', supplierId: 1 },
-        admin: { username: 'admin', password: 'admin123', role: 'admin', name: 'BAC Admin' },
-      }
-
-      const credentials = tempAccounts[selectedRole]
-      if (credentials && username === credentials.username && password === credentials.password) {
-        const user = { username, role: selectedRole, name: credentials.name, supplier_id: credentials.supplierId, supplier_status: credentials.supplierStatus || 'Approved' }
-        authStore.set('eProcureUser', JSON.stringify(user))
-        if (credentials.supplierId) {
-          authStore.set('supplier_id', credentials.supplierId.toString())
-        }
-        authStore.set('supplier_status', user.supplier_status)
-        alert(`Login successful as ${selectedRole === 'buyer' ? 'End User' : selectedRole}`)
-        if (selectedRole === 'admin') {
-          navigate('/admin')
-        } else {
-          navigate(`/${selectedRole}`)
-        }
-        return
-      }
 
       try {
         const response = await fetch(`${apiBaseUrl}/api/login/`, {
@@ -1137,6 +1117,153 @@ const WorkflowStepper = ({ current }) => {
   )
 }
 
+// ─── SearchableSelect ────────────────────────────────────────────────────────
+// A type-to-filter dropdown for long option lists (e.g. procurement categories).
+// The list is rendered in a body portal with fixed positioning so it floats
+// over the page - a scrolling parent never clips it and the table never grows.
+
+const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…', invalid = false, id }) => {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
+  const [activeIndex, setActiveIndex] = React.useState(0)
+  const [menuRect, setMenuRect] = React.useState(null)
+  const rootRef = React.useRef(null)
+  const inputRef = React.useRef(null)
+  const listRef = React.useRef(null)
+
+  const filtered = React.useMemo(() => {
+    const term = query.trim().toLowerCase()
+    if (!term) return options
+    return options.filter((option) => option.toLowerCase().includes(term))
+  }, [options, query])
+
+  const reposition = React.useCallback(() => {
+    const input = inputRef.current
+    if (!input) return
+    const rect = input.getBoundingClientRect()
+    const belowSpace = window.innerHeight - rect.bottom
+    const maxHeight = Math.min(260, Math.max(belowSpace, rect.top) - 12)
+    const dropUp = belowSpace < 180 && rect.top > belowSpace
+    setMenuRect({
+      left: rect.left,
+      width: rect.width,
+      top: dropUp ? undefined : rect.bottom + 4,
+      bottom: dropUp ? window.innerHeight - rect.top + 4 : undefined,
+      maxHeight,
+    })
+  }, [])
+
+  const openMenu = React.useCallback(() => {
+    setOpen(true)
+    setActiveIndex(0)
+    reposition()
+  }, [reposition])
+
+  React.useEffect(() => {
+    if (!open) return undefined
+    const onScroll = () => reposition()
+    const onDocMouseDown = (event) => {
+      if (rootRef.current?.contains(event.target)) return
+      if (listRef.current?.contains(event.target)) return
+      setOpen(false)
+      setQuery('')
+    }
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+      document.removeEventListener('mousedown', onDocMouseDown)
+    }
+  }, [open, reposition])
+
+  const choose = (option) => {
+    onChange(option)
+    setOpen(false)
+    setQuery('')
+  }
+
+  const onKeyDown = (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      if (!open) { openMenu(); return }
+      setActiveIndex((index) => Math.min(index + 1, filtered.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((index) => Math.max(index - 1, 0))
+    } else if (event.key === 'Enter' && open) {
+      event.preventDefault()
+      if (filtered[activeIndex]) choose(filtered[activeIndex])
+    } else if (event.key === 'Escape') {
+      setOpen(false)
+      setQuery('')
+    }
+  }
+
+  return (
+    <div className={`searchable-select${invalid ? ' is-invalid' : ''}`} ref={rootRef}>
+      <input
+        id={id}
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        className="searchable-select-input"
+        value={open ? query : value}
+        placeholder={value || placeholder}
+        onFocus={openMenu}
+        onChange={(event) => { setQuery(event.target.value); openMenu() }}
+        onKeyDown={onKeyDown}
+      />
+      {value && !open && (
+        <button
+          type="button"
+          className="searchable-select-clear"
+          aria-label="Clear category"
+          onClick={() => onChange('')}
+        >
+          ×
+        </button>
+      )}
+      {open && menuRect && createPortal(
+        <ul
+          ref={listRef}
+          className="searchable-select-list"
+          role="listbox"
+          style={{
+            position: 'fixed',
+            left: menuRect.left,
+            width: menuRect.width,
+            top: menuRect.top,
+            bottom: menuRect.bottom,
+            maxHeight: menuRect.maxHeight,
+          }}
+        >
+          {filtered.length === 0 ? (
+            <li className="searchable-select-empty">No matching category</li>
+          ) : (
+            filtered.map((option, index) => (
+              <li
+                key={option}
+                role="option"
+                aria-selected={option === value}
+                className={`searchable-select-option${index === activeIndex ? ' is-active' : ''}${option === value ? ' is-selected' : ''}`}
+                onMouseEnter={() => setActiveIndex(index)}
+                onMouseDown={(event) => { event.preventDefault(); choose(option) }}
+              >
+                {option}
+              </li>
+            ))
+          )}
+        </ul>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
 // ─── AssignCategories ─────────────────────────────────────────────────────────
 
 const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
@@ -1170,6 +1297,10 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
       .catch((err) => { setError(err.message || 'Failed to load data'); setLoading(false) })
   }, [prId, apiBase])
 
+  const categoryNames = React.useMemo(
+    () => categories.map((cat) => cat.name).sort((a, b) => a.localeCompare(b)),
+    [categories],
+  )
   const allAssigned = items.length > 0 && items.every((item) => assignments[item.id])
   const unassignedCount = items.filter((item) => !assignments[item.id]).length
 
@@ -1242,16 +1373,14 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
                   <td style={_tdS}>{Number(item.quantity)}</td>
                   <td style={_tdS}>₱{Number(item.unit_cost).toLocaleString()}</td>
                   <td style={_tdS}>
-                    <select
+                    <SearchableSelect
+                      id={`cat-select-${item.id}`}
                       value={assigned}
-                      onChange={(e) => setAssignments((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                      className={`cat-assign-select${missing ? ' cat-select-missing' : ''}`}
-                    >
-                      <option value="">— Select category —</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.name}>{cat.name}</option>
-                      ))}
-                    </select>
+                      onChange={(name) => setAssignments((prev) => ({ ...prev, [item.id]: name }))}
+                      options={categoryNames}
+                      placeholder="Search category…"
+                      invalid={missing}
+                    />
                   </td>
                 </tr>
               )
@@ -1307,11 +1436,20 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   const rfqApiBase = apiBase.replace(/\/$/, '')
   const busy = Boolean(pendingAction)
   const isSent = rfq?.status === 'sent'
+  const isManualSelection = (rfq?.selection_type || supplier.selection_type) === 'manual_bac'
+  // The procurement category group this RFQ serves, and the exact PR items in it.
+  const groupCategory = supplier.matched_category || rfq?.category || ''
+  const groupItems = React.useMemo(() => {
+    if (Array.isArray(supplier.groupItems) && supplier.groupItems.length) return supplier.groupItems
+    if (Array.isArray(rfq?.purchase_request?.items)) return rfq.purchase_request.items
+    const all = prDetails?.items || []
+    return groupCategory ? all.filter((it) => (it.category || '') === groupCategory) : all
+  }, [supplier.groupItems, rfq?.purchase_request?.items, prDetails?.items, groupCategory])
 
   const computedAbc = React.useMemo(() => {
-    const total = Number(prDetails?.grand_total ?? 0)
+    const total = groupItems.reduce((sum, it) => sum + Number(it.total_cost ?? (Number(it.quantity || 0) * Number(it.unit_cost || 0)) ?? 0), 0)
     return Number.isFinite(total) ? `₱${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'
-  }, [prDetails?.grand_total])
+  }, [groupItems])
 
   React.useEffect(() => {
     const headers = {
@@ -1322,14 +1460,18 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
     fetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, { headers })
       .then((response) => response.ok ? response.json() : { rfqs: [] })
       .then((data) => {
-        const forSupplier = (data.rfqs || []).filter((item) => item.supplier.id === supplier.id)
+        const wantCategory = supplier.matched_category || ''
+        const forSupplier = (data.rfqs || []).filter((item) => (
+          item.supplier.id === supplier.id
+          && (!wantCategory || (item.category || '') === wantCategory)
+        ))
         const existing = forSupplier.find((item) => item.status !== 'sent') || forSupplier.find((item) => item.status === 'sent')
         if (existing) {
           setRfq(existing)
           setSubject(existing.subject)
           setMessage(existing.message)
           setAbc(existing.abc || computedAbc)
-          setAwardBasis(existing.award_basis === 'UNIT' ? 'UNIT' : 'LOT')
+          setAwardBasis(existing.award_basis === 'LINE' ? 'LINE' : 'LOT')
           setModeOfProcurement(existing.mode_of_procurement || '')
           setAdditionalNotes(existing.additional_notes || '')
           setPreviewUrl(bustCache(existing.pdf_url))
@@ -1350,7 +1492,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         }
       })
       .catch(() => {})
-  }, [computedAbc, prId, rfqApiBase, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.email, supplier.id])
+  }, [computedAbc, prId, rfqApiBase, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.email, supplier.id, supplier.matched_category])
 
   React.useEffect(() => {
     fetch(`${rfqApiBase}/api/procurement-modes/`)
@@ -1359,7 +1501,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       .catch(() => {})
   }, [rfqApiBase])
 
-  const items = prDetails?.items || []
+  const items = groupItems
   const canPrepare = Boolean(modeOfProcurement.trim() && subject.trim() && message.trim())
 
   // Save applies the current edits and always refreshes the RFQ preview.
@@ -1368,7 +1510,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
     const send = action === 'send'
     if (!canPrepare) {
       setError(!modeOfProcurement.trim()
-        ? 'Please select a mode of procurement.'
+        ? 'Please enter a mode of procurement.'
         : 'Subject and RFQ message are required.')
       return
     }
@@ -1398,7 +1540,10 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         },
         body: JSON.stringify({
           supplier_id: supplier.id,
-          category: supplier.matched_category || prDetails?.category || items.find((item) => item.category)?.category || '',
+          selection_type: isManualSelection ? 'manual_bac' : 'category_match',
+          // The procurement category group this RFQ serves - always sent so the
+          // backend scopes the RFQ to that group's items only.
+          category: groupCategory || supplier.matched_category || rfq?.category || '',
           rfq_id: rfq?.id,
           subject,
           message,
@@ -1417,7 +1562,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       setSubject(data.subject)
       setMessage(data.message)
       setAbc(data.abc || computedAbc)
-      setAwardBasis(data.award_basis === 'UNIT' ? 'UNIT' : 'LOT')
+      setAwardBasis(data.award_basis === 'LINE' ? 'LINE' : 'LOT')
       setModeOfProcurement(data.mode_of_procurement || '')
       setAdditionalNotes(data.additional_notes || '')
       setPreviewUrl(bustCache(data.pdf_url))
@@ -1442,6 +1587,13 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       </div>
       {error && <div className="alert alert-error">{error}</div>}
       {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`}>{notice}</div>}
+      {isManualSelection && (
+        <div className="alert alert-warning">
+          <strong>Manual BAC Selection.</strong> You are proceeding with a supplier outside the PR's registered
+          procurement category. This choice is recorded on the RFQ for audit and does not change the PR or the
+          supplier's registered categories.
+        </div>
+      )}
       <div className="card rfq-review-card">
         {rfq?.pdf_url && <p><a className="btn-secondary" href={bustCache(rfq.pdf_url)} download target="_blank" rel="noreferrer">Download RFQ PDF</a></p>}
         <div className="detail-grid">
@@ -1450,6 +1602,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           <div><strong>Requesting Office / Entity: </strong><span>{prDetails?.office_section || prDetails?.entity_name || 'N/A'}</span></div>
           <div><strong>Category: </strong><span>{prDetails?.category || items.find((item) => item.category)?.category || 'N/A'}</span></div>
           <div><strong>Supplier: </strong><span>{supplier.company_name}</span></div>
+          <div><strong>Selection Type: </strong><span>{isManualSelection ? 'Manual BAC Selection' : 'Category Match'}</span></div>
           <div><strong>Supplier Contact: </strong><span>{supplier.contact_person || 'N/A'}</span></div>
           <div><strong>Supplier Email: </strong><span>{supplier.email || 'N/A'}</span></div>
           <div><strong>Supplier TIN: </strong><span>{supplier.tin || 'N/A'}</span></div>
@@ -1461,29 +1614,34 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         <div className="detail-grid">
           <label className="form-field">
             <span>Mode of Procurement *</span>
-            <select value={modeOfProcurement} onChange={(event) => setModeOfProcurement(event.target.value)} disabled={isSent}>
-              <option value="">Select procurement mode</option>
-              {procurementModes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
-              {modeOfProcurement && !procurementModes.includes(modeOfProcurement) && (
-                <option value={modeOfProcurement}>{modeOfProcurement}</option>
-              )}
-            </select>
+            <input
+              type="text"
+              list="procurement-mode-options"
+              value={modeOfProcurement}
+              onChange={(event) => setModeOfProcurement(event.target.value)}
+              disabled={isSent}
+              placeholder="Select a suggestion or type a mode"
+              maxLength={200}
+            />
+            <datalist id="procurement-mode-options">
+              {procurementModes.map((mode) => <option key={mode} value={mode} />)}
+            </datalist>
           </label>
           <label className="form-field"><span>ABC</span><input value={abc || computedAbc} readOnly /></label>
           <label className="form-field">
             <span>Award Basis</span>
             <select value={awardBasis} onChange={(event) => setAwardBasis(event.target.value)} disabled={isSent}>
               <option value="LOT">Lot</option>
-              <option value="UNIT">Unit</option>
+              <option value="LINE">Line</option>
             </select>
           </label>
         </div>
         {!modeOfProcurement.trim() && (
-          <p className="helper-text" style={{ marginTop: 4 }}>Select the procurement procedure this RFQ is issued under. This is separate from the PR category.</p>
+          <p className="helper-text" style={{ marginTop: 4 }}>Choose a suggested procurement procedure or type your own. This is separate from the PR category.</p>
         )}
         <p className="helper-text" style={{ marginTop: 4 }}>
-          {awardBasis === 'UNIT'
-            ? 'The RFQ note will state the award is on a PER UNIT basis; suppliers may quote for one or more items.'
+          {awardBasis === 'LINE'
+            ? 'The RFQ note will state the award is on a per line item basis; suppliers may quote for one or more items.'
             : 'The RFQ note will state the award is on a LOT basis; suppliers must quote all items to avoid disqualification.'}
         </p>
         <label className="form-field"><span>Additional RFQ Notes</span><textarea rows="5" value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Optional terms, notes, or instructions for the supplier" disabled={isSent} /></label>
@@ -1534,14 +1692,228 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   )
 }
 
+const rfqStatusLabelText = (status) => {
+  if (status === 'quotation_received') return 'Quotation Received'
+  if (status === 'completed') return 'RFQ Completed'
+  return 'RFQ Sent'
+}
+
+// One collapsible procurement category group inside Supplier Matching. Its
+// suppliers, "other supplier" search and manual-RFQ action are all scoped to
+// this group only.
+const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSelectSupplier, onManualRfq }) => {
+  const [query, setQuery] = React.useState('')
+  const [results, setResults] = React.useState([])
+  const [busy, setBusy] = React.useState(false)
+  const [ran, setRan] = React.useState(false)
+  const [searchError, setSearchError] = React.useState('')
+  const matchedIds = React.useMemo(() => new Set(group.suppliers.map((s) => s.id)), [group.suppliers])
+
+  const runSearch = async (event) => {
+    if (event) event.preventDefault()
+    setBusy(true); setSearchError(''); setRan(true)
+    try {
+      const params = new URLSearchParams()
+      if (query.trim()) params.set('name', query.trim())
+      const res = await fetch(`${apiBase}/api/suppliers/search/?${params.toString()}`, {
+        headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message || `Search failed (HTTP ${res.status})`)
+      setResults((Array.isArray(data.results) ? data.results : []).filter((s) => !matchedIds.has(s.id)))
+    } catch (err) {
+      setSearchError(err.message || 'Supplier search failed'); setResults([])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={`procurement-group ${expanded ? 'expanded' : ''}`}>
+      <button type="button" className="procurement-group-header" onClick={onToggle} aria-expanded={expanded}>
+        <span className="procurement-group-chevron">{expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+        <span className="procurement-group-title">{group.category}</span>
+        <span className="procurement-group-count">
+          {group.item_count} Item{group.item_count !== 1 ? 's' : ''} &middot; {group.suppliers.length} matched supplier{group.suppliers.length !== 1 ? 's' : ''}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="procurement-group-body">
+          <div className="card" style={{ padding: 14, marginBottom: 16 }}>
+            <strong>Items</strong>
+            <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+              {group.items.map((it) => (
+                <li key={it.id}>{it.item_description || 'N/A'} ({Number(it.quantity)} {it.unit || 'units'})</li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="match-section-heading"><h3>Category-Matched Suppliers</h3></div>
+          {group.suppliers.length === 0 ? (
+            <div className="alert alert-info">
+              No eligible suppliers are registered under this category. Search <strong>Other Registered Suppliers</strong> or add an unregistered supplier below.
+            </div>
+          ) : (
+            <div className="supplier-match-grid">
+              {group.suppliers.map((s) => {
+                const status = issuedFor(group.category, s.id)
+                return (
+                  <article key={s.id} className="supplier-match-card">
+                    <div className="supplier-match-head">
+                      <h4>{s.company_name}</h4>
+                      <span className="status-badge status-open">{s.status || 'Approved'}</span>
+                    </div>
+                    <div className="supplier-match-body">
+                      <div><span className="match-tag match-tag-category">✓ Category Match</span></div>
+                      <div>Coverage: {group.item_count}/{group.item_count} items</div>
+                      {s.contact_person && <div><strong>Contact:</strong> {s.contact_person}</div>}
+                      {s.email && <div><strong>Email:</strong> {s.email}</div>}
+                      <div><strong>Compliance:</strong> <span className="status-badge status-open">{s.compliance_status || 'Eligible'} ({s.compliance_percentage ?? 100}%)</span></div>
+                    </div>
+                    <div className="supplier-match-foot">
+                      {status ? (
+                        <span className="status-badge status-open">{rfqStatusLabelText(status)}</span>
+                      ) : (
+                        <button type="button" className="btn-sm btn-primary" onClick={() => onSelectSupplier(s, group, 'category_match')}>Request Quotation</button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="match-section-divider" />
+          <div className="match-section-heading">
+            <h3>Other Registered Suppliers</h3>
+            <p className="helper-text">
+              Suppliers not registered under this category. Selecting one is recorded as a <strong>Manual BAC Selection</strong> for this group only.
+            </p>
+          </div>
+          <form className="other-supplier-search" onSubmit={runSearch}>
+            <label className="form-field" style={{ flex: 1, margin: 0 }}>
+              <span>Search by supplier name</span>
+              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Search supplier name..." />
+            </label>
+            <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Searching…' : 'Search'}</button>
+          </form>
+          {searchError && <div className="alert alert-error" style={{ marginTop: 10 }}>{searchError}</div>}
+          {ran && !searchError && (
+            results.length === 0 ? (
+              <div className="supplier-match-empty">No other registered suppliers found.</div>
+            ) : (
+              <div className="supplier-match-grid">
+                {results.map((s) => {
+                  const status = issuedFor(group.category, s.id)
+                  return (
+                    <article key={s.id} className="supplier-match-card supplier-match-card-manual">
+                      <div className="supplier-match-head">
+                        <h4>{s.company_name}</h4>
+                        <span className={`status-badge ${s.status === 'Approved' ? 'status-open' : 'status-review'}`}>{s.status || 'Pending'}</span>
+                      </div>
+                      <div className="supplier-match-body">
+                        <div><span className="match-tag match-tag-manual">Manual BAC Selection</span></div>
+                        <div><strong>Registered Categories:</strong> {s.categories && s.categories.length ? s.categories.join(', ') : 'None on file'}</div>
+                        {s.email && <div><strong>Email:</strong> {s.email}</div>}
+                      </div>
+                      <div className="supplier-match-foot">
+                        {status ? (
+                          <span className="status-badge status-open">{rfqStatusLabelText(status)}</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-sm btn-primary"
+                            disabled={s.status !== 'Approved'}
+                            title={s.status !== 'Approved' ? 'Only approved suppliers can be selected.' : undefined}
+                            onClick={() => onSelectSupplier(s, group, 'manual_bac')}
+                          >
+                            Select Supplier
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )
+          )}
+
+          <div className="match-section-divider" />
+          <div className="match-section-heading">
+            <h3>Manual / Unregistered Supplier</h3>
+            <p className="helper-text">
+              Issue an RFQ to a supplier not registered in eProcure. The name is an internal reference for this PR and category group only and never appears on the RFQ PDF.
+            </p>
+          </div>
+          <button type="button" className="btn-primary" onClick={() => onManualRfq(group)}>+ Add Unregistered Supplier</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
-  const [matches, setMatches] = React.useState([])
+  const [data, setData] = React.useState(null)
   const [prDetails, setPrDetails] = React.useState(null)
   const [selectedSupplier, setSelectedSupplier] = React.useState(null)
-  const [issuedRfqBySupplier, setIssuedRfqBySupplier] = React.useState({})
+  const [issuedMap, setIssuedMap] = React.useState({})
+  const [expanded, setExpanded] = React.useState({})
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [reloadToken, setReloadToken] = React.useState(0)
+
+  // ── Manual / unregistered supplier RFQ (scoped to one category group) ──
+  const [manualRfqGroup, setManualRfqGroup] = React.useState(null)
+  const [manualRfqName, setManualRfqName] = React.useState('')
+  const [manualRfqMode, setManualRfqMode] = React.useState('')
+  const [manualRfqAward, setManualRfqAward] = React.useState('LOT')
+  const [manualRfqModes, setManualRfqModes] = React.useState([])
+  const [manualRfqBusy, setManualRfqBusy] = React.useState(false)
+  const [manualRfqError, setManualRfqError] = React.useState('')
+  const [manualRfqResult, setManualRfqResult] = React.useState(null)
+
+  React.useEffect(() => {
+    fetch(`${apiBase}/api/procurement-modes/`)
+      .then((r) => (r.ok ? r.json() : { modes: [] }))
+      .then((d) => setManualRfqModes(Array.isArray(d.modes) ? d.modes : []))
+      .catch(() => {})
+  }, [apiBase])
+
+  const issuedFor = React.useCallback((categoryName, supplierId) => {
+    return issuedMap[`${categoryName}::${supplierId}`]
+  }, [issuedMap])
+
+  const createManualRfq = async () => {
+    const name = manualRfqName.trim()
+    if (!name) { setManualRfqError('Enter the supplier / company name.'); return }
+    if (!manualRfqMode.trim()) { setManualRfqError('Enter a mode of procurement.'); return }
+    setManualRfqBusy(true)
+    setManualRfqError('')
+    try {
+      const res = await fetch(`${apiBase}/api/pr/${prId}/manual-rfq/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
+        body: JSON.stringify({
+          manual_supplier_name: name,
+          category: manualRfqGroup?.category || '',
+          mode_of_procurement: manualRfqMode.trim(),
+          award_basis: manualRfqAward,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.message || body.error || `Failed to create RFQ (HTTP ${res.status})`)
+      setManualRfqResult({ ...body, _category: manualRfqGroup?.category || '' })
+      setManualRfqGroup(null)
+      setManualRfqName('')
+      setManualRfqMode('')
+      setReloadToken((t) => t + 1)
+    } catch (err) {
+      setManualRfqError(err.message || 'Failed to create the manual RFQ.')
+    } finally {
+      setManualRfqBusy(false)
+    }
+  }
 
   React.useEffect(() => {
     setLoading(true)
@@ -1554,30 +1926,53 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
         .catch(() => ({ rfqs: [] })),
     ])
       .then(([matchData, details, rfqData]) => {
-        setMatches(matchData)
+        setData(matchData)
         setPrDetails(details)
-        // Only RFQs that have actually been issued (not still in Draft) block a re-request.
+        setExpanded((prev) => {
+          const next = { ...prev }
+          for (const g of matchData.groups || []) {
+            if (!(g.category in next)) next[g.category] = (matchData.groups.length === 1)
+          }
+          return next
+        })
+        // Key issued RFQs by category + supplier so a supplier picked for one
+        // group is never shown as picked for another (task 12).
         const issued = {}
         for (const rfq of rfqData.rfqs || []) {
-          if (rfq.supplier?.id && rfq.status && rfq.status !== 'draft') {
-            issued[rfq.supplier.id] = rfq.status
-          }
+          if (!rfq.status || rfq.status === 'draft') continue
+          const cat = rfq.category || ''
+          if (rfq.supplier?.id) issued[`${cat}::${rfq.supplier.id}`] = rfq.status
         }
-        setIssuedRfqBySupplier(issued)
+        setIssuedMap(issued)
         setLoading(false)
       })
       .catch((err) => { setError(err.message || 'Failed to load'); setLoading(false) })
   }, [prId, apiBase, reloadToken])
 
-  if (selectedSupplier && prDetails) {
-    return <RFQPreparation prId={prId} apiBase={apiBase} supplier={selectedSupplier} prDetails={prDetails} onBack={() => { setSelectedSupplier(null); setReloadToken((token) => token + 1) }} />
+  const onSelectSupplier = (supplier, group, selectionType) => {
+    setSelectedSupplier({
+      ...supplier,
+      matched_category: group.category,
+      category_id: group.category_id,
+      groupItems: group.items,
+      selection_type: selectionType,
+    })
   }
 
-  const rfqStatusLabel = (status) => {
-    if (status === 'quotation_received') return 'Quotation Received'
-    if (status === 'completed') return 'RFQ Completed'
-    return 'RFQ Sent'
+  if (selectedSupplier && prDetails) {
+    return (
+      <RFQPreparation
+        prId={prId}
+        apiBase={apiBase}
+        supplier={selectedSupplier}
+        prDetails={prDetails}
+        onBack={() => { setSelectedSupplier(null); setReloadToken((token) => token + 1) }}
+      />
+    )
   }
+
+  const groups = data?.groups || []
+  const uncategorized = data?.uncategorized_items || []
 
   return (
     <div className="supplier-section">
@@ -1585,86 +1980,98 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
 
       <div className="supplier-header" style={{ marginTop: 20 }}>
         <h1>Supplier Matching</h1>
-        <p>Suppliers are filtered by procurement category and compliance requirements for Purchase Request <strong>#{prDetails?.pr_no || prId}</strong>.</p>
+        <p>
+          Purchase Request <strong>#{data?.pr?.pr_no || prDetails?.pr_no || prId}</strong>
+          {data && <> &mdash; {data.item_count} Item{data.item_count !== 1 ? 's' : ''}, {data.category_count} Procurement {data.category_count === 1 ? 'Category' : 'Categories'}</>}
+        </p>
       </div>
 
       {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      {prDetails && (
-        <div className="card" style={{ padding: 16, marginBottom: 18 }}>
-          <div className="detail-grid">
-            <div><strong>PR Number: </strong><span>{prDetails.pr_no || 'N/A'}</span></div>
-            <div><strong>PR Date: </strong><span>{prDetails.date || prDetails.created_at?.slice(0, 10) || 'N/A'}</span></div>
-            <div><strong>Entity Name: </strong><span>{prDetails.entity_name || 'N/A'}</span></div>
-            <div><strong>Office / Section: </strong><span>{prDetails.office_section || 'N/A'}</span></div>
-            <div><strong>Category: </strong><span>{prDetails.category || 'Not assigned'}</span></div>
-            <div><strong>Grand Total: </strong><span>₱{Number(prDetails.grand_total || 0).toLocaleString()}</span></div>
-            <div style={{ gridColumn: '1 / -1' }}><strong>Purpose: </strong><span>{prDetails.purpose || 'N/A'}</span></div>
-          </div>
-          {prDetails.items?.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <strong>Requested Items</strong>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                {prDetails.items.map((item) => (
-                  <li key={item.id}>{item.item_description} ({item.quantity} {item.unit || 'units'})</li>
-                ))}
-              </ul>
-            </div>
-          )}
+      {manualRfqResult && (
+        <div className="alert alert-success" style={{ marginBottom: 14 }}>
+          <strong>Manual RFQ issued</strong> for {manualRfqResult._category || 'this PR'} &mdash;{' '}
+          {manualRfqResult.manual_supplier_name}, Quotation No. <strong>{manualRfqResult.quotation_no}</strong>.{' '}
+          <a href={`${apiBase}/api/manual-rfqs/${manualRfqResult.id}/pdf/`} target="_blank" rel="noreferrer">Download RFQ PDF</a>.
         </div>
       )}
 
       {loading ? (
         <div className="skeleton-stack">
-          {[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 110 }} />)}
+          {[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 90 }} />)}
         </div>
-      ) : matches.length === 0 ? (
-        <div className="alert alert-info">No eligible suppliers found. Suppliers must match the PR category, have an Approved status, and have all required compliance documents verified.</div>
       ) : (
-        matches.map((group) => (
-          <div key={group.category} style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <span className="status-badge status-review" style={{ fontSize: 12 }}>{group.category}</span>
-              <span style={{ fontSize: 14, color: '#64748b' }}>{group.suppliers.length} supplier{group.suppliers.length !== 1 ? 's' : ''} matched</span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Category + compliance eligible</span>
+        <>
+          {uncategorized.length > 0 && (
+            <div className="alert alert-warning" style={{ marginBottom: 16 }}>
+              <strong>Category Required.</strong> {uncategorized.length} item{uncategorized.length !== 1 ? 's have' : ' has'} no procurement category and cannot proceed to category-based supplier matching:
+              <ul style={{ margin: '6px 0 8px', paddingLeft: 20 }}>
+                {uncategorized.map((it) => <li key={it.id}>{it.item_description || 'N/A'}</li>)}
+              </ul>
+              <button type="button" className="btn-sm btn-secondary" onClick={onBack}>Assign categories</button>
             </div>
-            <div className="supplier-match-grid">
-              {group.suppliers.length === 0 && (
-                <div className="supplier-match-empty">No suppliers found for this category.</div>
-              )}
-              {group.suppliers.map((s) => {
-                const issuedStatus = issuedRfqBySupplier[s.id]
-                return (
-                  <article key={s.id} className="supplier-match-card">
-                    <div className="supplier-match-head">
-                      <h4>{s.company_name}</h4>
-                      <span className={`status-badge ${s.status === 'Approved' ? 'status-open' : 'status-review'}`}>
-                        {s.status || 'Pending'}
-                      </span>
-                    </div>
-                    <div className="supplier-match-body">
-                      {s.contact_person && <div><strong>Contact:</strong> {s.contact_person}</div>}
-                      {s.email && <div><strong>Email:</strong> {s.email}</div>}
-                      {s.business_address && <div><strong>Address:</strong> {s.business_address}</div>}
-                      {s.nature_of_business && <div><strong>Business:</strong> {s.nature_of_business}</div>}
-                      <div><strong>Compliance:</strong> <span className="status-badge status-open">{s.compliance_status || 'Eligible'} ({s.compliance_percentage ?? 100}%)</span></div>
-                    </div>
-                    <div className="supplier-match-foot">
-                      {issuedStatus ? (
-                        <>
-                          <span className="status-badge status-open">{rfqStatusLabel(issuedStatus)}</span>
-                          <button type="button" className="btn-sm btn-primary" disabled title="An RFQ has already been sent to this supplier for this PR">Request Quotation</button>
-                        </>
-                      ) : (
-                        <button type="button" className="btn-sm btn-primary" onClick={() => setSelectedSupplier({ ...s, matched_category: group.category })}>Request Quotation</button>
-                      )}
-                    </div>
-                  </article>
-                )
-              })}
+          )}
+
+          {groups.length === 0 && uncategorized.length === 0 && (
+            <div className="alert alert-info">This Purchase Request has no line items.</div>
+          )}
+
+          <div className="procurement-group-list">
+            {groups.map((group) => (
+              <ProcurementGroup
+                key={group.category}
+                group={group}
+                apiBase={apiBase}
+                expanded={Boolean(expanded[group.category])}
+                onToggle={() => setExpanded((prev) => ({ ...prev, [group.category]: !prev[group.category] }))}
+                issuedFor={issuedFor}
+                onSelectSupplier={onSelectSupplier}
+                onManualRfq={(g) => { setManualRfqGroup(g); setManualRfqError(''); setManualRfqResult(null) }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {manualRfqGroup && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="manual-rfq-title" onClick={() => setManualRfqGroup(null)}>
+          <div className="modal-content" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3 id="manual-rfq-title">Add Unregistered Supplier — {manualRfqGroup.category}</h3>
+              <button type="button" className="modal-close" onClick={() => setManualRfqGroup(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              {manualRfqError && <div className="alert alert-error" style={{ marginBottom: 10 }}>{manualRfqError}</div>}
+              <label className="form-field">
+                <span>Company / Supplier Name *</span>
+                <input type="text" value={manualRfqName} onChange={(e) => setManualRfqName(e.target.value)} placeholder="e.g. Juan's Aircon Services" autoFocus />
+              </label>
+              <label className="form-field">
+                <span>Mode of Procurement *</span>
+                <input type="text" list="manual-rfq-modes" value={manualRfqMode} onChange={(e) => setManualRfqMode(e.target.value)} placeholder="Select a suggestion or type a mode" />
+                <datalist id="manual-rfq-modes">
+                  {manualRfqModes.map((mode) => <option key={mode} value={mode} />)}
+                </datalist>
+              </label>
+              <label className="form-field">
+                <span>Award Basis *</span>
+                <select value={manualRfqAward} onChange={(e) => setManualRfqAward(e.target.value)}>
+                  <option value="LOT">Lot</option>
+                  <option value="LINE">Line</option>
+                </select>
+              </label>
+              <p className="helper-text" style={{ margin: '4px 0 0' }}>
+                The RFQ will contain only the {manualRfqGroup.item_count} item{manualRfqGroup.item_count !== 1 ? 's' : ''} in <strong>{manualRfqGroup.category}</strong>.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setManualRfqGroup(null)} disabled={manualRfqBusy}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={createManualRfq} disabled={manualRfqBusy}>
+                {manualRfqBusy ? 'Creating…' : 'Create RFQ'}
+              </button>
             </div>
           </div>
-        ))
+        </div>
       )}
 
       <div className="form-actions" style={{ marginTop: 20 }}>
@@ -1673,6 +2080,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     </div>
   )
 }
+
 
 const UnmatchedPurchaseRequests = ({ apiBase, onContinue }) => {
   const [requests, setRequests] = React.useState([])
@@ -1950,6 +2358,167 @@ const RFQDetailView = ({ group, rfq, onBack, onView }) => {
   )
 }
 
+const MANUAL_RFQ_ADMIN_HEADERS = { 'X-User-Role': 'admin', 'X-User-Username': 'admin' }
+
+const ManualRFQsView = ({ apiBaseUrl }) => {
+  const [rfqs, setRfqs] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [search, setSearch] = React.useState('')
+  const [activeSearch, setActiveSearch] = React.useState('')
+  const [openRfq, setOpenRfq] = React.useState(null)
+  const [uploadingId, setUploadingId] = React.useState(null)
+  const base = apiBaseUrl.replace(/\/$/, '')
+
+  const load = React.useCallback(async (term = '') => {
+    setLoading(true)
+    setError('')
+    try {
+      const url = `${base}/api/manual-rfqs/${term ? `?search=${encodeURIComponent(term)}` : ''}`
+      const res = await fetch(url, { headers: MANUAL_RFQ_ADMIN_HEADERS, cache: 'no-store' })
+      if (!res.ok) throw new Error('Unable to load Manual RFQs.')
+      const data = await res.json()
+      setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
+      setActiveSearch(term)
+    } catch (err) {
+      setError(err.message || 'Unable to load Manual RFQs.')
+    } finally {
+      setLoading(false)
+    }
+  }, [base])
+
+  React.useEffect(() => { load('') }, [load])
+
+  const uploadCompleted = async (rfq, file) => {
+    if (!file) return
+    setUploadingId(rfq.id)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch(`${base}/api/manual-rfqs/${rfq.id}/completed/`, { method: 'POST', headers: MANUAL_RFQ_ADMIN_HEADERS, body })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message || data.error || 'Upload failed.')
+      await load(activeSearch)
+      setOpenRfq(data)
+    } catch (err) {
+      window.alert(err.message || 'Upload failed.')
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
+  return (
+    <div className="supplier-section">
+      <div className="supplier-header">
+        <h1>Manual RFQs</h1>
+        <p>RFQs issued to unregistered suppliers. The supplier name is an internal reference and is not printed on the RFQ PDF. Re-download uses the same quotation number.</p>
+      </div>
+
+      <form
+        className="other-supplier-search"
+        style={{ marginBottom: 16 }}
+        onSubmit={(e) => { e.preventDefault(); load(search.trim()) }}
+      >
+        <label className="form-field" style={{ flex: 1, margin: 0 }}>
+          <span>Search by supplier name, PR number or quotation number</span>
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 e.g. Juan's, 2026-09-001, 2026-021" />
+        </label>
+        <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
+        {activeSearch && (
+          <button type="button" className="btn-secondary" onClick={() => { setSearch(''); load('') }} disabled={loading}>Show all</button>
+        )}
+      </form>
+
+      {error && <div className="alert alert-error">{error}</div>}
+
+      {loading ? (
+        <div className="skeleton-stack">{[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 90 }} />)}</div>
+      ) : rfqs.length === 0 ? (
+        <div className="supplier-match-empty">
+          {activeSearch ? 'No manual RFQs match your search.' : 'No manual RFQs yet. Create one from Supplier Matching → Manual / Unregistered Supplier.'}
+        </div>
+      ) : (
+        <div className="supplier-match-grid">
+          {rfqs.map((rfq) => (
+            <article key={rfq.id} className="supplier-match-card supplier-match-card-manual">
+              <div className="supplier-match-head">
+                <h4>{rfq.manual_supplier_name || rfq.supplier_name}</h4>
+                <span className="status-badge status-open">{rfq.status_label}</span>
+              </div>
+              <div className="supplier-match-body">
+                <div><span className="match-tag match-tag-manual">Manual / Unregistered</span></div>
+                <div><strong>PR:</strong> {rfq.purchase_request?.pr_no || `PR-${rfq.purchase_request?.id}`}</div>
+                <div><strong>Quotation No.:</strong> {rfq.quotation_no}</div>
+                <div><strong>RFQ No.:</strong> {rfq.rfq_no}</div>
+                <div><strong>Delivery:</strong> Manual</div>
+                {rfq.created_by && <div><strong>Issued by:</strong> {rfq.created_by}</div>}
+                <div><strong>Issued:</strong> {rfq.sent_at ? new Date(rfq.sent_at).toLocaleString() : new Date(rfq.created_at).toLocaleString()}</div>
+              </div>
+              <div className="supplier-match-foot">
+                <button type="button" className="btn-sm btn-secondary" onClick={() => setOpenRfq(rfq)}>Open</button>
+                <a className="btn-sm btn-primary" href={`${base}/api/manual-rfqs/${rfq.id}/pdf/`} target="_blank" rel="noreferrer">Download RFQ</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {openRfq && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setOpenRfq(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Manual RFQ — {openRfq.manual_supplier_name || openRfq.supplier_name}</h3>
+              <button type="button" className="modal-close" onClick={() => setOpenRfq(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-grid">
+                <div><strong>Supplier: </strong><span>{openRfq.manual_supplier_name || openRfq.supplier_name}</span></div>
+                <div><strong>Type: </strong><span>Manual / Unregistered</span></div>
+                <div><strong>PR No.: </strong><span>{openRfq.purchase_request?.pr_no || `PR-${openRfq.purchase_request?.id}`}</span></div>
+                <div><strong>Quotation No.: </strong><span>{openRfq.quotation_no}</span></div>
+                <div><strong>RFQ No.: </strong><span>{openRfq.rfq_no}</span></div>
+                <div><strong>Delivery: </strong><span>Manual</span></div>
+                <div><strong>Mode of Procurement: </strong><span>{openRfq.mode_of_procurement || 'N/A'}</span></div>
+                <div><strong>Status: </strong><span>{openRfq.status_label}</span></div>
+                {openRfq.created_by && <div><strong>Issued by: </strong><span>{openRfq.created_by}</span></div>}
+              </div>
+
+              <div className="form-actions" style={{ marginTop: 14 }}>
+                <a className="btn-secondary" href={`${base}/api/manual-rfqs/${openRfq.id}/pdf/`} target="_blank" rel="noreferrer">Download Generated RFQ</a>
+                {openRfq.submitted_pdf_url && (
+                  <a className="btn-secondary" href={openRfq.submitted_pdf_url} target="_blank" rel="noreferrer">View Completed RFQ</a>
+                )}
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label className="form-field">
+                  <span>{openRfq.has_response ? 'Replace completed RFQ (PDF only)' : 'Upload completed RFQ returned by the supplier (PDF only)'}</span>
+                  <input
+                    type="file"
+                    accept={acceptAttr(UPLOAD_KINDS.COMPLETED_RFQ)}
+                    disabled={uploadingId === openRfq.id}
+                    onChange={(e) => {
+                      const picked = e.target.files?.[0] || null
+                      if (picked) {
+                        const check = validateFile(picked, UPLOAD_KINDS.COMPLETED_RFQ)
+                        if (!check.ok) { window.alert(check.error); e.target.value = ''; return }
+                        uploadCompleted(openRfq, picked)
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setOpenRfq(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const AdminRFQManagement = ({ apiBaseUrl }) => {
   const [groups, setGroups] = React.useState([])
   const [loading, setLoading] = React.useState(true)
@@ -2065,6 +2634,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                       <span className="rfq-mgmt-group-category">{pr.category || 'Category not assigned'}</span>
                     </span>
                     <span className="rfq-mgmt-group-counts">
+                      {summary.category_count ? `${summary.category_count} ${summary.category_count === 1 ? 'Category' : 'Categories'} • ` : ''}
                       {summary.sent} RFQ{summary.sent !== 1 ? 's' : ''} • {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''}
                     </span>
                     <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
@@ -2080,43 +2650,57 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                           <button type="button" className="btn-sm btn-primary" onClick={() => setDetail({ mode: 'pr', group })}>View All Responses</button>
                         )}
                       </div>
-                      <div className="table-shell">
-                        <table className="enterprise-table">
-                          <thead>
-                            <tr><th>Supplier</th><th>RFQ No.</th><th>Sent</th><th>Received</th><th>Status</th><th>Actions</th></tr>
-                          </thead>
-                          <tbody>
-                            {group.rfqs.map((rfq) => {
-                              const indicator = rfqResponseIndicator(rfq)
-                              return (
-                                <tr key={rfq.id}>
-                                  <td>{rfq.supplier.company_name}</td>
-                                  <td><strong>{rfq.rfq_no}</strong></td>
-                                  <td>{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '—'}</td>
-                                  <td>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleDateString() : '—'}</td>
-                                  <td><span className={`rfq-resp-indicator ${indicator.className}`}>{indicator.icon} {indicator.label}</span></td>
-                                  <td>
-                                    <div className="rfq-mgmt-row-actions">
-                                      <button type="button" className="btn-sm btn-secondary" onClick={() => setDetail({ mode: 'rfq', group, rfq })}>View RFQ</button>
-                                      {rfq.generated_pdf_url && (
-                                        <button type="button" className="btn-sm btn-secondary" onClick={() => openDocument(rfq.generated_pdf_url, `Generated RFQ · ${rfq.rfq_no}`)}>View Generated</button>
-                                      )}
-                                      {rfq.submitted_pdf_url ? (
-                                        <>
-                                          <button type="button" className="btn-sm btn-primary" onClick={() => openDocument(rfq.submitted_pdf_url, `Supplier Submitted RFQ · ${rfq.rfq_no}`)}>View Response</button>
-                                          <a className="btn-sm btn-secondary" href={rfq.submitted_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
-                                        </>
-                                      ) : (
-                                        <span className="supplier-subtext">No response yet</span>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      {(group.categories && group.categories.length
+                        ? group.categories
+                        : [{ category: pr.category || 'Uncategorized', rfqs: group.rfqs, rfq_count: group.rfqs.length, response_count: group.rfqs.filter((r) => r.has_response).length, item_count: 0 }]
+                      ).map((catGroup) => (
+                        <div key={catGroup.category} className="rfq-mgmt-category">
+                          <div className="rfq-mgmt-category-head">
+                            <strong>{catGroup.category}</strong>
+                            <span className="rfq-mgmt-group-counts">
+                              {catGroup.item_count ? `${catGroup.item_count} Item${catGroup.item_count !== 1 ? 's' : ''} · ` : ''}
+                              {catGroup.rfq_count} RFQ{catGroup.rfq_count !== 1 ? 's' : ''} · {catGroup.response_count} Response{catGroup.response_count !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="table-shell">
+                            <table className="enterprise-table">
+                              <thead>
+                                <tr><th>Supplier</th><th>Quotation No.</th><th>Sent</th><th>Received</th><th>Status</th><th>Actions</th></tr>
+                              </thead>
+                              <tbody>
+                                {catGroup.rfqs.map((rfq) => {
+                                  const indicator = rfqResponseIndicator(rfq)
+                                  return (
+                                    <tr key={rfq.id}>
+                                      <td>{rfq.supplier?.company_name || rfq.manual_supplier_name || rfq.supplier_name}</td>
+                                      <td><strong>{rfq.rfq_no || '—'}</strong></td>
+                                      <td>{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '—'}</td>
+                                      <td>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleDateString() : '—'}</td>
+                                      <td><span className={`rfq-resp-indicator ${indicator.className}`}>{indicator.icon} {indicator.label}</span></td>
+                                      <td>
+                                        <div className="rfq-mgmt-row-actions">
+                                          <button type="button" className="btn-sm btn-secondary" onClick={() => setDetail({ mode: 'rfq', group, rfq })}>View RFQ</button>
+                                          {rfq.generated_pdf_url && (
+                                            <button type="button" className="btn-sm btn-secondary" onClick={() => openDocument(rfq.generated_pdf_url, `Generated RFQ · ${rfq.rfq_no}`)}>View Generated</button>
+                                          )}
+                                          {rfq.submitted_pdf_url ? (
+                                            <>
+                                              <button type="button" className="btn-sm btn-primary" onClick={() => openDocument(rfq.submitted_pdf_url, `Supplier Submitted RFQ · ${rfq.rfq_no}`)}>View Response</button>
+                                              <a className="btn-sm btn-secondary" href={rfq.submitted_pdf_url} download target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+                                            </>
+                                          ) : (
+                                            <span className="supplier-subtext">No response yet</span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -2845,6 +3429,14 @@ const Admin = () => {
               <FileText size={14} />
               <span className="admin-nav-label">RFQ Management</span>
             </button>
+            <button
+              className={`admin-nav-item ${currentTab === 'manual-rfqs' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('manual-rfqs')}
+              title="Manual RFQs"
+            >
+              <FileText size={14} />
+              <span className="admin-nav-label">Manual RFQs</span>
+            </button>
           </div>
         </div>
 
@@ -3383,6 +3975,7 @@ const Admin = () => {
         )}
 
         {currentTab === 'rfq-responses' && <AdminRFQManagement apiBaseUrl={apiBaseUrl} />}
+        {currentTab === 'manual-rfqs' && <ManualRFQsView apiBaseUrl={apiBaseUrl} />}
 
         {currentTab === 'pr-monitoring' && (
           <div className="supplier-section">
@@ -4311,15 +4904,6 @@ const Buyer = () => {
               )}
               <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
             </section>
-
-            <section className="supplier-section">
-              <h2>Next steps</h2>
-              <ul>
-                <li>Review supplier bids and document compliance reports.</li>
-                <li>Compare proposals for university furniture and lab equipment.</li>
-                <li>Request additional information from shortlisted suppliers.</li>
-              </ul>
-            </section>
           </div>
         )}
 
@@ -4451,7 +5035,17 @@ const BuyerPRStatusCard = ({ record }) => {
       </div>
 
       <dl className="buyer-status-facts">
-        <div><dt>PR Number</dt><dd>{record.pr_no || `Reference #${record.id}`}</dd></div>
+        <div>
+          <dt>PR Number</dt>
+          <dd>
+            {record.pr_no
+              ? <strong className="buyer-pr-number">{record.pr_no}</strong>
+              : <span className="buyer-pr-pending">Awaiting BAC assignment</span>}
+          </dd>
+        </div>
+        {!record.pr_no && (
+          <div><dt>Reference</dt><dd>#{record.id}</dd></div>
+        )}
         <div><dt>Requesting Office</dt><dd>{record.office_section || record.entity_name || '—'}</dd></div>
         {record.date && <div><dt>PR Date</dt><dd>{buyerLongDate(record.date)}</dd></div>}
         <div><dt>Submitted</dt><dd>{buyerLongDate(record.created_at) || '—'}</dd></div>
@@ -4740,8 +5334,8 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
 
   const handleUpload = async () => {
     if (!file) { setError('Choose the completed RFQ PDF first.'); return }
-    if (!file.name.toLowerCase().endsWith('.pdf')) { setError('The completed RFQ must be a PDF file.'); return }
-    if (file.size > 10 * 1024 * 1024) { setError('File must be 10 MB or smaller.'); return }
+    const check = validateFile(file, UPLOAD_KINDS.COMPLETED_RFQ)
+    if (!check.ok) { setError(check.error); return }
     setUploading(true); setError(''); setNotice('')
     try {
       const body = new FormData()
@@ -4835,10 +5429,21 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
         ) : responseOpen ? (
           <div className="rfq-upload-area">
             <label className="form-field">
-              <span>Upload Completed RFQ (PDF only, max 10 MB)</span>
-              <input type="file" accept="application/pdf,.pdf" onChange={(event) => { setFile(event.target.files?.[0] || null); setError('') }} />
+              <span>Upload Completed RFQ — accepted file type: {acceptedTypesLabel(UPLOAD_KINDS.COMPLETED_RFQ)}, max 10 MB</span>
+              <input
+                type="file"
+                accept={acceptAttr(UPLOAD_KINDS.COMPLETED_RFQ)}
+                onChange={(event) => {
+                  const picked = event.target.files?.[0] || null
+                  if (picked) {
+                    const check = validateFile(picked, UPLOAD_KINDS.COMPLETED_RFQ)
+                    if (!check.ok) { setFile(null); setError(check.error); event.target.value = ''; return }
+                  }
+                  setFile(picked); setError('')
+                }}
+              />
             </label>
-            {file && <p className="supplier-subtext">{file.name}</p>}
+            {file && <p className="supplier-subtext">✓ {file.name} · {fileTypeLabel(file)} • {formatFileSize(file.size)}</p>}
             <div className="form-actions">
               {replacing && <button type="button" className="btn-secondary" onClick={() => { setReplacing(false); setFile(null) }} disabled={uploading}>Cancel</button>}
               <button type="button" className="btn-primary" onClick={handleUpload} disabled={uploading || !file}>{uploading ? 'Uploading...' : 'Upload Completed RFQ'}</button>
@@ -5316,6 +5921,10 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (quotationFile) {
+      const check = validateFile(quotationFile, UPLOAD_KINDS.COMPLETED_RFQ)
+      if (!check.ok) { setError(check.error); return }
+    }
     setSubmitting(true)
     setError(null)
 
@@ -5418,8 +6027,21 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
           </div>
           <div className="form-group">
             <label htmlFor="quotation-file">Completed RFQ PDF *</label>
-            <input id="quotation-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setQuotationFile(e.target.files?.[0] || null)} />
-            <small>Download the RFQ, fill it out, save it as PDF, then upload it here.</small>
+            <input
+              id="quotation-file"
+              type="file"
+              accept={acceptAttr(UPLOAD_KINDS.COMPLETED_RFQ)}
+              required
+              onChange={(e) => {
+                const picked = e.target.files?.[0] || null
+                if (picked) {
+                  const check = validateFile(picked, UPLOAD_KINDS.COMPLETED_RFQ)
+                  if (!check.ok) { setQuotationFile(null); setError(check.error); e.target.value = ''; return }
+                }
+                setQuotationFile(picked); setError(null)
+              }}
+            />
+            <small>Download the RFQ, fill it out, save it as PDF, then upload it here. Accepted file type: {acceptedTypesLabel(UPLOAD_KINDS.COMPLETED_RFQ)}.</small>
           </div>
 
           <div className="modal-actions">
@@ -5644,6 +6266,11 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const handleResubmit = async (docType) => {
     const file = resubmitFiles[docType]
     if (!file) return
+    const check = validateFile(file, UPLOAD_KINDS.SUPPLIER_REQUIREMENT)
+    if (!check.ok) {
+      setMessage({ type: 'error', text: `${file.name}: ${check.error}` })
+      return
+    }
     setResubmitting(docType)
     setMessage(null)
     try {
@@ -5769,7 +6396,14 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                         <span className="profile-document-verified">Document verified by BAC</span>
                       ) : (
                         <>
-                          <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(event) => setResubmitFiles((current) => ({ ...current, [document.doc_type]: event.target.files[0] }))} />
+                          <input type="file" accept={acceptAttr(UPLOAD_KINDS.SUPPLIER_REQUIREMENT)} onChange={(event) => {
+                            const picked = event.target.files?.[0] || null
+                            if (picked) {
+                              const check = validateFile(picked, UPLOAD_KINDS.SUPPLIER_REQUIREMENT)
+                              if (!check.ok) { setMessage({ type: 'error', text: `${picked.name}: ${check.error}` }); event.target.value = ''; return }
+                            }
+                            setResubmitFiles((current) => ({ ...current, [document.doc_type]: picked }))
+                          }} />
               <button type="button" className="btn-sm btn-primary" onClick={() => setResubmitConfirm({ docType: document.doc_type, fileName: resubmitFiles[document.doc_type]?.name })} disabled={!resubmitFiles[document.doc_type] || resubmitting === document.doc_type}>{resubmitting === document.doc_type ? 'Submitting...' : 'Resubmit'}</button>
                         </>
                       )}

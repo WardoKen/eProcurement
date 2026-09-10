@@ -4,7 +4,7 @@ import re
 import secrets
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from io import BytesIO
@@ -16,7 +16,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, Min, OuterRef, Q
+from django.db.models import Case, Count, Exists, IntegerField, Min, OuterRef, Q, Value, When
 from django.conf import settings
 from django.utils.text import slugify
 from xhtml2pdf import pisa
@@ -32,6 +32,7 @@ try:
     from ocr.form_autofill import FormAutoFillService
     from ocr.validation import ValidationService
     from ocr.debug_utils import write_debug_json
+    from ocr import signature_detection
 except ImportError:  # pragma: no cover
     from backend.ocr.ocr_service import TextractOCRService
     from backend.ocr.layout_parser import DocumentLayoutParser
@@ -39,9 +40,11 @@ except ImportError:  # pragma: no cover
     from backend.ocr.form_autofill import FormAutoFillService
     from backend.ocr.validation import ValidationService
     from backend.ocr.debug_utils import write_debug_json
+    from backend.ocr import signature_detection
 
 from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory
-from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quotation, Notification, RFQ
+from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quotation, Notification, RFQ, RFQItem
+from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
     REQUIRED_UPLOAD_KEYS,
     OPTIONAL_UPLOAD_KEYS,
@@ -56,7 +59,6 @@ from api.rfq.services.rfq_generator import generate_rfq_pdf
 from api.rfq.procurement_modes import (
     procurement_mode_choices,
     normalize_procurement_mode,
-    is_valid_procurement_mode,
 )
 
 UPLOADS_DIR = Path(settings.BASE_DIR) / 'uploads'
@@ -71,6 +73,135 @@ validation_service = ValidationService()
 
 def normalize_text(value: str) -> str:
     return re.sub(r'\s+', ' ', (value or '')).strip()
+
+
+# --- Signature-presence validation (uploaded PR) ---------------------------
+# The signature check runs once at upload, then the derived regions + result are
+# cached in a sidecar file next to the upload so "Recheck Signatures" and the
+# Save guard can re-measure the document without re-running OCR/Textract.
+SIGNATORY_NAME_FIELDS = {
+    signature_detection.REQUESTED_BY: ('requested_by_name', 'requestedBy'),
+    signature_detection.FUNDS_AVAILABLE: ('funds_available_name',),
+    signature_detection.APPROVED_BY: ('approved_by_name',),
+    signature_detection.TWG: ('twg_name',),
+}
+
+
+def _signatory_names(fields: dict) -> dict:
+    names = {}
+    for key, aliases in SIGNATORY_NAME_FIELDS.items():
+        for alias in aliases:
+            value = str((fields or {}).get(alias) or '').strip()
+            if value:
+                names[key] = value
+                break
+    return names
+
+
+def _declaration_acknowledged(fields: dict) -> bool:
+    """Strict check for the PR Submission Declaration acknowledgement flag.
+
+    Only an explicit boolean ``True`` (or the string ``"true"``) counts -
+    ``False`` / missing / ``None`` / anything else is treated as not acknowledged.
+    """
+    value = (fields or {}).get('declaration_acknowledged')
+    if value is None:
+        value = (fields or {}).get('declarationAcknowledged')
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == 'true'
+
+
+def _sigcheck_path(filename: str) -> Path:
+    safe = Path(str(filename or '')).name
+    return UPLOADS_DIR / f'{safe}.sigcheck.json'
+
+
+def _write_sigcheck(filename: str, regions: dict, result: dict) -> None:
+    if not filename:
+        return
+    payload = {
+        'version': signature_detection.SIDECAR_VERSION,
+        'filename': Path(str(filename)).name,
+        'generated_at': timezone.now().isoformat(),
+        'regions': regions,
+        'result': result,
+    }
+    try:
+        with open(_sigcheck_path(filename), 'w', encoding='utf-8') as handle:
+            json.dump(payload, handle)
+    except OSError:
+        pass
+
+
+def _read_sigcheck(filename: str) -> dict | None:
+    if not filename:
+        return None
+    try:
+        with open(_sigcheck_path(filename), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if data.get('version') != signature_detection.SIDECAR_VERSION:
+        return None
+    return data
+
+
+def run_signature_validation(filename: str, textract_blocks, names: dict) -> dict:
+    """Analyse the uploaded document and persist the regions + result sidecar."""
+    file_path = UPLOADS_DIR / Path(str(filename or '')).name
+    if not file_path.is_file():
+        return signature_detection.blank_result(names)
+    result = signature_detection.analyze(file_path, textract_blocks, names=names)
+    _write_sigcheck(filename, result.get('regions', {}), result)
+    return result
+
+
+def recheck_signature_validation(filename: str, names: dict) -> dict:
+    """Re-measure signatures using the cached regions, or a fresh analysis."""
+    file_path = UPLOADS_DIR / Path(str(filename or '')).name
+    if not file_path.is_file():
+        return signature_detection.blank_result(names)
+    sidecar = _read_sigcheck(filename)
+    if sidecar and sidecar.get('regions'):
+        result = signature_detection.reanalyze(file_path, sidecar['regions'], names=names)
+    else:
+        result = signature_detection.analyze(file_path, None, names=names)
+    _write_sigcheck(filename, result.get('regions', {}), result)
+    return result
+
+
+def _signature_guard(filename: str, names: dict):
+    """Return an error payload when required signatures are not all present.
+
+    ``None`` means the save may proceed. The check re-analyses the actual
+    document; a document that cannot be found on disk is not blocked here (the
+    upload-time check + disabled button are the front line), but any real
+    uploaded file referenced in a bypass attempt is re-verified.
+    """
+    file_path = UPLOADS_DIR / Path(str(filename or '')).name
+    if not filename or not file_path.is_file():
+        return None
+    result = recheck_signature_validation(filename, names)
+    summary = result.get('summary', {})
+    if summary.get('can_save'):
+        return None
+    missing = summary.get('missing_signatures') or []
+    unverifiable = summary.get('unverifiable_signatures') or []
+    if unverifiable and not missing:
+        error = (
+            'One or more required signatures could not be verified. '
+            'Please review the original document and recheck signatures before saving.'
+        )
+    else:
+        error = 'Purchase Request cannot be saved because one or more required signatures are missing.'
+    return {
+        'success': False,
+        'error': error,
+        'missing_signatures': missing,
+        'unverifiable_signatures': unverifiable,
+        'signature_validation': result,
+    }
 
 
 def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
@@ -198,6 +329,9 @@ def generate_pr_number():
     return next_pr_number(lock=True)
 
 
+_RFQ_NUMBER_RE = re.compile(r'^RFQ-(\d{4})-(\d+)$')
+
+
 def validate_custom_pr_number(value):
     number = str(value or '').strip()
     if not PR_NUMBER_PATTERN.fullmatch(number):
@@ -225,12 +359,11 @@ def upload_file(request):
     if not file:
         return json_error('No file uploaded', 400)
 
-    allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png'}
-    extension = Path(file.name).suffix.lower()
-    if extension not in allowed_extensions:
-        return json_error('Unsupported file type. Upload a PDF, JPG, or PNG file.', 400)
-    if file.size > 10 * 1024 * 1024:
-        return json_error('File too large (max 10MB)', 400)
+    # Authoritative validation before any storage or OCR/Textract work.
+    try:
+        validate_upload(file, UploadKind.PR)
+    except FileValidationError as exc:
+        return json_error(exc.message, 400)
 
     filename = f"{int(time.time() * 1000)}_{file.name}"
     file_path = UPLOADS_DIR / filename
@@ -261,6 +394,9 @@ def upload_file(request):
 
     auto_filled = auto_fill_service.populate(parsed)
     validation = validation_service.validate(parsed)
+    signature_validation = run_signature_validation(
+        filename, payload.get('textract_blocks') or [], _signatory_names({**auto_filled, **parsed})
+    )
     response_payload = {
         'success': True,
         'fields': {**auto_filled, **parsed},
@@ -270,9 +406,34 @@ def upload_file(request):
         'fileUrl': request.build_absolute_uri(f'/uploads/{filename}'),
         'ocr': document,
         'validation': validation,
+        'signature_validation': signature_validation,
     }
     write_debug_json('final_output.json', response_payload)
     return JsonResponse(response_payload)
+
+
+@csrf_exempt
+@require_POST
+def pr_recheck_signatures(request):
+    """Re-run signature-presence validation for an already-uploaded PR document.
+
+    Backs the "Recheck Signatures" action - no re-upload and no re-OCR (the
+    signature regions derived at upload time are reused).
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except (TypeError, json.JSONDecodeError):
+        return json_error('Invalid JSON payload', 400)
+
+    filename = str(data.get('filename') or data.get('sourceFilename') or '').strip()
+    if not filename:
+        return json_error('A source document filename is required.', 400)
+    if not (UPLOADS_DIR / Path(filename).name).is_file():
+        return json_error('The uploaded document could not be found. Please re-upload it.', 404)
+
+    names = _signatory_names(data.get('fields') or data)
+    result = recheck_signature_validation(filename, names)
+    return JsonResponse({'success': True, 'signature_validation': result})
 
 
 @csrf_exempt
@@ -286,11 +447,10 @@ def pr_scan(request):
     if not f:
         return json_error('No file uploaded', 400)
 
-    # basic validation
-    if not (f.content_type == 'application/pdf' or f.name.lower().endswith('.pdf')):
-        return json_error('Only PDF files are accepted', 400)
-    if f.size > 10 * 1024 * 1024:
-        return json_error('File too large (max 10MB)', 400)
+    try:
+        validate_upload(f, UploadKind.PR)
+    except FileValidationError as exc:
+        return json_error(exc.message, 400)
 
     filename = f"{int(time.time() * 1000)}_{f.name}"
     file_path = UPLOADS_DIR / filename
@@ -351,6 +511,44 @@ def create_pr(request):
     numbering_mode = str(fields.get('prNumberMode') or fields.get('pr_number_mode') or 'automatic').lower()
     review_only = bool(fields.get('reviewOnly') or fields.get('review_only'))
     custom_pr_number = validate_custom_pr_number(fields.get('prNumber') or fields.get('pr_no'))
+
+    declaration_ack = _declaration_acknowledged(fields)
+
+    # The Buyer submission path (review_only) has two independent gates, both
+    # enforced here and never trusted from the browser: the required signatures
+    # must be detected on the document, AND the submitter must have acknowledged
+    # the Purchase Request Submission Declaration. The Admin review/edit path
+    # (pr_update) is unaffected.
+    if review_only:
+        source_filename = str(fields.get('sourceFilename') or fields.get('source_filename') or '').strip()
+
+        if not declaration_ack:
+            return JsonResponse({
+                'success': False,
+                'error': 'Please acknowledge the Purchase Request Submission Declaration before submitting.',
+                'declaration_required': True,
+            }, status=422)
+
+        # Guard against an accidental double-submission (double click, retry):
+        # the same document just submitted by the same user is returned, not
+        # duplicated.
+        if source_filename:
+            recent = PurchaseRequest.objects.filter(
+                source_filename=source_filename,
+                submitted_by=normalize_text(fields.get('submittedBy') or fields.get('submitted_by') or ''),
+                created_at__gte=timezone.now() - timedelta(minutes=2),
+            ).order_by('-created_at').first()
+            if recent is not None:
+                return JsonResponse({
+                    'success': True, 'id': recent.id, 'pr_no': recent.pr_no,
+                    'status': recent.status, 'duplicate': True,
+                    'created_at': recent.created_at.isoformat(),
+                }, status=200)
+
+        blocked = _signature_guard(source_filename, _signatory_names(fields))
+        if blocked is not None:
+            return JsonResponse(blocked, status=422)
+
     if review_only:
         assigned_pr_number = None
     elif numbering_mode == 'custom':
@@ -382,6 +580,8 @@ def create_pr(request):
                 twg_verified_by=fields.get('twg_name') or '',
                 status=PurchaseRequest.STATUS_UPLOADED,
                 grand_total=fields.get('grand_total') or 0,
+                declaration_acknowledged=bool(declaration_ack),
+                declaration_acknowledged_at=timezone.now() if declaration_ack else None,
             )
 
             for item in items:
@@ -413,7 +613,11 @@ def create_pr(request):
     except Exception as exc:
         return json_error('Failed to save Purchase Request', 500)
 
-    return JsonResponse({'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status}, status=201)
+    return JsonResponse({
+        'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status,
+        'created_at': pr.created_at.isoformat(),
+        'declaration_acknowledged': pr.declaration_acknowledged,
+    }, status=201)
 
 
 @require_GET
@@ -932,6 +1136,94 @@ def supplier_list_create(request):
 
 
 @require_GET
+def suppliers_search(request):
+    """Manual BAC supplier search by company name.
+
+    Separate from ``pr_supplier_match`` on purpose: this endpoint answers "does
+    the BAC Secretariat know another supplier who can provide this requirement?"
+    and never applies the PR procurement-category filter. It does NOT mark
+    results as eligible or category-matched - the caller must treat every hit as
+    an "Other Supplier" pending an explicit manual selection.
+
+    With ``exclude_pr=<pr id>`` the PR's category-matched suppliers are removed
+    from the results, so the caller can show every remaining ("other") supplier
+    by default without a search term and without duplicating the category-matched
+    section. A short/blank query is a browse of that list, not an error.
+
+    Restricted to admin/BAC users; buyers and suppliers cannot use it.
+    """
+    if _request_role(request) != 'admin':
+        return json_error('Admin access is required for manual supplier search.', 403)
+
+    query = normalize_text(request.GET.get('name') or request.GET.get('q') or '')
+
+    supplier_qs = Supplier.objects.all()
+    if query:
+        # ``icontains`` gives case-insensitive partial matching on every DB
+        # backend the project supports; ``normalize_text`` collapsed whitespace.
+        supplier_qs = supplier_qs.filter(company_name__icontains=query)
+
+    # Drop suppliers already registered under the PR's procurement category -
+    # those belong to the category-matched section, never to "Other Suppliers".
+    exclude_pr = request.GET.get('exclude_pr')
+    if exclude_pr:
+        try:
+            pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=exclude_pr)
+        except (PurchaseRequest.DoesNotExist, ValueError):
+            return json_error('Purchase Request not found', 404)
+        pr_category_names = {item.category for item in pr.line_items.all() if item.category}
+        if pr.category:
+            pr_category_names.add(pr.category)
+        if pr_category_names:
+            in_category_ids = SupplierCategory.objects.filter(
+                category__name__in=pr_category_names
+            ).values_list('supplier_id', flat=True)
+            supplier_qs = supplier_qs.exclude(id__in=in_category_ids)
+
+    limit = 20
+    # Approved suppliers first so the selectable ones lead the default browse,
+    # then alphabetical.
+    supplier_qs = supplier_qs.annotate(
+        _approved_first=Case(
+            When(status='Approved', then=Value(0)),
+            default=Value(1),
+            output_field=IntegerField(),
+        )
+    ).order_by('_approved_first', 'company_name')
+    matches = list(supplier_qs[:limit + 1])
+    has_more = len(matches) > limit
+    matches = matches[:limit]
+
+    results = []
+    for supplier in matches:
+        categories = list(
+            SupplierCategory.objects.filter(supplier=supplier)
+            .select_related('category')
+            .values_list('category__name', flat=True)
+        )
+        results.append({
+            'id': supplier.id,
+            'company_name': supplier.company_name,
+            'status': supplier.status,
+            'contact_person': supplier.contact_person,
+            'email': supplier.email,
+            'contact_phone': supplier.contact_phone,
+            'business_address': supplier.business_address,
+            'business_type': supplier.business_type,
+            'nature_of_business': supplier.nature_of_business,
+            'products_services': supplier.products_services or supplier.goods_services,
+            'categories': categories,
+        })
+
+    return JsonResponse({
+        'results': results,
+        'query': query,
+        'count': len(results),
+        'has_more': has_more,
+    })
+
+
+@require_GET
 def admin_dashboard_summary(request):
     """Return live summary counts for the BAC administrator dashboard."""
     return JsonResponse({
@@ -1327,10 +1619,12 @@ def quotation_attachment_upload(request, supplier_id, quotation_id):
     except Quotation.DoesNotExist:
         return JsonResponse({'error': 'Quotation not found'}, status=404)
     uploaded = request.FILES.get('file')
-    if not uploaded or not uploaded.name.lower().endswith('.pdf'):
+    if not uploaded:
         return JsonResponse({'error': 'A PDF quotation file is required'}, status=400)
-    if uploaded.size > 10 * 1024 * 1024:
-        return JsonResponse({'error': 'File size must not exceed 10 MB'}, status=400)
+    try:
+        validate_upload(uploaded, UploadKind.COMPLETED_RFQ)
+    except FileValidationError as exc:
+        return JsonResponse({'error': exc.message}, status=400)
     filename = _save_supplier_upload(uploaded)
     quotation.attachment_filename = filename
     quotation.save(update_fields=['attachment_filename', 'updated_at'])
@@ -1601,10 +1895,10 @@ def supplier_resubmit_document(request, supplier_id):
     uploaded = request.FILES.get('file')
     if not document_type or not uploaded:
         return JsonResponse({'error': 'Document type and file are required'}, status=400)
-    if not uploaded.name.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png')):
-        return JsonResponse({'error': 'Only PDF, JPG, JPEG, and PNG files are allowed'}, status=400)
-    if uploaded.size > 10 * 1024 * 1024:
-        return JsonResponse({'error': 'File size must not exceed 10 MB'}, status=400)
+    try:
+        validate_upload(uploaded, UploadKind.SUPPLIER_REQUIREMENT)
+    except FileValidationError as exc:
+        return JsonResponse({'error': exc.message}, status=400)
 
     filename = _save_supplier_upload(uploaded)
     document = SupplierDocument.objects.create(
@@ -1751,43 +2045,66 @@ def pr_items_assign_categories(request, pr_id):
     return JsonResponse({'success': True, 'category': pr.category or '', 'status': pr.status})
 
 
+def _item_brief(item):
+    return {
+        'id': item.id,
+        'item_description': item.item_description or '',
+        'quantity': float(item.quantity or 0),
+        'unit': item.unit or '',
+        'unit_cost': float(item.unit_cost or 0),
+        'total_cost': float(item.total_cost or 0),
+        'category': item.category or '',
+    }
+
+
 @require_GET
 def pr_supplier_match(request, pr_id):
-    """Return category matches filtered by supplier compliance eligibility.
+    """Category-grouped supplier matching for a Purchase Request.
 
-    A supplier is eligible only when the supplier is approved and every
-    registration compliance document required for its business type has been
-    uploaded and verified by BAC.
+    A mixed-category PR is split into one procurement group per distinct item
+    category. Each group carries its own items and its own category-matched
+    suppliers; items with no category are returned separately and belong to no
+    group until the BAC assigns one.
+
+    A supplier is category-matched for a group only when it is registered under
+    that group's category, is approved, and every registration compliance
+    document required for its business type has been verified by BAC.
     """
     try:
         pr = PurchaseRequest.objects.get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
         return json_error('Purchase Request not found', 404)
 
-    item_categories = list(
-        PurchaseRequestItem.objects
-        .filter(purchase_request_id=pr_id)
-        .exclude(category__isnull=True).exclude(category='')
-        .values_list('category', flat=True)
-        .distinct()
-    )
-    categories = list(dict.fromkeys(([pr.category] if pr.category else []) + item_categories))
+    all_items = list(PurchaseRequestItem.objects.filter(purchase_request_id=pr_id).order_by('id'))
+    uncategorized = [i for i in all_items if not (i.category or '').strip()]
 
-    matching_supplier_ids = set(
+    # Group items by category name. Category.name is unique, so the name is a
+    # stable group key; resolve the id where a Category row exists (task 25).
+    grouped = {}
+    for item in all_items:
+        name = (item.category or '').strip()
+        if not name:
+            continue
+        grouped.setdefault(name, []).append(item)
+
+    category_ids = dict(
+        Category.objects.filter(name__in=list(grouped)).values_list('name', 'id')
+    )
+    category_names = sorted(grouped)
+
+    # Compliance profile for every approved supplier registered under any of the
+    # PR's group categories - computed once, reused per group.
+    candidate_ids = set(
         SupplierCategory.objects
-        .filter(category__name__in=categories, supplier__status='Approved')
+        .filter(category__name__in=category_names, supplier__status='Approved')
         .values_list('supplier_id', flat=True)
     )
-    all_suppliers = list(Supplier.objects.filter(id__in=matching_supplier_ids).values(
-        'id', 'company_name', 'tin', 'email', 'contact_person', 'contact_phone',
-        'business_address', 'goods_services', 'nature_of_business', 'business_type', 'status',
-    ))
-
-    # These are the documents that establish baseline supplier eligibility.
-    # The business-registration document varies by legal entity.
+    suppliers_by_id = {
+        s.id: s for s in Supplier.objects.filter(id__in=candidate_ids)
+    }
     required_document_keys = set(REQUIRED_UPLOAD_KEYS)
-    supplier_records = {}
-    for supplier in Supplier.objects.filter(id__in=matching_supplier_ids):
+    compliance_by_id = {}
+    for supplier in suppliers_by_id.values():
         required_keys = set(required_document_keys)
         business_key = get_required_business_document_key(supplier.business_type)
         if business_key:
@@ -1797,40 +2114,69 @@ def pr_supplier_match(request, pr_id):
             .values_list('doc_type', flat=True)
         )
         missing_documents = sorted(required_keys - verified_documents)
-        supplier_records[supplier.id] = {
+        compliance_by_id[supplier.id] = {
             'eligible': not missing_documents,
             'missing_documents': missing_documents,
             'required_documents': sorted(required_keys),
             'compliance_percentage': round(((len(required_keys) - len(missing_documents)) / len(required_keys)) * 100) if required_keys else 100,
         }
 
-    results = []
-    for cat in categories:
-        category_supplier_ids = set(
-            SupplierCategory.objects
-            .filter(category__name=cat)
+    groups = []
+    for name in category_names:
+        cat_supplier_ids = set(
+            SupplierCategory.objects.filter(category__name=name)
             .values_list('supplier_id', flat=True)
         )
         matched = []
-        for supplier in all_suppliers:
-            compliance = supplier_records.get(supplier['id'])
-            if supplier['id'] not in category_supplier_ids or not compliance or not compliance['eligible']:
+        for supplier_id in cat_supplier_ids:
+            supplier = suppliers_by_id.get(supplier_id)
+            compliance = compliance_by_id.get(supplier_id)
+            if not supplier or not compliance or not compliance['eligible']:
                 continue
             matched.append({
-                **supplier,
+                'id': supplier.id,
+                'company_name': supplier.company_name,
+                'tin': supplier.tin,
+                'email': supplier.email,
+                'contact_person': supplier.contact_person,
+                'contact_phone': supplier.contact_phone,
+                'business_address': supplier.business_address,
+                'goods_services': supplier.goods_services,
+                'nature_of_business': supplier.nature_of_business,
+                'business_type': supplier.business_type,
+                'status': supplier.status,
                 'match_score': 1,
                 'category_match': True,
                 'compliance_status': 'Eligible',
                 **compliance,
             })
-
-        results.append({
-            'category': cat,
+        matched.sort(key=lambda s: s['company_name'].lower())
+        group_items = grouped[name]
+        groups.append({
+            'category': name,
+            'category_id': category_ids.get(name),
+            'item_count': len(group_items),
+            'items': [_item_brief(i) for i in group_items],
             'suppliers': matched,
             'eligibility_rule': 'Approved supplier with all required compliance documents verified',
         })
 
-    return JsonResponse(results, safe=False)
+    return JsonResponse({
+        'pr': {
+            'id': pr.id,
+            'pr_no': pr.pr_no,
+            'entity_name': pr.entity_name,
+            'office_section': pr.office_section or '',
+            'date': pr.date.isoformat() if pr.date else '',
+            'purpose': pr.purpose or '',
+            'category': pr.category or '',
+            'grand_total': float(pr.grand_total or 0),
+        },
+        'item_count': len(all_items),
+        'category_count': len(category_names),
+        'groups': groups,
+        'uncategorized_items': [_item_brief(i) for i in uncategorized],
+    })
 
 
 @require_GET
@@ -1884,13 +2230,21 @@ def _pr_rfq_progress_status(sent, received):
 
 def _rfq_payload(rfq, request):
     pr = rfq.purchase_request
+    # This RFQ's own items - the category group it covers, not the whole PR.
+    # Legacy RFQs with no linked items fall back to every PR item.
+    linked = list(
+        rfq.rfq_items.select_related('purchase_request_item').order_by('purchase_request_item_id')
+    )
+    source_items = [li.purchase_request_item for li in linked] if linked else list(pr.line_items.all())
     items = [{
         'id': item.id,
         'item_description': item.item_description,
         'quantity': float(item.quantity),
         'unit': item.unit or '',
+        'unit_cost': float(item.unit_cost or 0),
+        'total_cost': float(item.total_cost or 0),
         'category': item.category or '',
-    } for item in pr.line_items.all()]
+    } for item in source_items]
     pdf_url = ''
     if rfq.pdf_file:
         pdf_url = request.build_absolute_uri(f'/uploads/{rfq.pdf_file}')
@@ -1904,13 +2258,22 @@ def _rfq_payload(rfq, request):
     abc_value = rfq.abc or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00')
     return {
         'id': rfq.id,
-        'rfq_no': rfq.rfq_no,
+        'rfq_no': rfq.rfq_no or '',
         'status': rfq.status,
         'status_label': RFQ_STATUS_LABELS.get(rfq.status, rfq.get_status_display()),
+        'selection_type': rfq.selection_type,
+        'selection_type_label': rfq.get_selection_type_display(),
+        # The procurement category group this RFQ serves.
+        'category': rfq.category.name if rfq.category_id else (rfq.purchase_request.category or ''),
+        'category_id': rfq.category_id,
+        'item_count': len(items),
         'subject': rfq.subject,
         'message': rfq.message,
         'abc': abc_value,
-        'quotation_no': rfq.quotation_no or rfq.rfq_no,
+        # The RFQ number is the quotation number - one shared RFQ-YYYY-NNNN
+        # sequence across registered and manual RFQs (see _rfq_number). Blank
+        # until the RFQ is issued.
+        'quotation_no': rfq.rfq_no or '',
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
         'award_basis': rfq.award_basis or RFQ.AWARD_BASIS_LOT,
         'additional_notes': rfq.additional_notes,
@@ -1925,6 +2288,12 @@ def _rfq_payload(rfq, request):
         'has_response': bool(rfq.submitted_pdf),
         'created_at': rfq.created_at.isoformat(),
         'sent_at': rfq.sent_at.isoformat() if rfq.sent_at else None,
+        'delivery_method': rfq.delivery_method,
+        'is_manual': rfq.is_manual,
+        'supplier_type': 'manual' if rfq.is_manual else 'registered',
+        'supplier_name': rfq.supplier_display_name,
+        'manual_supplier_name': rfq.manual_supplier_name,
+        'created_by': rfq.created_by.username if rfq.created_by_id else '',
         'purchase_request': {
             'id': pr.id,
             'pr_no': pr.pr_no,
@@ -1943,12 +2312,38 @@ def _rfq_payload(rfq, request):
             'contact_person': rfq.supplier.contact_person,
             'contact_phone': rfq.supplier.contact_phone,
             'email': rfq.supplier.email,
+        } if rfq.supplier_id else {
+            'id': None,
+            'company_name': rfq.manual_supplier_name,
+            'business_address': '', 'tin': '', 'contact_person': '',
+            'contact_phone': '', 'email': '',
         },
     }
 
 
-def _rfq_number():
-    return f"RFQ-{timezone.now().year}-{RFQ.objects.filter(created_at__year=timezone.now().year).count() + 1:04d}"
+def _rfq_number(today=None, lock=False):
+    """Next ``RFQ-YYYY-NNNN`` number - the single sequence every RFQ draws from.
+
+    Registered-supplier and manual / unregistered-supplier RFQs share this one
+    counter, so a manual RFQ issued after ``RFQ-2026-0002`` becomes
+    ``RFQ-2026-0003``. The next value follows the highest number already
+    generated for the year (scan of existing ``rfq_no`` values), so a deleted
+    draft never causes a collision. This number is also what prints on the RFQ
+    as the Quotation No.
+    """
+    today = today or timezone.localdate()
+    year = f'{today:%Y}'
+    if lock:
+        # Advisory-lock row (see next_pr_number) serialises concurrent issuance.
+        PRNumberSequence.objects.get_or_create(key='rfq')
+        PRNumberSequence.objects.select_for_update().filter(key='rfq').first()
+
+    highest = 0
+    for value in RFQ.objects.values_list('rfq_no', flat=True):
+        match = _RFQ_NUMBER_RE.fullmatch((value or '').strip())
+        if match and match.group(1) == year:
+            highest = max(highest, int(match.group(2)))
+    return f'RFQ-{year}-{highest + 1:04d}'
 
 
 def _request_role(request):
@@ -1961,8 +2356,87 @@ def _request_username(request):
 
 @require_GET
 def procurement_modes_view(request):
-    """Controlled list of procurement modes for the RFQ preparation dropdown."""
+    """Suggested procurement modes offered on the RFQ preparation form.
+
+    These populate the field's autocomplete list; an admin may also type a mode
+    that is not listed here.
+    """
     return JsonResponse({'modes': procurement_mode_choices()})
+
+
+def _format_peso(amount) -> str:
+    return f"₱{float(amount or 0):,.2f}"
+
+
+def _resolve_rfq_group(pr, payload):
+    """Resolve the procurement category group an RFQ request targets.
+
+    Returns ``(category, items, error_response)``:
+      * ``category``  - the ``Category`` row the group belongs to
+      * ``items``     - the PR's ``PurchaseRequestItem`` rows in that category
+                        (optionally narrowed to a validated ``item_ids`` subset)
+      * ``error_response`` - a ``JsonResponse`` to return instead, or ``None``
+
+    Enforces item/category consistency (task 15/16/37): every returned item
+    belongs to this PR and to the requested category.
+    """
+    pr_items = list(pr.line_items.all())
+    distinct = sorted({(i.category or '').strip() for i in pr_items if (i.category or '').strip()})
+
+    name = str(payload.get('category') or payload.get('category_name') or '').strip()
+    if not name:
+        if len(distinct) == 1:
+            # A single-category PR needs no explicit group.
+            name = distinct[0]
+        elif not distinct:
+            # Legacy / not-yet-categorised PR: no grouping possible - the RFQ
+            # covers every item, exactly as before category grouping existed.
+            return None, list(pr_items), None
+        else:
+            return None, None, json_error(
+                'This Purchase Request spans multiple procurement categories - select the category group for this RFQ.',
+                400,
+            )
+
+    category = Category.objects.filter(name=name).first()
+    if category is None:
+        return None, None, json_error(f'Unknown procurement category "{name}".', 400)
+
+    group_items = [i for i in pr_items if (i.category or '').strip() == name]
+    if not group_items:
+        return None, None, json_error('No items on this Purchase Request belong to that category.', 400)
+
+    raw_ids = payload.get('item_ids')
+    if raw_ids:
+        try:
+            wanted = {int(x) for x in raw_ids}
+        except (TypeError, ValueError):
+            return None, None, json_error('item_ids must be a list of item IDs.', 400)
+        group_ids = {i.id for i in group_items}
+        if not wanted.issubset(group_ids):
+            return None, None, json_error(
+                'One or more selected items do not belong to this Purchase Request and category.', 400
+            )
+        group_items = [i for i in group_items if i.id in wanted]
+
+    return category, group_items, None
+
+
+def _sync_rfq_items(rfq, items):
+    """Make ``rfq.rfq_items`` exactly the given PurchaseRequestItem set."""
+    wanted_ids = {i.id for i in items}
+    existing_ids = set(
+        rfq.rfq_items.values_list('purchase_request_item_id', flat=True)
+    )
+    to_add = wanted_ids - existing_ids
+    to_remove = existing_ids - wanted_ids
+    if to_remove:
+        rfq.rfq_items.filter(purchase_request_item_id__in=to_remove).delete()
+    if to_add:
+        RFQItem.objects.bulk_create(
+            [RFQItem(rfq=rfq, purchase_request_item_id=item_id) for item_id in to_add],
+            ignore_conflicts=True,
+        )
 
 
 @csrf_exempt
@@ -1978,7 +2452,11 @@ def admin_rfq(request, pr_id):
         return json_error('Purchase Request not found', 404)
 
     if request.method == 'GET':
-        rfqs = RFQ.objects.filter(purchase_request=pr).select_related('supplier')
+        rfqs = (
+            RFQ.objects.filter(purchase_request=pr)
+            .select_related('supplier', 'category')
+            .prefetch_related('rfq_items__purchase_request_item')
+        )
         return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfqs]})
 
     try:
@@ -1992,36 +2470,73 @@ def admin_rfq(request, pr_id):
     except (Supplier.DoesNotExist, TypeError, ValueError):
         return json_error('Supplier not found', 404)
 
+    # Mandatory supplier restriction - enforced for BOTH the normal path and a
+    # manual BAC selection. Manual selection only ever bypasses the CATEGORY
+    # match requirement, never the approval/active-status rule.
     if supplier.status != 'Approved':
         return json_error('Supplier is not eligible because the supplier is not approved.', 400)
 
-    pr_category_names = {item.category for item in pr.line_items.all() if item.category}
-    if pr.category:
-        pr_category_names.add(pr.category)
+    # A manual BAC selection is a deliberate override recorded for audit. It is
+    # accepted only from an admin/BAC user (header role is already gated above
+    # when present; require it explicitly for the override).
+    is_manual_selection = (
+        str(payload.get('selection_type') or '').strip() == RFQ.SELECTION_MANUAL_BAC
+        or bool(payload.get('manual_selection'))
+    )
+    if is_manual_selection and request_role != 'admin':
+        return json_error('Manual BAC supplier selection requires an authorized BAC user.', 403)
+
+    # Resolve the procurement category group this RFQ serves and the exact PR
+    # items it covers. Every RFQ now belongs to one category group and contains
+    # ONLY that group's items - never the whole PR (task 14/15).
+    group_category, group_items, category_error = _resolve_rfq_group(pr, payload)
+    if category_error:
+        return category_error
+
     supplier_category_names = set(SupplierCategory.objects.filter(
         supplier=supplier, category__is_active=True
     ).values_list('category__name', flat=True))
-    requested_category = str(payload.get('category') or '').strip()
-    eligible_categories = pr_category_names.intersection(supplier_category_names)
-    if requested_category and requested_category not in eligible_categories:
-        return json_error('Supplier is no longer eligible for the selected PR category.', 400)
-    if not eligible_categories:
-        return json_error('Supplier is no longer eligible for this Purchase Request.', 400)
+
+    if is_manual_selection:
+        selection_type = RFQ.SELECTION_MANUAL_BAC
+    else:
+        selection_type = RFQ.SELECTION_CATEGORY_MATCH
+        if group_category is not None:
+            eligible = group_category.name in supplier_category_names
+        else:
+            # Legacy uncategorised PR: fall back to the PR-level category.
+            pr_names = {(i.category or '').strip() for i in pr.line_items.all() if (i.category or '').strip()}
+            if pr.category:
+                pr_names.add(pr.category)
+            eligible = bool(pr_names & supplier_category_names)
+        if not eligible:
+            return json_error(
+                'Supplier is not eligible for this procurement category - it is not category-matched. '
+                'Use a manual BAC selection to proceed with a supplier outside the category.',
+                400,
+            )
 
     rfq_id = payload.get('rfq_id')
     rfq = RFQ.objects.filter(id=rfq_id, purchase_request=pr).first() if rfq_id else None
     if rfq and rfq.supplier_id != supplier.id:
         return json_error('RFQ does not belong to the selected supplier.', 400)
+    if rfq and rfq.category_id and group_category is not None and rfq.category_id != group_category.id:
+        return json_error('RFQ belongs to a different procurement category group.', 400)
 
-    # Prevent duplicate RFQs for the same supplier on the same PR. A still-draft
-    # RFQ is reused; one that has already been issued blocks a new request.
+    # Prevent duplicate RFQs for the same supplier + category group on the same
+    # PR. A still-draft RFQ for that group is reused; an issued one blocks a new
+    # request. A supplier may still receive a separate RFQ for another group.
     if not rfq:
-        existing_for_supplier = (
-            RFQ.objects.filter(purchase_request=pr, supplier=supplier).order_by('-created_at').first()
+        existing_for_group = (
+            RFQ.objects.filter(purchase_request=pr, supplier=supplier, category=group_category)
+            .order_by('-created_at').first()
         )
-        if existing_for_supplier and existing_for_supplier.status != RFQ.STATUS_DRAFT:
-            return json_error('An RFQ has already been sent to this supplier for this Purchase Request.', 409)
-        rfq = existing_for_supplier
+        if existing_for_group and existing_for_group.status != RFQ.STATUS_DRAFT:
+            return json_error(
+                'An RFQ for this supplier and procurement category has already been issued for this Purchase Request.',
+                409,
+            )
+        rfq = existing_for_group
 
     default_subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
     default_message = (
@@ -2042,47 +2557,67 @@ def admin_rfq(request, pr_id):
     should_send = bool(payload.get('send'))
     generate_pdf = bool(payload.get('generate_pdf') or payload.get('preview'))
 
-    # Mode of Procurement - admin-selected, validated against the configured
-    # controlled list (api/rfq/procurement_modes.py). Never inferred from the PR
-    # and kept independent of the PR category.
+    # Mode of Procurement - admin-entered. The configured list
+    # (api/rfq/procurement_modes.py) drives the suggestions offered on the form,
+    # but the admin may also type a mode that is not on the list. Never inferred
+    # from the PR and kept independent of the PR category.
     if 'mode_of_procurement' in payload:
         mode_of_procurement = normalize_procurement_mode(payload.get('mode_of_procurement'))
-        if mode_of_procurement and not is_valid_procurement_mode(mode_of_procurement):
-            return json_error('Invalid mode of procurement selected.', 400)
+        if len(mode_of_procurement) > 200:
+            return json_error('Mode of procurement must be 200 characters or fewer.', 400)
     else:
         mode_of_procurement = normalize_procurement_mode(rfq.mode_of_procurement if rfq else '')
 
-    if (generate_pdf or should_send) and not is_valid_procurement_mode(mode_of_procurement):
-        return json_error('Please select a mode of procurement.', 400)
+    if (generate_pdf or should_send) and not mode_of_procurement:
+        return json_error('Please enter a mode of procurement.', 400)
+
+    group_abc_default = _format_peso(sum(float(i.total_cost or 0) for i in group_items)) or '₱0.00'
 
     rfq_created = rfq is None
     if not rfq:
-        abc_value = str(payload.get('abc') or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00'))
-        rfq = RFQ.objects.create(
-            rfq_no=_rfq_number(),
-            purchase_request=pr,
-            supplier=supplier,
-            created_by=User.objects.filter(username=_request_username(request)).first(),
-            subject=str(payload.get('subject') or default_subject).strip(),
-            message=str(payload.get('message') or default_message).strip(),
-            abc=abc_value.strip(),
-            additional_notes=str(payload.get('additional_notes') or '').strip(),
-            mode_of_procurement=mode_of_procurement,
-            award_basis=_resolve_award_basis(payload.get('award_basis'), RFQ.AWARD_BASIS_LOT),
-            quotation_no=str(payload.get('quotation_no') or '').strip(),
-        )
+        abc_value = str(payload.get('abc') or group_abc_default)
+        with transaction.atomic():
+            rfq = RFQ.objects.create(
+                rfq_no=None,  # assigned only when the RFQ is issued (see below)
+                purchase_request=pr,
+                supplier=supplier,
+                category=group_category,
+                created_by=User.objects.filter(username=_request_username(request)).first(),
+                subject=str(payload.get('subject') or default_subject).strip(),
+                message=str(payload.get('message') or default_message).strip(),
+                abc=abc_value.strip(),
+                additional_notes=str(payload.get('additional_notes') or '').strip(),
+                mode_of_procurement=mode_of_procurement,
+                award_basis=_resolve_award_basis(payload.get('award_basis'), RFQ.AWARD_BASIS_LOT),
+                selection_type=selection_type,
+            )
+            _sync_rfq_items(rfq, group_items)
     else:
-        abc_value = str(payload.get('abc') or (rfq.abc or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00'))).strip()
+        abc_value = str(payload.get('abc') or (rfq.abc or group_abc_default)).strip()
         rfq.subject = str(payload.get('subject') or rfq.subject).strip()
         rfq.message = str(payload.get('message') or rfq.message).strip()
         rfq.abc = abc_value
-        rfq.quotation_no = str(payload.get('quotation_no') or rfq.quotation_no or '').strip()
         rfq.mode_of_procurement = mode_of_procurement
         rfq.award_basis = _resolve_award_basis(payload.get('award_basis'), rfq.award_basis or RFQ.AWARD_BASIS_LOT)
         rfq.additional_notes = str(payload.get('additional_notes') or rfq.additional_notes).strip()
         rfq.created_by = rfq.created_by or User.objects.filter(username=_request_username(request)).first()
+        if not rfq.category_id:
+            rfq.category = group_category
+        # Keep the audit designation in sync when the caller restates it, but
+        # never silently downgrade a recorded manual override to a category
+        # match on an edit that omits the flag.
+        if is_manual_selection or 'selection_type' in payload or 'manual_selection' in payload:
+            rfq.selection_type = selection_type
+        if not rfq.rfq_items.exists():
+            _sync_rfq_items(rfq, group_items)
         if request.method == 'PATCH':
-            rfq.save(update_fields=['subject', 'message', 'abc', 'quotation_no', 'additional_notes', 'mode_of_procurement', 'award_basis', 'created_by', 'updated_at'])
+            rfq.save(update_fields=['subject', 'message', 'abc', 'additional_notes', 'mode_of_procurement', 'award_basis', 'selection_type', 'category', 'created_by', 'updated_at'])
+
+    # Defer the RFQ / Quotation number until the RFQ is actually issued - a
+    # preview or a saved draft never consumes a number (task 12/18).
+    if should_send and not rfq.rfq_no:
+        rfq.rfq_no = _rfq_number(lock=True)
+        rfq.save(update_fields=['rfq_no', 'updated_at'])
 
     if generate_pdf:
         try:
@@ -2115,7 +2650,7 @@ def admin_rfq(request, pr_id):
 
         rfq.status = RFQ.STATUS_SENT
         rfq.sent_at = timezone.now()
-        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'quotation_no', 'additional_notes', 'pdf_file', 'updated_at'])
+        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_RFQ_RECEIVED,
@@ -2128,9 +2663,217 @@ def admin_rfq(request, pr_id):
             related_rfq_id=rfq.id,
         )
     else:
-        rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'quotation_no', 'additional_notes', 'pdf_file', 'updated_at'])
+        rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
 
     return JsonResponse(_rfq_payload(rfq, request), status=201 if rfq_created else 200)
+
+
+# ─── Manual / unregistered supplier RFQs ───────────────────────────────────────
+# A BAC Secretariat member issues an RFQ to a supplier that is NOT registered in
+# eProcure. No Supplier / SupplierCategory / account is ever created - the name
+# is internal metadata only and never reaches the generated PDF. The RFQ number
+# (RFQ-YYYY-NNNN, also printed as the Quotation No.) comes from the same shared
+# sequence registered-supplier RFQs use, so the two never collide.
+
+def _manual_rfq_defaults(pr, manual_name):
+    subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
+    message = (
+        "Greetings.\n\n"
+        f"The {pr.entity_name} is requesting a quotation for the items/services specified in Purchase "
+        f"Request {pr.pr_no or pr.id}. Please provide your quotation based on the specifications and "
+        "quantities indicated.\n\nThank you.\n\nRegards,\nBAC Secretariat"
+    )
+    return subject, message
+
+
+@csrf_exempt
+@require_POST
+def manual_rfq_create(request, pr_id):
+    """Create (and issue) a manual RFQ for an unregistered supplier.
+
+    ``POST /api/pr/<pr_id>/manual-rfq/``  body:
+        { "manual_supplier_name": "Juan's Aircon Services",
+          "mode_of_procurement": "...", "award_basis": "LOT",
+          "subject": "...", "message": "...", "additional_notes": "...",
+          "force_new": false }
+
+    Re-posting the same supplier name for the same PR returns the existing RFQ
+    (same quotation number) unless ``force_new`` is true.
+    """
+    if _request_role(request) != 'admin':
+        return json_error('Admin access is required to issue a manual RFQ.', 403)
+
+    try:
+        pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
+        return json_error('Purchase Request not found', 404)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (TypeError, json.JSONDecodeError):
+        return json_error('Invalid JSON payload', 400)
+
+    manual_name = normalize_text(payload.get('manual_supplier_name') or payload.get('supplier_name') or '')
+    if not manual_name:
+        return json_error('Enter the supplier / company name.', 400)
+    if len(manual_name) > 255:
+        return json_error('Supplier / company name is too long.', 400)
+
+    # The manual RFQ serves one procurement category group, exactly like a
+    # registered-supplier RFQ, and contains only that group's items.
+    group_category, group_items, category_error = _resolve_rfq_group(pr, payload)
+    if category_error:
+        return category_error
+
+    force_new = bool(payload.get('force_new'))
+    if not force_new:
+        existing = (
+            RFQ.objects.filter(
+                purchase_request=pr,
+                delivery_method=RFQ.DELIVERY_MANUAL,
+                manual_supplier_name__iexact=manual_name,
+                category=group_category,
+            )
+            .order_by('-created_at')
+            .first()
+        )
+        if existing is not None:
+            return JsonResponse({**_rfq_payload(existing, request), 'existing': True}, status=200)
+
+    valid_award_bases = {choice[0] for choice in RFQ.AWARD_BASIS_CHOICES}
+    award_basis = str(payload.get('award_basis') or RFQ.AWARD_BASIS_LOT).strip().upper()
+    if award_basis not in valid_award_bases:
+        award_basis = RFQ.AWARD_BASIS_LOT
+
+    mode_of_procurement = normalize_procurement_mode(payload.get('mode_of_procurement'))
+    if not mode_of_procurement:
+        return json_error('Please enter a mode of procurement.', 400)
+    if len(mode_of_procurement) > 200:
+        return json_error('Mode of procurement must be 200 characters or fewer.', 400)
+
+    subject_default, message_default = _manual_rfq_defaults(pr, manual_name)
+    abc_value = str(payload.get('abc') or _format_peso(sum(float(i.total_cost or 0) for i in group_items))).strip()
+    issuer = User.objects.filter(username=_request_username(request)).first()
+
+    try:
+        with transaction.atomic():
+            rfq = RFQ.objects.create(
+                rfq_no=_rfq_number(lock=True),
+                purchase_request=pr,
+                supplier=None,
+                category=group_category,
+                manual_supplier_name=manual_name,
+                delivery_method=RFQ.DELIVERY_MANUAL,
+                selection_type=RFQ.SELECTION_MANUAL_BAC,
+                created_by=issuer,
+                subject=str(payload.get('subject') or subject_default).strip(),
+                message=str(payload.get('message') or message_default).strip(),
+                abc=abc_value,
+                additional_notes=str(payload.get('additional_notes') or '').strip(),
+                mode_of_procurement=mode_of_procurement,
+                award_basis=award_basis,
+                status=RFQ.STATUS_SENT,
+                sent_at=timezone.now(),
+            )
+            _sync_rfq_items(rfq, group_items)
+            try:
+                file_url, _ = generate_rfq_pdf(rfq)
+                rfq.pdf_file = file_url.replace('/uploads/', '').lstrip('/')
+                rfq.save(update_fields=['pdf_file', 'updated_at'])
+            except ValueError:
+                raise RuntimeError('pdf')
+    except RuntimeError:
+        return json_error('RFQ PDF generation failed. Please verify the PR data and try again.', 500)
+
+    return JsonResponse(_rfq_payload(rfq, request), status=201)
+
+
+@require_GET
+def manual_rfq_list(request):
+    """List manual / unregistered-supplier RFQs for the Admin "Manual RFQs" area.
+
+    Search (``?search=``) matches supplier name, PR number and quotation number.
+    """
+    if _request_role(request) and _request_role(request) != 'admin':
+        return json_error('Admin access required.', 403)
+
+    search = normalize_text(request.GET.get('search') or '')
+    rfqs = (
+        RFQ.objects.filter(delivery_method=RFQ.DELIVERY_MANUAL)
+        .select_related('purchase_request', 'created_by')
+        .prefetch_related('purchase_request__line_items')
+        .order_by('-created_at')
+    )
+    if search:
+        rfqs = rfqs.filter(
+            Q(manual_supplier_name__icontains=search)
+            | Q(purchase_request__pr_no__icontains=search)
+            | Q(rfq_no__icontains=search)
+        )
+    return JsonResponse({'rfqs': [_rfq_payload(rfq, request) for rfq in rfqs]})
+
+
+@require_GET
+def manual_rfq_pdf(request, rfq_id):
+    """Stream the generated RFQ PDF, regenerating it if the file is missing.
+
+    The quotation number is never changed here - re-downloading or reprinting
+    reuses the number assigned when the RFQ was issued.
+    """
+    rfq = (
+        RFQ.objects.filter(id=rfq_id, delivery_method=RFQ.DELIVERY_MANUAL)
+        .select_related('purchase_request')
+        .prefetch_related('purchase_request__line_items')
+        .first()
+    )
+    if rfq is None:
+        return json_error('Manual RFQ not found', 404)
+
+    pdf_path = UPLOADS_DIR / rfq.pdf_file if rfq.pdf_file else None
+    if not pdf_path or not pdf_path.is_file():
+        try:
+            file_url, path = generate_rfq_pdf(rfq)
+            rfq.pdf_file = file_url.replace('/uploads/', '').lstrip('/')
+            rfq.save(update_fields=['pdf_file', 'updated_at'])
+            pdf_path = Path(path)
+        except ValueError:
+            return json_error('Unable to regenerate the RFQ PDF.', 500)
+
+    from django.http import FileResponse
+
+    download_name = f"{rfq.rfq_no}.pdf".replace(' ', '_')
+    return FileResponse(open(pdf_path, 'rb'), as_attachment=True, filename=download_name)
+
+
+@csrf_exempt
+@require_POST
+def manual_rfq_completed(request, rfq_id):
+    """Admin uploads the completed RFQ a manual supplier returned physically.
+
+    Mirrors ``supplier_rfq_response`` (generated PDF untouched, completed stored
+    separately) - quotation number and supplier name are never changed.
+    """
+    if _request_role(request) != 'admin':
+        return json_error('Admin access is required.', 403)
+
+    rfq = RFQ.objects.filter(id=rfq_id, delivery_method=RFQ.DELIVERY_MANUAL).select_related('purchase_request').first()
+    if rfq is None:
+        return json_error('Manual RFQ not found', 404)
+
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        return json_error('A completed RFQ PDF file is required.', 400)
+    try:
+        validate_upload(uploaded, UploadKind.COMPLETED_RFQ)
+    except FileValidationError as exc:
+        return json_error(exc.message, 400)
+
+    is_replacement = bool(rfq.submitted_pdf)
+    rfq.submitted_pdf = _save_supplier_upload(uploaded)
+    rfq.submitted_at = timezone.now()
+    rfq.status = RFQ.STATUS_QUOTATION_RECEIVED
+    rfq.save(update_fields=['submitted_pdf', 'submitted_at', 'status', 'updated_at'])
+    return JsonResponse({'success': True, 'replaced': is_replacement, **_rfq_payload(rfq, request)})
 
 
 @require_GET
@@ -2171,12 +2914,10 @@ def supplier_rfq_response(request, supplier_id, rfq_id):
     uploaded = request.FILES.get('file')
     if not uploaded:
         return json_error('A completed RFQ PDF file is required.', 400)
-    if not uploaded.name.lower().endswith('.pdf') or (
-        uploaded.content_type and uploaded.content_type not in ('application/pdf', 'application/octet-stream')
-    ):
-        return json_error('The completed RFQ must be a PDF file.', 400)
-    if uploaded.size > MAX_UPLOAD_SIZE:
-        return json_error('File size must not exceed 10 MB.', 400)
+    try:
+        validate_upload(uploaded, UploadKind.COMPLETED_RFQ)
+    except FileValidationError as exc:
+        return json_error(exc.message, 400)
 
     is_replacement = bool(rfq.submitted_pdf)
     filename = _save_supplier_upload(uploaded)
@@ -2222,8 +2963,8 @@ def admin_rfq_responses(request):
     rfqs = (
         RFQ.objects
         .exclude(status=RFQ.STATUS_DRAFT)
-        .select_related('purchase_request', 'supplier')
-        .prefetch_related('purchase_request__line_items')
+        .select_related('purchase_request', 'supplier', 'category')
+        .prefetch_related('purchase_request__line_items', 'rfq_items')
         .order_by('-sent_at', '-created_at')
     )
     if status_filter == 'awaiting':
@@ -2239,6 +2980,7 @@ def admin_rfq_responses(request):
             Q(rfq_no__icontains=search)
             | Q(purchase_request__pr_no__icontains=search)
             | Q(supplier__company_name__icontains=search)
+            | Q(manual_supplier_name__icontains=search)
         )
 
     rfq_list = list(rfqs)
@@ -2266,6 +3008,36 @@ def admin_rfq_responses(request):
         awaiting = sent - received
         activity_stamps = [r.submitted_at or r.sent_at or r.created_at for r in group_rfqs]
         last_activity = max(activity_stamps) if activity_stamps else None
+        rfq_payloads = [_rfq_payload(r, request) for r in group_rfqs]
+
+        # Second grouping level: category group (task 20). Keyed by category name;
+        # a legacy RFQ with no category falls under "Uncategorized".
+        pr_item_category = {}
+        for item in pr.line_items.all():
+            pr_item_category.setdefault((item.category or '').strip(), 0)
+            pr_item_category[(item.category or '').strip()] += 1
+        cat_buckets = {}
+        cat_order = []
+        for rfq, payload_row in zip(group_rfqs, rfq_payloads):
+            key = payload_row['category'] or 'Uncategorized'
+            if key not in cat_buckets:
+                cat_buckets[key] = []
+                cat_order.append(key)
+            cat_buckets[key].append(payload_row)
+        categories_payload = []
+        for key in cat_order:
+            rows = cat_buckets[key]
+            cat_received = sum(1 for r in rows if r['has_response'])
+            categories_payload.append({
+                'category': key,
+                'category_id': rows[0].get('category_id'),
+                'item_count': rows[0].get('item_count', 0) or pr_item_category.get(key, 0),
+                'rfq_count': len(rows),
+                'response_count': cat_received,
+                'awaiting_count': len(rows) - cat_received,
+                'rfqs': rows,
+            })
+
         grouped_payload.append({
             'purchase_request': {
                 'id': pr.id,
@@ -2282,10 +3054,12 @@ def admin_rfq_responses(request):
                 'sent': sent,
                 'responses_received': received,
                 'awaiting_response': awaiting,
+                'category_count': len(categories_payload),
                 'status': _pr_rfq_progress_status(sent, received),
                 'last_activity': last_activity.isoformat() if last_activity else None,
             },
-            'rfqs': [_rfq_payload(r, request) for r in group_rfqs],
+            'categories': categories_payload,
+            'rfqs': rfq_payloads,
         })
 
     if sort == 'oldest_pr':

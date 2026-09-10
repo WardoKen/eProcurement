@@ -50,12 +50,16 @@ def get_required_business_document_key(business_type: str) -> Optional[str]:
 
 
 def is_supported_file(file_obj) -> bool:
+    """Backwards-compatible boolean check, delegating to the shared validator."""
+    from .file_validation import UploadKind, FileValidationError, validate_upload
+
     if not file_obj:
         return False
-    name = (getattr(file_obj, 'name', '') or '').lower()
-    extension = Path(name).suffix.lower()
-    mime_type = getattr(file_obj, 'content_type', '') or ''
-    return extension in ALLOWED_EXTENSIONS and (mime_type in ALLOWED_MIME_TYPES or extension == '.pdf')
+    try:
+        validate_upload(file_obj, UploadKind.SUPPLIER_REQUIREMENT)
+    except FileValidationError:
+        return False
+    return True
 
 
 def validate_supplier_payload(payload: Dict[str, object], files: Dict[str, object], categories: List[str]) -> List[str]:
@@ -92,22 +96,18 @@ def validate_supplier_payload(payload: Dict[str, object], files: Dict[str, objec
         if not files.get(key):
             errors.append(f'{REQUIRED_DOCUMENTS.get(key, key)} is required')
 
+    from .file_validation import UploadKind, FileValidationError, validate_upload
+
     for key, file_obj in files.items():
-        if isinstance(file_obj, list):
-            for item in file_obj:
-                if item is None:
-                    continue
-                if item.size > MAX_UPLOAD_SIZE:
-                    errors.append(f'{getattr(item, "name", key)} exceeds the 10MB upload limit')
-                if not is_supported_file(item):
-                    errors.append(f'{getattr(item, "name", key)} has an unsupported file type')
-            continue
-        if file_obj is None:
-            continue
-        if getattr(file_obj, 'size', 0) > MAX_UPLOAD_SIZE:
-            errors.append(f'{getattr(file_obj, "name", key)} exceeds the 10MB upload limit')
-        if not is_supported_file(file_obj):
-            errors.append(f'{getattr(file_obj, "name", key)} has an unsupported file type')
+        candidates = file_obj if isinstance(file_obj, list) else [file_obj]
+        for item in candidates:
+            if item is None:
+                continue
+            label = REQUIRED_DOCUMENTS.get(key) or getattr(item, 'name', None) or key
+            try:
+                validate_upload(item, UploadKind.SUPPLIER_REQUIREMENT, field=label)
+            except FileValidationError as exc:
+                errors.append(exc.message)
 
     return errors
 

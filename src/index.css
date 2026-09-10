@@ -1997,6 +1997,60 @@ summary:focus-visible {
   text-align: center;
   background: #f8fafc;
 }
+
+/* ── Supplier Matching: Category-Matched vs. Other (manual BAC) sections ── */
+.match-section-heading {
+  margin: 8px 0 14px;
+}
+
+.match-section-heading h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.match-section-divider {
+  border-top: 2px solid var(--border);
+  margin: 28px 0 20px;
+}
+
+.other-supplier-search {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.other-supplier-search .btn-primary {
+  height: 40px;
+}
+
+.match-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.match-tag-category {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
+.match-tag-manual {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+
+.supplier-match-card-manual {
+  border-color: #fcd34d;
+  background: #fffdf7;
+}
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2249,6 +2303,98 @@ summary:focus-visible {
   background: #fff5f5;
 }
 
+/* ── SearchableSelect (type-to-filter dropdown) ─────────────────────────── */
+.searchable-select {
+  position: relative;
+  min-width: 200px;
+}
+
+.searchable-select-input {
+  width: 100%;
+  padding: 8px 28px 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchable-select-input::placeholder {
+  color: #0f172a;
+}
+
+.searchable-select-input:focus {
+  outline: none;
+  border-color: var(--primary-soft);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.searchable-select.is-invalid .searchable-select-input {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.searchable-select.is-invalid .searchable-select-input::placeholder {
+  color: #b91c1c;
+}
+
+.searchable-select-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.searchable-select-clear:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.searchable-select-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  overflow-y: auto;
+  z-index: 1200;
+}
+
+.searchable-select-option {
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.searchable-select-option.is-active {
+  background: #eef2ff;
+}
+
+.searchable-select-option.is-selected {
+  font-weight: 600;
+}
+
+.searchable-select-empty {
+  padding: 8px 9px;
+  font-size: 13px;
+  color: #64748b;
+}
+
 /* Collapsed admin sidebar styles */
 .admin-layout.collapsed-nav .admin-navbar {
   width: 88px;
@@ -2428,6 +2574,16 @@ summary:focus-visible {
 .file-meta span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.file-meta-ok {
+  color: var(--success);
+  flex: none;
+}
+
+.dropzone-accepted {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .file-actions {
@@ -2714,6 +2870,289 @@ summary:focus-visible {
   color: #1e293b;
 }
 
+.signature-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sig-optional-note {
+  font-weight: 500;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Colour the whole signatory card by its signature status. */
+.signature-card.sig-status-present {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.signature-card.sig-status-absent {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.signature-card.sig-status-unverifiable {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.sig-status-pending {
+  color: #475569;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+/* ── Signature-presence validation ─────────────────────────────────────── */
+.sig-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.sig-status-chip.sig-status-present {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.sig-status-chip.sig-status-absent {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
+.sig-status-chip.sig-status-unverifiable {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.signature-validation-panel {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  border-left: 4px solid var(--border);
+}
+
+.signature-validation-panel.sig-panel-complete {
+  border-left-color: var(--success);
+}
+
+.signature-validation-panel.sig-panel-incomplete {
+  border-left-color: var(--danger);
+}
+
+.signature-validation-panel.sig-panel-unverifiable {
+  border-left-color: var(--warning);
+}
+
+.signature-validation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.signature-validation-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.signature-validation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.signature-validation-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.signature-validation-list li.sig-status-present > svg { color: #16a34a; }
+.signature-validation-list li.sig-status-absent > svg { color: #dc2626; }
+.signature-validation-list li.sig-status-unverifiable > svg { color: #d97706; }
+
+.signature-validation-list li strong {
+  display: block;
+  font-size: 13px;
+}
+
+.signature-validation-list li span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.signature-validation-summary strong {
+  font-size: 13px;
+}
+
+.signature-validation-summary p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.signature-validation-summary .sig-missing {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.signature-validation-summary .sig-missing span {
+  font-weight: 500;
+}
+
+.save-blocked-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #b45309;
+}
+
+/* ── Submission check + declaration ────────────────────────────────────── */
+.submission-check-panel {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  border-left: 4px solid var(--border);
+}
+
+.submission-check-panel h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.submission-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.submission-check-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.submission-check-list li.submission-check-ok > svg { color: #16a34a; }
+.submission-check-list li.submission-check-fail > svg { color: #dc2626; }
+.submission-check-list li.submission-check-fail { color: #b91c1c; font-weight: 600; }
+
+.submission-check-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: #b45309;
+}
+
+.submission-declaration {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.submission-declaration h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.submission-declaration-lead {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.submission-declaration-points {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.submission-declaration-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submission-declaration-ack input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.submission-declaration-ack.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submission-declaration-ack:focus-within {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.save-success-facts {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  width: 100%;
+  max-width: 320px;
+}
+
+.save-success-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.save-success-facts dt {
+  color: var(--muted);
+  margin: 0;
+}
+
+.save-success-facts dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
 .requested-items-block {
   border-top: 1px solid var(--border);
   display: grid;
@@ -2751,12 +3190,20 @@ summary:focus-visible {
 
 .requested-items-table {
   table-layout: fixed;
-  min-width: 1050px;
+  min-width: 820px;
 }
 
 .requested-items-table th,
 .requested-items-table td {
   vertical-align: top;
+}
+
+.requested-item-description-cell {
+  min-width: 220px;
+}
+
+.requested-item-unit-cell {
+  min-width: 64px;
 }
 
 .items-table td input {
@@ -2767,21 +3214,42 @@ summary:focus-visible {
   font-size: 13px;
 }
 
+/* Every editable field in a requested-items row shares one baseline height so
+   an empty row lines up; the description textarea grows from that baseline. */
 .requested-items-table td input,
 .requested-items-table td textarea {
   box-sizing: border-box;
   width: 100%;
+  min-height: 38px;
+  height: 38px;
+  line-height: 1.45;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
 }
 
 .requested-items-table td textarea.requested-item-description {
-  min-height: 120px;
-  max-height: 360px;
-  overflow-y: auto;
-  resize: vertical;
+  display: block;
+  height: auto;
+  overflow-y: hidden;
+  resize: none;
   white-space: pre-wrap;
-  text-align: justify;
-  line-height: 1.45;
-  font-family: inherit;
+  overflow-wrap: anywhere;
+  text-align: left;
+  padding: 8px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
+
+/* Progressive enhancement: browsers that support it size the field to its
+   content natively, so the box always matches what has been typed. The JS
+   auto-grow in DragDropUpload keeps older browsers in sync. */
+@supports (field-sizing: content) {
+  .requested-items-table td textarea.requested-item-description {
+    field-sizing: content;
+    max-height: 18em;
+    overflow-y: auto;
+  }
 }
 
 .table-empty-state {
@@ -4675,6 +5143,83 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   font-size: 13px;
 }
 
+/* RFQ Management: category sub-group inside a PR group */
+.rfq-mgmt-category {
+  margin: 10px 0 4px;
+}
+
+.rfq-mgmt-category-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 6px 2px;
+}
+
+.rfq-mgmt-category-head strong {
+  font-size: 13px;
+  color: var(--text, #1e293b);
+}
+
+/* Supplier Matching: collapsible procurement category groups */
+.procurement-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.procurement-group {
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 8px;
+  background: var(--card, #fff);
+  overflow: hidden;
+}
+
+.procurement-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.procurement-group-header:hover {
+  background: var(--hover, #f8fafc);
+}
+
+.procurement-group-chevron {
+  display: inline-flex;
+  color: var(--muted, #64748b);
+}
+
+.procurement-group-title {
+  font-weight: 600;
+  flex: 1;
+}
+
+.procurement-group-count {
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+
+.procurement-group.expanded > .procurement-group-header {
+  border-bottom: 1px solid var(--line, #e2e8f0);
+}
+
+.procurement-group-body {
+  padding: 16px;
+}
+
+.procurement-group-body .match-section-heading h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
 .rfq-mgmt-row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -5866,6 +6411,17 @@ textarea:focus {
   word-break: break-word;
 }
 
+.buyer-pr-number {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.buyer-pr-pending {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .buyer-status-current {
   margin-top: 16px;
 }
@@ -6103,18 +6659,6 @@ textarea:focus {
 
 .items-table td {
   vertical-align: top;
-}
-
-.items-table td:nth-child(3),
-.items-table th:nth-child(3) {
-  min-width: 280px;
-}
-
-.items-table td:nth-child(3) input,
-.items-table td:nth-child(3) textarea {
-  min-height: 64px;
-  text-align: justify;
-  white-space: pre-wrap;
 }
 
 .pr-edit-modal,

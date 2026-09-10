@@ -13,6 +13,24 @@ from api.supplier_registration import get_required_business_document_key, valida
 from api.views import hash_password
 
 
+def _min_pdf_bytes() -> bytes:
+    return b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+
+
+def _image_bytes(fmt: str) -> bytes:
+    import io
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 4), "white").save(buffer, format=fmt)
+    return buffer.getvalue()
+
+
+_PDF_BYTES = _min_pdf_bytes()
+_PNG_BYTES = _image_bytes("PNG")
+_JPG_BYTES = _image_bytes("JPEG")
+
+
 class SupplierRegistrationValidationTests(SimpleTestCase):
     def test_missing_required_fields_are_reported(self):
         payload = {
@@ -74,7 +92,7 @@ class SupplierRegistrationValidationTests(SimpleTestCase):
             'categories': ['Office Supplies'],
         }
 
-        png_file = SimpleUploadedFile('permit.png', b'valid', content_type='image/png')
+        png_file = SimpleUploadedFile('permit.png', _PNG_BYTES, content_type='image/png')
         errors = validate_supplier_payload(
             payload,
             files={
@@ -109,12 +127,12 @@ class SupplierAdminReviewTests(TestCase):
                 'username': 'supplierdemo',
                 'password': 'Supplier123!',
                 'confirmPassword': 'Supplier123!',
-                'mayor_permit': SimpleUploadedFile('mayor.pdf', b'pdf', content_type='application/pdf'),
-                'business_permit': SimpleUploadedFile('business.pdf', b'pdf', content_type='application/pdf'),
-                'philgeps_registration': SimpleUploadedFile('philgeps.pdf', b'pdf', content_type='application/pdf'),
-                'bir_registration': SimpleUploadedFile('bir.pdf', b'pdf', content_type='application/pdf'),
-                'tax_clearance': SimpleUploadedFile('tax.pdf', b'pdf', content_type='application/pdf'),
-                'dti_registration': SimpleUploadedFile('dti.pdf', b'pdf', content_type='application/pdf'),
+                'mayor_permit': SimpleUploadedFile('mayor.pdf', _PDF_BYTES, content_type='application/pdf'),
+                'business_permit': SimpleUploadedFile('business.pdf', _PDF_BYTES, content_type='application/pdf'),
+                'philgeps_registration': SimpleUploadedFile('philgeps.pdf', _PDF_BYTES, content_type='application/pdf'),
+                'bir_registration': SimpleUploadedFile('bir.pdf', _PDF_BYTES, content_type='application/pdf'),
+                'tax_clearance': SimpleUploadedFile('tax.pdf', _PDF_BYTES, content_type='application/pdf'),
+                'dti_registration': SimpleUploadedFile('dti.pdf', _PDF_BYTES, content_type='application/pdf'),
             },
             format='multipart',
         )
@@ -129,7 +147,7 @@ class SupplierAdminReviewTests(TestCase):
         category = Category.objects.filter(name='Office Supplies').first() or Category.objects.create(name='Office Supplies')
 
         def pdf(name):
-            return SimpleUploadedFile(name, b'pdf', content_type='application/pdf')
+            return SimpleUploadedFile(name, _PDF_BYTES, content_type='application/pdf')
 
         return self.client.post(
             '/api/suppliers/register',
@@ -405,16 +423,16 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(response.json()['status'], RFQ.STATUS_DRAFT)
         self.assertEqual(response.json()['award_basis'], 'LOT')
 
-    def test_award_basis_defaults_to_lot_and_can_be_set_to_unit(self):
+    def test_award_basis_defaults_to_lot_and_can_be_set_to_line(self):
         create = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'award_basis': 'unit'}),
+            data=json.dumps({'supplier_id': self.supplier.id, 'award_basis': 'line'}),
             content_type='application/json',
         )
         self.assertEqual(create.status_code, 201)
         rfq_id = create.json()['id']
-        self.assertEqual(create.json()['award_basis'], 'UNIT')
-        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'UNIT')
+        self.assertEqual(create.json()['award_basis'], 'LINE')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'LINE')
 
         patch = self.client.patch(
             f'/api/pr/{self.pr.id}/rfq/',
@@ -423,7 +441,7 @@ class RFQWorkflowTests(TestCase):
         )
         self.assertEqual(patch.status_code, 200)
         # An unrecognised value keeps the previously stored basis.
-        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'UNIT')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'LINE')
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_sending_rfq_creates_notification_and_email(self):
@@ -569,6 +587,207 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 201)
 
 
+class ManualBACSupplierSelectionTests(TestCase):
+    """Manual BAC override: search + select a supplier outside the PR category."""
+
+    def setUp(self):
+        self.pr_category = Category.objects.create(name='Airconditioning and Airconditioning Systems')
+        self.other_category = Category.objects.create(name='HVAC Services')
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU Tuburan Campus',
+            pr_no='2026-08-001',
+            category='Airconditioning and Airconditioning Systems',
+            purpose='Campus cooling requirements',
+        )
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr,
+            item_description='4.0HP Floor Standing Inverter Air Conditioning Unit',
+            quantity=1,
+            unit='unit',
+            category='Airconditioning and Airconditioning Systems',
+        )
+        # Registered under the PR category -> normal category match.
+        self.matched_supplier = Supplier.objects.create(
+            company_name='ABC HVAC Solutions', email='abc@example.com', status='Approved',
+        )
+        SupplierCategory.objects.create(supplier=self.matched_supplier, category=self.pr_category)
+        # Capable but registered elsewhere -> only reachable via manual search.
+        self.other_supplier = Supplier.objects.create(
+            company_name='CoolTech Climate Solutions Inc.',
+            contact_person='Juan Dela Cruz',
+            email='cooltech@example.com',
+            contact_phone='0917-000-0000',
+            business_address='Cebu City',
+            status='Approved',
+        )
+        SupplierCategory.objects.create(supplier=self.other_supplier, category=self.other_category)
+
+    # ---- search endpoint ------------------------------------------------------
+    def _search(self, term, role='admin'):
+        headers = {'HTTP_X_USER_ROLE': role} if role else {}
+        return self.client.get(f'/api/suppliers/search/?name={term}', **headers)
+
+    def test_search_requires_admin_role(self):
+        self.assertEqual(self._search('cool', role='supplier').status_code, 403)
+        self.assertEqual(self._search('cool', role='buyer').status_code, 403)
+        self.assertEqual(self._search('cool', role='').status_code, 403)
+
+    def test_search_is_partial_and_case_insensitive(self):
+        for term in ('cool', 'COOL', 'CLIMATE', '  climate  '):
+            results = self._search(term).json()['results']
+            names = [r['company_name'] for r in results]
+            self.assertIn('CoolTech Climate Solutions Inc.', names, term)
+
+    def test_search_does_not_filter_by_pr_category(self):
+        # The manual search must surface a supplier that category matching excludes.
+        results = self._search('cooltech').json()['results']
+        self.assertEqual([r['company_name'] for r in results], ['CoolTech Climate Solutions Inc.'])
+        self.assertEqual(results[0]['categories'], ['HVAC Services'])
+        self.assertEqual(results[0]['status'], 'Approved')
+
+    def test_blank_query_browses_the_full_supplier_list(self):
+        # No search term is a browse, not an error - every supplier comes back.
+        names = [r['company_name'] for r in self._search('').json()['results']]
+        self.assertIn('CoolTech Climate Solutions Inc.', names)
+        self.assertIn('ABC HVAC Solutions', names)
+
+    def test_search_with_no_hits_returns_empty_list(self):
+        data = self._search('zzzznomatch').json()
+        self.assertEqual(data['results'], [])
+        self.assertFalse(data['has_more'])
+
+    def test_search_result_limit_and_has_more_flag(self):
+        for n in range(25):
+            Supplier.objects.create(company_name=f'Widget Supplier {n:02d}', status='Approved')
+        data = self._search('widget supplier').json()
+        self.assertEqual(len(data['results']), 20)
+        self.assertTrue(data['has_more'])
+
+    def test_exclude_pr_drops_category_matched_suppliers(self):
+        # Default "Other Suppliers" list must never repeat the category-matched
+        # section: ABC HVAC (in the PR category) is out, CoolTech (elsewhere) stays.
+        headers = {'HTTP_X_USER_ROLE': 'admin'}
+        data = self.client.get(f'/api/suppliers/search/?exclude_pr={self.pr.id}', **headers).json()
+        names = [r['company_name'] for r in data['results']]
+        self.assertIn('CoolTech Climate Solutions Inc.', names)
+        self.assertNotIn('ABC HVAC Solutions', names)
+
+    def test_exclude_pr_still_applies_the_name_filter(self):
+        headers = {'HTTP_X_USER_ROLE': 'admin'}
+        data = self.client.get(
+            f'/api/suppliers/search/?exclude_pr={self.pr.id}&name=abc', **headers
+        ).json()
+        self.assertEqual(data['results'], [])
+
+    def test_exclude_pr_with_unknown_pr_returns_404(self):
+        headers = {'HTTP_X_USER_ROLE': 'admin'}
+        self.assertEqual(
+            self.client.get('/api/suppliers/search/?exclude_pr=999999', **headers).status_code,
+            404,
+        )
+
+    def test_browse_lists_approved_suppliers_before_others(self):
+        Supplier.objects.create(company_name='AAA Pending Co', status='Pending Review')
+        results = self._search('').json()['results']
+        approved = [r['company_name'] for r in results if r['status'] == 'Approved']
+        first_pending_index = next(
+            (i for i, r in enumerate(results) if r['status'] != 'Approved'), len(results)
+        )
+        self.assertTrue(all(
+            results.index(r) < first_pending_index
+            for r in results if r['company_name'] in approved
+        ))
+
+    # ---- manual selection on the RFQ endpoint --------------------------------
+    def test_manual_selection_accepts_supplier_outside_pr_category(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({
+                'supplier_id': self.other_supplier.id,
+                'selection_type': 'manual_bac',
+                'category': '',
+            }),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='admin',
+            HTTP_X_USER_USERNAME='admin',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['selection_type'], 'manual_bac')
+        self.assertEqual(response.json()['selection_type_label'], 'Manual BAC Selection')
+        rfq = RFQ.objects.get(id=response.json()['id'])
+        self.assertEqual(rfq.selection_type, RFQ.SELECTION_MANUAL_BAC)
+        self.assertEqual(rfq.supplier_id, self.other_supplier.id)
+
+    def test_manual_selection_requires_admin_role(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(RFQ.objects.count(), 0)
+
+    def test_manual_selection_still_rejects_unapproved_supplier(self):
+        self.other_supplier.status = 'Rejected'
+        self.other_supplier.save(update_fields=['status'])
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='admin',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('approved', response.json()['message'].lower())
+
+    def test_manual_selection_does_not_create_supplier_category(self):
+        before = set(
+            SupplierCategory.objects.filter(supplier=self.other_supplier)
+            .values_list('category__name', flat=True)
+        )
+        self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='admin',
+        )
+        after = set(
+            SupplierCategory.objects.filter(supplier=self.other_supplier)
+            .values_list('category__name', flat=True)
+        )
+        self.assertEqual(before, after)
+        self.assertEqual(before, {'HVAC Services'})
+
+    def test_normal_path_still_rejects_category_mismatch_without_flag(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.other_supplier.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('eligible', response.json()['message'])
+
+    def test_category_matched_supplier_records_category_match(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.matched_supplier.id}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['selection_type'], 'category_match')
+
+    def test_pr_is_unchanged_by_manual_selection(self):
+        self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
+            content_type='application/json',
+            HTTP_X_USER_ROLE='admin',
+        )
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.category, 'Airconditioning and Airconditioning Systems')
+        self.assertEqual(self.pr.pr_no, '2026-08-001')
+        self.assertEqual(self.pr.line_items.count(), 1)
+
+
 class RFQModeOfProcurementTests(TestCase):
     def setUp(self):
         self.category = Category.objects.create(name='Air Conditioning')
@@ -606,13 +825,20 @@ class RFQModeOfProcurementTests(TestCase):
     def test_generate_requires_a_mode(self):
         response = self._create_draft(generate_pdf=True, preview=True)
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()['message'], 'Please select a mode of procurement.')
+        self.assertEqual(response.json()['message'], 'Please enter a mode of procurement.')
         self.assertEqual(RFQ.objects.count(), 0)
 
-    def test_arbitrary_mode_is_rejected(self):
-        response = self._create_draft(mode_of_procurement='Totally Made Up Mode')
+    def test_custom_typed_mode_is_accepted_and_stored(self):
+        response = self._create_draft(mode_of_procurement='  Direct Contracting (special case)  ')
+        self.assertEqual(response.status_code, 201)
+        rfq = RFQ.objects.get(id=response.json()['id'])
+        # Trimmed, but otherwise kept verbatim - not forced onto the suggested list.
+        self.assertEqual(rfq.mode_of_procurement, 'Direct Contracting (special case)')
+
+    def test_overlong_mode_is_rejected(self):
+        response = self._create_draft(mode_of_procurement='x' * 201)
         self.assertEqual(response.status_code, 400)
-        self.assertIn('Invalid mode of procurement', response.json()['message'])
+        self.assertIn('200 characters', response.json()['message'])
 
     def test_selected_mode_is_stored_and_returned_and_persists(self):
         create = self._create_draft(mode_of_procurement='Small Value Procurement')
@@ -703,7 +929,7 @@ class SupplierRFQResponseTests(TestCase):
                                       pdf_file='rfq/RFQ-2026-0001-1.pdf')
 
     def _pdf(self, name='completed.pdf'):
-        return SimpleUploadedFile(name, b'%PDF-1.4 completed rfq', content_type='application/pdf')
+        return SimpleUploadedFile(name, _PDF_BYTES, content_type='application/pdf')
 
     def _upload(self, supplier, rfq, file=None):
         return self.client.post(
@@ -734,8 +960,18 @@ class SupplierRFQResponseTests(TestCase):
         self.assertNotEqual(self.rfq.submitted_pdf, self.rfq.pdf_file)
 
     def test_upload_rejects_non_pdf(self):
-        bad = SimpleUploadedFile('quote.png', b'not a pdf', content_type='image/png')
+        bad = SimpleUploadedFile('quote.png', _PNG_BYTES, content_type='image/png')
         response = self._upload(self.supplier, self.rfq, file=bad)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()['message'], 'Completed RFQ submissions must be uploaded as a PDF.'
+        )
+        self.rfq.refresh_from_db()
+        self.assertFalse(self.rfq.submitted_pdf)
+
+    def test_upload_rejects_non_pdf_content_behind_pdf_name(self):
+        disguised = SimpleUploadedFile('completed.pdf', b'MZ\x90\x00 not a pdf', content_type='application/pdf')
+        response = self._upload(self.supplier, self.rfq, file=disguised)
         self.assertEqual(response.status_code, 400)
         self.rfq.refresh_from_db()
         self.assertFalse(self.rfq.submitted_pdf)
@@ -933,6 +1169,7 @@ class PurchaseRequestNumberTests(TestCase):
                 'reviewOnly': True,
                 'sourceFilename': 'buyer-pr.pdf',
                 'requested_items': [],
+                'declaration_acknowledged': True,
             }}),
             content_type='application/json',
         )
@@ -1001,15 +1238,553 @@ class SupplierMatchingTests(TestCase):
             item_description='Aircon unit',
             category=category.name,
         )
-        matching_supplier = Supplier.objects.create(company_name='Matching Supplier')
-        unrelated_supplier = Supplier.objects.create(company_name='Unrelated Supplier')
+        matching_supplier = Supplier.objects.create(
+            company_name='Matching Supplier', status='Approved', business_type='Others',
+        )
+        unrelated_supplier = Supplier.objects.create(company_name='Unrelated Supplier', status='Approved')
         SupplierCategory.objects.create(supplier=matching_supplier, category=category)
+        for key in ('mayor_permit', 'business_permit', 'philgeps_registration', 'bir_registration', 'tax_clearance'):
+            SupplierDocument.objects.create(
+                supplier=matching_supplier, doc_type=key, filename=f'{key}.pdf',
+                verification_status='Verified',
+            )
 
         response = self.client.get(f'/api/pr/{pr.id}/supplier-match/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item['company_name'] for item in response.json()[0]['suppliers']], [matching_supplier.company_name])
-        self.assertNotIn(unrelated_supplier.company_name, [item['company_name'] for item in response.json()[0]['suppliers']])
+        groups = response.json()['groups']
+        self.assertEqual([item['company_name'] for item in groups[0]['suppliers']], [matching_supplier.company_name])
+        self.assertNotIn(unrelated_supplier.company_name, [item['company_name'] for item in groups[0]['suppliers']])
+        self.assertEqual(groups[0]['category'], category.name)
+        self.assertEqual(groups[0]['category_id'], category.id)
+
+
+class CentralizedFileValidationTests(SimpleTestCase):
+    """The shared api.file_validation validator + its endpoint integration."""
+
+    def _f(self, name, data, content_type='application/octet-stream'):
+        return SimpleUploadedFile(name, data, content_type=content_type)
+
+    # ---- the validator itself ------------------------------------------------
+    def test_pr_accepts_documents_and_images(self):
+        from api.file_validation import UploadKind, validate_upload
+        for name, data in [
+            ('a.pdf', _PDF_BYTES), ('a.jpg', _JPG_BYTES),
+            ('a.jpeg', _JPG_BYTES), ('a.png', _PNG_BYTES),
+        ]:
+            validate_upload(self._f(name, data), UploadKind.PR)  # no exception
+
+    def test_pr_rejects_office_and_archive_and_binary_types(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        for name in ('a.docx', 'a.xlsx', 'a.pptx', 'a.zip', 'a.exe', 'a.txt'):
+            with self.assertRaises(FileValidationError):
+                validate_upload(self._f(name, b'anything at all here'), UploadKind.PR)
+
+    def test_pr_rejects_renamed_binary(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        with self.assertRaises(FileValidationError):
+            validate_upload(self._f('malware.pdf', b'MZ\x90\x00\x03'), UploadKind.PR)
+        with self.assertRaises(FileValidationError):
+            validate_upload(self._f('doc.png', _PDF_BYTES), UploadKind.PR)  # pdf bytes, .png name
+
+    def test_empty_and_oversize_are_rejected(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        with self.assertRaises(FileValidationError) as ctx:
+            validate_upload(self._f('a.pdf', b''), UploadKind.PR)
+        self.assertEqual(ctx.exception.message, 'The uploaded file is empty.')
+
+        big = SimpleUploadedFile('a.pdf', _PDF_BYTES)
+        big.size = 11 * 1024 * 1024
+        with self.assertRaises(FileValidationError) as ctx:
+            validate_upload(big, UploadKind.PR)
+        self.assertIn('too large', ctx.exception.message)
+
+    def test_completed_rfq_is_pdf_only(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        validate_upload(self._f('r.pdf', _PDF_BYTES), UploadKind.COMPLETED_RFQ)
+        for name, data in [('r.jpg', _JPG_BYTES), ('r.png', _PNG_BYTES), ('r.docx', b'PK\x03\x04')]:
+            with self.assertRaises(FileValidationError) as ctx:
+                validate_upload(self._f(name, data), UploadKind.COMPLETED_RFQ)
+            self.assertEqual(
+                ctx.exception.message, 'Completed RFQ submissions must be uploaded as a PDF.'
+            )
+
+    def test_supplier_requirement_rules_match_pr(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        validate_upload(self._f('permit.jpg', _JPG_BYTES), UploadKind.SUPPLIER_REQUIREMENT)
+        with self.assertRaises(FileValidationError):
+            validate_upload(self._f('permit.docx', b'PK\x03\x04'), UploadKind.SUPPLIER_REQUIREMENT)
+
+    def test_corrupted_image_is_rejected(self):
+        from api.file_validation import UploadKind, FileValidationError, validate_upload
+        with self.assertRaises(FileValidationError):
+            validate_upload(self._f('photo.png', b'\x89PNG\r\n\x1a\n' + b'\x00' * 40), UploadKind.PR)
+
+
+class FileValidationEndpointTests(TestCase):
+    """Invalid uploads never reach storage / OCR / a database record."""
+
+    def test_pr_upload_rejects_docx_before_ocr(self):
+        with patch('api.views.ocr_service.process_file') as mocked_ocr:
+            response = self.client.post(
+                '/api/upload/',
+                {'file': SimpleUploadedFile('pr.docx', b'PK\x03\x04 zip', content_type='application/octet-stream')},
+            )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unsupported file type', response.json()['message'])
+        mocked_ocr.assert_not_called()
+
+    def test_pr_upload_runs_ocr_for_a_valid_pdf(self):
+        from ocr.ocr_service import OCRDocument
+        stub = OCRDocument(pages=[], raw_text='', source='pdf-text', filename='pr.pdf', textract_blocks=[])
+        with patch('api.views.ocr_service.process_file', return_value=stub) as mocked_ocr:
+            self.client.post('/api/upload/', {'file': SimpleUploadedFile('pr.pdf', _PDF_BYTES)})
+        mocked_ocr.assert_called_once()
+
+    def test_supplier_registration_rejects_docx_requirement(self):
+        Role.objects.get_or_create(name='supplier')
+        category = Category.objects.create(name='Office Supplies')
+        response = self.client.post(
+            '/api/suppliers/register',
+            data={
+                'companyName': 'Acme', 'businessType': 'Sole Proprietorship', 'businessAddress': '1 St',
+                'contactPerson': 'Jane', 'contactNumber': '+639171234567', 'email': 'jane@acme.test',
+                'productsServices': 'Supplies', 'category_ids': str(category.id),
+                'username': 'acmeuser', 'password': 'Supplier123!', 'confirmPassword': 'Supplier123!',
+                'mayor_permit': SimpleUploadedFile('mayor.docx', b'PK\x03\x04', content_type='application/octet-stream'),
+                'business_permit': SimpleUploadedFile('business.pdf', _PDF_BYTES),
+                'philgeps_registration': SimpleUploadedFile('philgeps.pdf', _PDF_BYTES),
+                'bir_registration': SimpleUploadedFile('bir.pdf', _PDF_BYTES),
+                'tax_clearance': SimpleUploadedFile('tax.pdf', _PDF_BYTES),
+                'dti_registration': SimpleUploadedFile('dti.pdf', _PDF_BYTES),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(any('Unsupported file type' in e for e in response.json()['errors']))
+        self.assertFalse(Supplier.objects.filter(email='jane@acme.test').exists())
+        self.assertEqual(SupplierDocument.objects.count(), 0)
+
+    def test_supplier_resubmit_rejects_docx(self):
+        supplier = Supplier.objects.create(company_name='Acme', email='a@a.test', status='For Compliance')
+        response = self.client.post(
+            f'/api/suppliers/{supplier.id}/documents/resubmit/',
+            data={'doc_type': 'mayor_permit',
+                  'file': SimpleUploadedFile('permit.docx', b'PK\x03\x04', content_type='application/octet-stream')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Unsupported file type', response.json()['error'])
+        self.assertEqual(SupplierDocument.objects.count(), 0)
+
+
+class SignaturePresenceValidationTests(TestCase):
+    """Buyer cannot submit a PR whose required signatory areas are unsigned."""
+
+    UPLOADS = Path(settings.BASE_DIR) / 'uploads'
+
+    def setUp(self):
+        self._written = []
+
+    def tearDown(self):
+        for path in self._written:
+            Path(path).unlink(missing_ok=True)
+            Path(str(path) + '.sigcheck.json').unlink(missing_ok=True)
+
+    def _make_pr_pdf(self, name, signed):
+        canvas_mod = __import__('reportlab.pdfgen.canvas', fromlist=['Canvas'])
+        path = self.UPLOADS / name
+        c = canvas_mod.Canvas(str(path), pagesize=(612, 792))
+        c.setFont('Helvetica', 10)
+        c.drawString(72, 720, 'PURCHASE REQUEST')
+        c.drawString(72, 700, 'Entity Name: CTU-Tuburan Campus')
+        c.drawString(72, 680, 'Item Description  Quantity  Unit Cost  Total Cost')
+        c.drawString(72, 660, 'Supply of demo goods  1  100.00  100.00')
+        c.drawString(72, 620, 'Purpose: demonstration')
+        cols = {'requested_by': 90, 'funds_available': 250, 'approved_by': 410}
+        c.drawString(cols['requested_by'], 200, 'Requested by:')
+        c.drawString(cols['funds_available'], 200, 'Funds Available:')
+        c.drawString(cols['approved_by'], 200, 'Approved by:')
+        c.drawString(72, 176, 'Signature :   ____________   ____________   ____________')
+        c.drawString(72, 150, 'Printed Name : JUAN CRUZ    MARIA SANTOS    PEDRO REYES')
+        c.drawString(72, 132, 'Designation : Officer     Budget Officer    Director')
+        c.drawString(72, 108, 'Specifications verified by Technical Working Group:')
+        c.drawString(72, 92, 'Signature :   ____________')
+        c.drawString(72, 66, 'Printed Name : ANA DELA CRUZ')
+        for key, present in (signed or {}).items():
+            if not present:
+                continue
+            cx = cols[key]
+            p = c.beginPath()
+            p.moveTo(cx, 182)
+            for i in range(1, 24):
+                t = i / 23.0
+                p.lineTo(cx + t * 90.0, 182 + (14.0 if i % 2 else -10.0) * (0.4 + t))
+            c.setLineWidth(1.4)
+            c.drawPath(p, stroke=1, fill=0)
+        c.showPage()
+        c.save()
+        self._written.append(path)
+        return name
+
+    def _post_pr(self, source_filename, extra=None):
+        fields = {
+            'entityName': 'CTU-Tuburan Campus',
+            'reviewOnly': True,
+            'sourceFilename': source_filename,
+            'requested_items': [],
+            'requested_by_name': 'JUAN CRUZ',
+            'funds_available_name': 'MARIA SANTOS',
+            'approved_by_name': 'PEDRO REYES',
+            'declaration_acknowledged': True,
+        }
+        fields.update(extra or {})
+        return self.client.post(
+            '/api/pr/', data=json.dumps({'fields': fields}), content_type='application/json',
+        )
+
+    def test_unsigned_pr_is_rejected_with_the_missing_signatories(self):
+        name = self._make_pr_pdf('sigtest-unsigned.pdf', signed={})
+        response = self._post_pr(name)
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertFalse(body['success'])
+        self.assertEqual(
+            set(body['missing_signatures']), {'Requested By', 'Funds Available', 'Approved By'}
+        )
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_fully_signed_pr_saves(self):
+        name = self._make_pr_pdf(
+            'sigtest-signed.pdf',
+            signed={'requested_by': True, 'funds_available': True, 'approved_by': True},
+        )
+        response = self._post_pr(name)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+
+    def test_partially_signed_pr_names_only_the_missing_one(self):
+        name = self._make_pr_pdf(
+            'sigtest-partial.pdf', signed={'requested_by': True, 'approved_by': True},
+        )
+        response = self._post_pr(name)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['missing_signatures'], ['Funds Available'])
+
+    def test_missing_document_does_not_hard_block_the_buyer(self):
+        # No file on disk -> upload-time check + disabled button are the gate.
+        response = self._post_pr('sigtest-nonexistent.pdf')
+        self.assertEqual(response.status_code, 201)
+
+    def test_recheck_endpoint_returns_per_signatory_status(self):
+        name = self._make_pr_pdf(
+            'sigtest-recheck.pdf',
+            signed={'requested_by': True, 'funds_available': True, 'approved_by': True},
+        )
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': name}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        validation = response.json()['signature_validation']
+        self.assertTrue(validation['summary']['can_save'])
+        self.assertEqual(validation['signatories']['requested_by']['state'], 'present')
+
+    def test_recheck_endpoint_404_for_unknown_document(self):
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': 'nope.pdf'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_pr_edit_is_not_subject_to_the_signature_guard(self):
+        # The Admin review path (pr_update) must stay unaffected.
+        pr = PurchaseRequest.objects.create(entity_name='Legacy PR', status=PurchaseRequest.STATUS_UPLOADED)
+        response = self.client.patch(
+            f'/api/pr/{pr.id}/edit/',
+            data=json.dumps({'entity_name': 'Legacy PR (edited)', 'items': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+
+    # ---- Purchase Request Submission Declaration ---------------------------
+    def _signed(self, name='decltest.pdf'):
+        return self._make_pr_pdf(
+            name, signed={'requested_by': True, 'funds_available': True, 'approved_by': True},
+        )
+
+    def test_missing_declaration_is_rejected(self):
+        response = self._post_pr(self._signed('decl-missing.pdf'), extra={'declaration_acknowledged': None})
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertTrue(body.get('declaration_required'))
+        self.assertIn('acknowledge', body['error'].lower())
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_false_declaration_is_rejected(self):
+        for value in (False, 'false', 'no', 0, ''):
+            response = self._post_pr(self._signed('decl-false.pdf'), extra={'declaration_acknowledged': value})
+            self.assertEqual(response.status_code, 422, value)
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_declaration_check_runs_before_signature_guard(self):
+        # Unsigned document AND no declaration -> the declaration error wins,
+        # but the save is still blocked either way.
+        response = self._post_pr(
+            self._make_pr_pdf('decl-order.pdf', signed={}),
+            extra={'declaration_acknowledged': False},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertTrue(response.json().get('declaration_required'))
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_acknowledged_declaration_is_recorded(self):
+        response = self._post_pr(self._signed('decl-ok.pdf'))
+        self.assertEqual(response.status_code, 201, response.content)
+        pr = PurchaseRequest.objects.get()
+        self.assertTrue(pr.declaration_acknowledged)
+        self.assertIsNotNone(pr.declaration_acknowledged_at)
+        self.assertTrue(response.json()['declaration_acknowledged'])
+
+    def test_double_submit_does_not_create_a_duplicate(self):
+        name = self._signed('decl-dup.pdf')
+        first = self._post_pr(name)
+        self.assertEqual(first.status_code, 201)
+        second = self._post_pr(name)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json().get('duplicate'))
+        self.assertEqual(second.json()['id'], first.json()['id'])
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+
+
+class ManualRFQTests(TestCase):
+    """Manual / unregistered-supplier RFQ workflow."""
+
+    def setUp(self):
+        Role.objects.get_or_create(name='admin')
+        self.admin = User.objects.create(
+            username='bacadmin', password_hash='x', role=Role.objects.get(name='admin'),
+        )
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU-Tuburan Campus', pr_no='2026-09-001',
+            category='Airconditioning', grand_total=50000, status=PurchaseRequest.STATUS_MATCHED,
+        )
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='4.0HP Aircon unit', quantity=2, unit='unit',
+        )
+        self.admin_headers = {'HTTP_X_USER_ROLE': 'admin', 'HTTP_X_USER_USERNAME': 'bacadmin'}
+
+    def _create(self, name="Juan's Aircon Services", mode='Small Value Procurement', **extra):
+        return self.client.post(
+            f'/api/pr/{self.pr.id}/manual-rfq/',
+            data=json.dumps({'manual_supplier_name': name, 'mode_of_procurement': mode, **extra}),
+            content_type='application/json', **self.admin_headers,
+        )
+
+    def test_create_manual_rfq_assigns_quotation_number_once(self):
+        response = self._create()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertRegex(body['quotation_no'], r'^RFQ-\d{4}-\d{4}$')
+        self.assertEqual(body['quotation_no'], body['rfq_no'])
+        self.assertEqual(body['supplier']['id'], None)
+        self.assertTrue(body['is_manual'])
+        self.assertEqual(body['delivery_method'], 'manual')
+        self.assertEqual(body['manual_supplier_name'], "Juan's Aircon Services")
+
+        rfq = RFQ.objects.get(id=body['id'])
+        self.assertIsNone(rfq.supplier_id)
+        self.assertEqual(rfq.status, RFQ.STATUS_SENT)
+        self.assertEqual(rfq.created_by_id, self.admin.id)
+
+    def test_no_supplier_or_category_records_are_created(self):
+        self._create()
+        self.assertEqual(Supplier.objects.count(), 0)
+        self.assertEqual(SupplierCategory.objects.count(), 0)
+
+    def test_pdf_omits_supplier_name_but_shows_quotation_number(self):
+        body = self._create().json()
+        pdf = self.client.get(f'/api/manual-rfqs/{body["id"]}/pdf/', **self.admin_headers)
+        self.assertEqual(pdf.status_code, 200)
+        from pdfminer.high_level import extract_text
+        import io
+        content = b''.join(pdf.streaming_content)
+        path = Path(settings.BASE_DIR) / 'uploads' / '_manualtest.pdf'
+        path.write_bytes(content)
+        try:
+            text = extract_text(str(path))
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertNotIn('Juan', text)
+        self.assertIn(body['quotation_no'], text)
+
+    def test_repeat_same_supplier_and_pr_returns_existing_rfq(self):
+        first = self._create().json()
+        second = self._create(name="  juan's aircon services  ", mode='Shopping')
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json().get('existing'))
+        self.assertEqual(second.json()['id'], first['id'])
+        self.assertEqual(second.json()['quotation_no'], first['quotation_no'])
+        self.assertEqual(RFQ.objects.filter(delivery_method='manual').count(), 1)
+
+    def test_explicit_new_rfq_gets_a_new_quotation_number(self):
+        first = self._create().json()
+        again = self._create(force_new=True)
+        self.assertEqual(again.status_code, 201)
+        self.assertNotEqual(again.json()['quotation_no'], first['quotation_no'])
+        self.assertEqual(RFQ.objects.filter(delivery_method='manual').count(), 2)
+
+    def test_multiple_manual_suppliers_get_sequential_numbers(self):
+        a = self._create(name='Supplier A').json()['quotation_no']
+        b = self._create(name='Supplier B').json()['quotation_no']
+        c = self._create(name='Supplier C').json()['quotation_no']
+        seqs = sorted(int(x.split('-')[2]) for x in (a, b, c))
+        self.assertEqual(seqs, [seqs[0], seqs[0] + 1, seqs[0] + 2])
+
+    def test_redownload_keeps_the_same_quotation_number(self):
+        body = self._create().json()
+        RFQ.objects.filter(id=body['id']).update(pdf_file='')  # simulate lost server file
+        again = self.client.get(f'/api/manual-rfqs/{body["id"]}/pdf/', **self.admin_headers)
+        self.assertEqual(again.status_code, 200)
+        RFQ.objects.get(id=body['id']).refresh_from_db()
+        self.assertEqual(RFQ.objects.get(id=body['id']).rfq_no, body['quotation_no'])
+
+    def test_non_admin_cannot_create_a_manual_rfq(self):
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/manual-rfq/',
+            data=json.dumps({'manual_supplier_name': 'X', 'mode_of_procurement': 'Shopping'}),
+            content_type='application/json', HTTP_X_USER_ROLE='buyer',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(RFQ.objects.count(), 0)
+
+    def test_name_is_required(self):
+        self.assertEqual(self._create(name='   ').status_code, 400)
+
+    def test_award_basis_line_is_stored_and_defaults_to_lot(self):
+        line = self._create(name='Line Co', award_basis='line').json()
+        self.assertEqual(RFQ.objects.get(id=line['id']).award_basis, 'LINE')
+        lot = self._create(name='Default Co').json()
+        self.assertEqual(RFQ.objects.get(id=lot['id']).award_basis, 'LOT')
+
+    def test_completed_rfq_upload_keeps_number_and_name(self):
+        body = self._create().json()
+        upload = self.client.post(
+            f'/api/manual-rfqs/{body["id"]}/completed/',
+            data={'file': SimpleUploadedFile('completed.pdf', _PDF_BYTES, content_type='application/pdf')},
+            format='multipart', **self.admin_headers,
+        )
+        self.assertEqual(upload.status_code, 200)
+        rfq = RFQ.objects.get(id=body['id'])
+        self.assertTrue(rfq.submitted_pdf)
+        self.assertTrue(rfq.pdf_file)  # generated RFQ untouched
+        self.assertEqual(rfq.rfq_no, body['quotation_no'])
+        self.assertEqual(rfq.manual_supplier_name, "Juan's Aircon Services")
+
+    def test_completed_rfq_upload_rejects_non_pdf(self):
+        body = self._create().json()
+        upload = self.client.post(
+            f'/api/manual-rfqs/{body["id"]}/completed/',
+            data={'file': SimpleUploadedFile('c.jpg', _JPG_BYTES, content_type='image/jpeg')},
+            format='multipart', **self.admin_headers,
+        )
+        self.assertEqual(upload.status_code, 400)
+
+    def test_manual_rfqs_list_and_search(self):
+        self._create(name="Juan's Aircon Services")
+        self._create(name='Metro HVAC')
+        listing = self.client.get('/api/manual-rfqs/', **self.admin_headers).json()['rfqs']
+        self.assertEqual(len(listing), 2)
+        found = self.client.get('/api/manual-rfqs/?search=juan', **self.admin_headers).json()['rfqs']
+        self.assertEqual([r['manual_supplier_name'] for r in found], ["Juan's Aircon Services"])
+
+    def test_manual_supplier_never_appears_in_category_matching(self):
+        self._create()
+        match = self.client.get(f'/api/pr/{self.pr.id}/supplier-match/').json()
+        names = [s['company_name'] for group in match['groups'] for s in group['suppliers']]
+        self.assertNotIn("Juan's Aircon Services", names)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_manual_and_registered_rfqs_share_one_quotation_sequence(self):
+        category = Category.objects.create(name='Aircon Q')
+        self.pr.category = 'Aircon Q'
+        self.pr.save(update_fields=['category'])
+        PurchaseRequestItem.objects.filter(purchase_request=self.pr).update(category='Aircon Q')
+        supplier = Supplier.objects.create(company_name='Reg Co', email='reg@example.com', status='Approved')
+        SupplierCategory.objects.create(supplier=supplier, category=category)
+
+        def seq(value):
+            return int(value.split('-')[2])
+
+        a = self._create(name='Manual A').json()['quotation_no']
+
+        sent = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': supplier.id, 'mode_of_procurement': 'Shopping',
+                             'send': True, 'generate_pdf': True}),
+            content_type='application/json', **self.admin_headers,
+        )
+        self.assertEqual(sent.status_code, 201, sent.content)
+        b = sent.json()['quotation_no']
+
+        c = self._create(name='Manual B').json()['quotation_no']
+
+        # Continuous, in issue order, no gaps or repeats.
+        self.assertEqual([seq(b), seq(c)], [seq(a) + 1, seq(a) + 2])
+
+        # Re-sending the registered RFQ keeps its number.
+        resend = self.client.patch(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({'supplier_id': supplier.id, 'rfq_id': sent.json()['id'],
+                             'mode_of_procurement': 'Shopping', 'send': True, 'generate_pdf': True}),
+            content_type='application/json', **self.admin_headers,
+        )
+        self.assertEqual(resend.json()['quotation_no'], b)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_manual_rfq_number_continues_after_registered_rfqs(self):
+        """RFQ-2026-0001, RFQ-2026-0002 registered -> manual RFQ is RFQ-2026-0003."""
+        category = Category.objects.create(name='Aircon P')
+        self.pr.category = 'Aircon P'
+        self.pr.save(update_fields=['category'])
+        PurchaseRequestItem.objects.filter(purchase_request=self.pr).update(category='Aircon P')
+
+        def seq(value):
+            return int(value.split('-')[2])
+
+        registered = []
+        for i in range(2):
+            supplier = Supplier.objects.create(
+                company_name=f'Reg {i}', email=f'reg{i}@example.com', status='Approved',
+            )
+            SupplierCategory.objects.create(supplier=supplier, category=category)
+            r = self.client.post(
+                f'/api/pr/{self.pr.id}/rfq/',
+                data=json.dumps({'supplier_id': supplier.id, 'mode_of_procurement': 'Shopping',
+                                 'send': True, 'generate_pdf': True}),
+                content_type='application/json', **self.admin_headers,
+            )
+            self.assertEqual(r.status_code, 201, r.content)
+            registered.append(r.json()['quotation_no'])
+
+        manual = self._create(name='Manual After').json()['quotation_no']
+
+        self.assertRegex(manual, r'^RFQ-\d{4}-\d{4}$')
+        self.assertEqual(seq(manual), seq(registered[1]) + 1)
+        self.assertEqual(seq(registered[1]), seq(registered[0]) + 1)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_deleted_draft_does_not_cause_a_duplicate_number(self):
+        """The next number follows the highest generated, not a live row count."""
+        first = self._create(name='First').json()['quotation_no']
+        second = self._create(name='Second').json()['quotation_no']
+        RFQ.objects.filter(rfq_no=first).delete()
+
+        third = self._create(name='Third').json()['quotation_no']
+        self.assertNotIn(third, {first, second})
+        self.assertEqual(int(third.split('-')[2]), int(second.split('-')[2]) + 1)
 
 
 class RFQManagementGroupingTests(TestCase):
@@ -1236,6 +2011,26 @@ class RFQItemTableRenderingTests(TestCase):
         # PR unit / total cost must never be pre-filled as a quotation value.
         self.assertNotIn('45000', text.replace(',', ''))
         self.assertNotIn('45,000', text)
+
+    def test_supplier_identity_fields_are_blank_on_generated_rfq(self):
+        # The supplier writes Company Name / Address / TIN by hand on the printed
+        # copy - they must never be pre-filled from the Supplier record.
+        self.supplier.business_address = '123 Real Street, Cebu City'
+        self.supplier.tin = '123-456-789-000'
+        self.supplier.save(update_fields=['business_address', 'tin'])
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Aircon unit', quantity=1, unit='unit',
+        )
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(self._rfq())
+        text = '\n'.join(t for t, _ in self._pdf_lines(path))
+
+        self.assertIn('Company Name:', text)
+        self.assertIn('Address:', text)
+        self.assertIn('TIN:', text)
+        self.assertNotIn('CoolTech Climate Solutions', text)
+        self.assertNotIn('123 Real Street', text)
+        self.assertNotIn('123-456-789-000', text)
 
     def test_template_converts_description_newlines_to_breaks(self):
         from django.template.loader import render_to_string

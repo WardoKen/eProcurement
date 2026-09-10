@@ -240,9 +240,9 @@
     <table class="topgrid">
       <tr>
         <td class="supplier-cell" width="55%">
-          <div class="s-row"><strong>Company Name:</strong>&nbsp;{{ supplier.company_name|default:'' }}</div>
-          <div class="s-row"><strong>Address:</strong>&nbsp;{{ supplier.business_address|default:'' }}</div>
-          <div class="s-row"><strong>TIN:</strong>&nbsp;{{ supplier.tin|default:'' }}</div>
+          <div class="s-row"><strong>Company Name:</strong>&nbsp;______________________</div>
+          <div class="s-row"><strong>Address:</strong>&nbsp;____________________________</div>
+          <div class="s-row"><strong>TIN:</strong>&nbsp;_________________________________</div>
         </td>
         <td width="45%">
           <table class="meta" cellpadding="3">
@@ -326,8 +326,8 @@
     </table>
 
     <div class="advisory">Please be advised that in the event that you will be declared as the Lowest Complying and Responsive Supplier, said items will be awarded to you, subject to the submission of the documentary requirements (1. <strong><u>PhilGEPS Registration Certificate/ Number</u></strong>, 2. <strong><u>Mayor&rsquo;s Permit</u></strong>, 3. <strong><u>Income Tax Return</u></strong>, 4. <strong><u>Omnibus Sworn Statement</u></strong>). A Notice of Award and Purchase Order will then be issued.</div>
-    {% if award_basis == 'UNIT' %}
-      <div class="lot-note">NOTE: Award to the Lowest Complying Supplier shall be on a <strong><u>PER UNIT</u></strong> basis. (Suppliers may quote for one or more items).</div>
+    {% if award_basis == 'LINE' %}
+      <div class="lot-note">NOTE: Award to the Lowest Complying Supplier shall be on a <strong><u>PER LINE ITEM</u></strong> basis. (Suppliers may quote for one or more items).</div>
     {% else %}
       <div class="lot-note">NOTE: Award to the Lowest Complying Supplier shall be on a <strong><u>LOT</u></strong> basis. (Please quote all items to avoid disqualification).</div>
     {% endif %}
