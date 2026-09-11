@@ -421,27 +421,27 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(RFQ.objects.count(), 1)
         self.assertEqual(PurchaseRequest.objects.count(), 1)
         self.assertEqual(response.json()['status'], RFQ.STATUS_DRAFT)
-        self.assertEqual(response.json()['award_basis'], 'LOT')
+        self.assertEqual(response.json()['quotation_basis'], 'LOT')
 
-    def test_award_basis_defaults_to_lot_and_can_be_set_to_line(self):
+    def test_quotation_basis_defaults_to_lot_and_can_be_set_to_line(self):
         create = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'award_basis': 'line'}),
+            data=json.dumps({'supplier_id': self.supplier.id, 'quotation_basis': 'line'}),
             content_type='application/json',
         )
         self.assertEqual(create.status_code, 201)
         rfq_id = create.json()['id']
-        self.assertEqual(create.json()['award_basis'], 'LINE')
-        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'LINE')
+        self.assertEqual(create.json()['quotation_basis'], 'LINE')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).quotation_basis, 'LINE')
 
         patch = self.client.patch(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id, 'award_basis': 'garbage'}),
+            data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id, 'quotation_basis': 'garbage'}),
             content_type='application/json',
         )
         self.assertEqual(patch.status_code, 200)
         # An unrecognised value keeps the previously stored basis.
-        self.assertEqual(RFQ.objects.get(id=rfq_id).award_basis, 'LINE')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).quotation_basis, 'LINE')
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_sending_rfq_creates_notification_and_email(self):
@@ -898,7 +898,7 @@ class RFQModeOfProcurementTests(TestCase):
         from django.template.loader import render_to_string
         html = render_to_string('rfq/rfq.html', {
             'rfq_no': 'RFQ-1', 'pr_no': '2026-08-001', 'pr_date': '', 'quotation_no': '',
-            'mode_of_procurement': 'Negotiated Procurement', 'award_basis': 'LOT',
+            'mode_of_procurement': 'Negotiated Procurement', 'quotation_basis': 'LOT',
             'supplier': {}, 'abc': 'Php0.00', 'additional_notes': '', 'items': [],
             'signatory_name': 'X', 'signatory_role': 'Y', 'signature_url': '',
         })
@@ -1663,11 +1663,11 @@ class ManualRFQTests(TestCase):
     def test_name_is_required(self):
         self.assertEqual(self._create(name='   ').status_code, 400)
 
-    def test_award_basis_line_is_stored_and_defaults_to_lot(self):
-        line = self._create(name='Line Co', award_basis='line').json()
-        self.assertEqual(RFQ.objects.get(id=line['id']).award_basis, 'LINE')
+    def test_quotation_basis_line_is_stored_and_defaults_to_lot(self):
+        line = self._create(name='Line Co', quotation_basis='line').json()
+        self.assertEqual(RFQ.objects.get(id=line['id']).quotation_basis, 'LINE')
         lot = self._create(name='Default Co').json()
-        self.assertEqual(RFQ.objects.get(id=lot['id']).award_basis, 'LOT')
+        self.assertEqual(RFQ.objects.get(id=lot['id']).quotation_basis, 'LOT')
 
     def test_completed_rfq_upload_keeps_number_and_name(self):
         body = self._create().json()
@@ -2036,7 +2036,7 @@ class RFQItemTableRenderingTests(TestCase):
         from django.template.loader import render_to_string
         html = render_to_string('rfq/rfq.html', {
             'rfq_no': 'R', 'pr_no': 'P', 'pr_date': '', 'quotation_no': '',
-            'mode_of_procurement': 'Shopping', 'award_basis': 'LOT', 'supplier': {},
+            'mode_of_procurement': 'Shopping', 'quotation_basis': 'LOT', 'supplier': {},
             'abc': 'Php0.00', 'additional_notes': '',
             'items': [{'index': 1, 'item_description': 'Line one\nLine two',
                        'quantity': 1, 'quantity_display': '1', 'unit': 'lot', 'stock_property_no': ''}],

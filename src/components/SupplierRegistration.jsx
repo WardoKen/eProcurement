@@ -276,7 +276,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     <div className="wizard-steps" role="list" aria-label="Registration progress">
       {[1, 2, 3, 4].map((item) => (
         <div key={item} className={`wizard-step ${step >= item ? 'active' : ''}`} role="listitem">
-          <span className="wizard-step-number">{item}</span>
+          <span className="wizard-step-number">{String(item).padStart(2, '0')}</span>
           <span className="wizard-step-label">{['Company & Account Setup', 'Products & Services', 'Document Uploads', 'Review & Submit'][item - 1]}</span>
         </div>
       ))}

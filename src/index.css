@@ -992,7 +992,28 @@ summary:focus-visible {
 }
 
 .admin-brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.admin-brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-brand-portal {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1827,8 +1848,13 @@ summary:focus-visible {
 }
 
 .supplier-action-btn-primary {
-  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.22);
+  background: var(--gold);
+  color: var(--on-gold);
+  box-shadow: none;
+}
+
+.supplier-action-btn-primary:hover:not(:disabled) {
+  background: var(--gold-hover);
 }
 
 .supplier-action-btn-outline {
@@ -2259,24 +2285,40 @@ summary:focus-visible {
 }
 
 .cat-assign-head {
-  background: linear-gradient(95deg, #1f2937 0%, #312e81 65%, #4338ca 100%);
+  background: var(--navy);
   color: #e2e8f0;
   position: sticky;
   top: 0;
   z-index: 2;
 }
 
+.cat-assign-table th {
+  padding: 11px 14px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cat-assign-table td {
+  padding: 11px 14px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
 .cat-assign-row {
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
   transition: background-color 0.15s ease;
 }
 
 .cat-assign-row:hover {
-  background: #f0f4ff !important;
+  background: var(--teal-tint) !important;
 }
 
 .cat-row-missing {
-  background: #fff5f5 !important;
+  background: var(--danger-tint) !important;
 }
 
 .cat-assign-select {
@@ -7480,10 +7522,10 @@ textarea:focus-visible {
 
 .pr-review-action-btn { width: 154px; min-height: 36px; justify-content: center; border-radius: 3px; }
 .pr-queue-delete-btn { width: 110px; min-height: 36px; justify-content: center; }
-.pr-review-btn { color: #fff; background: var(--teal); border-color: var(--teal); }
-.pr-review-btn:hover { background: #095d57; border-color: #095d57; }
-.pr-assign-category-btn { color: #193247; background: #f4d7a7; border-color: #d8a962; }
-.pr-assign-category-btn:hover { background: #ebc98c; border-color: #c58b3a; }
+.pr-review-btn { color: var(--on-gold); background: var(--gold); border-color: var(--gold); }
+.pr-review-btn:hover { background: var(--gold-hover); border-color: var(--gold-hover); }
+.pr-assign-category-btn { color: var(--on-gold); background: var(--gold); border-color: var(--gold); }
+.pr-assign-category-btn:hover { background: var(--gold-hover); border-color: var(--gold-hover); }
 
 @media (max-width: 700px) {
   .pr-review-queue-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
@@ -7627,4 +7669,643 @@ textarea:focus-visible {
     min-width: 1170px;
     grid-template-columns: 64px 150px minmax(170px, 1fr) 120px 64px 130px 120px 150px 154px 116px;
   }
+}
+
+/* ==========================================================================
+   eProcure design system — canonical layer (2026 redesign)
+
+   The blocks above this point accumulated several redesign passes over
+   time and redefine the same tokens/selectors more than once (see the
+   :root blocks at lines 3, 3765, 5741 and the .btn-primary/.status-badge
+   redefinitions throughout). CSS resolves same-specificity conflicts by
+   source order, so everything in THIS section is the single source of
+   truth for color, type and the shared UI primitives — the older blocks
+   are left in place as dead code rather than risk missing a cascade
+   interaction by editing them in situ. A future cleanup pass can delete
+   them once this layer has been visually verified.
+   ========================================================================== */
+
+:root {
+  --navy: #102f43;
+  --navy-ink: #153449;
+  --navy-soft: #1c4e6b;
+
+  /* Secondary brand / progress / informational */
+  --teal: #0f766e;
+  --teal-soft: #115e59;
+  --teal-tint: #e6f3f1;
+
+  /* Primary-action accent */
+  --gold: #d9a521;
+  --gold-hover: #b8860f;
+  --gold-tint: #faf0d9;
+  --on-gold: #14283a;
+
+  /* Semantic status colors */
+  --success: #15803d;
+  --success-tint: #dcfce7;
+  --warning: #a16207;
+  --warning-tint: #fef3c7;
+  --danger: #b42318;
+  --danger-tint: #fee2e2;
+  --info: #0f766e;
+  --info-tint: #e6f3f1;
+  --neutral: #475569;
+  --neutral-tint: #eef1f3;
+
+  /* Surfaces & text */
+  --bg: #f6f4ee;
+  --surface: #ffffff;
+  --border: #d7dbd1;
+  --border-strong: #c3c9bd;
+  --text: #16324a;
+  --text-secondary: #5b6b78;
+  --text-muted: #8a97a1;
+
+  /* Legacy aliases so untouched rules elsewhere in the file keep working */
+  --primary: var(--teal);
+  --primary-soft: var(--teal-soft);
+  --muted: var(--text-secondary);
+  --card: var(--surface);
+  --ring: rgba(15, 118, 110, 0.25);
+
+  /* Rhythm */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(16, 47, 67, 0.06), 0 2px 8px rgba(16, 47, 67, 0.04);
+  --shadow-md: 0 8px 20px rgba(16, 47, 67, 0.08);
+  --shadow-lg: 0 20px 44px rgba(16, 47, 67, 0.16);
+}
+
+body {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(16, 47, 67, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 47, 67, 0.028) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+}
+
+/* ── Typography scale (opt-in utility classes; existing heading tags are
+   left alone so marketing/public pages keep their current sizing) ── */
+.page-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: -0.01em;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--navy);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.text-body {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.text-secondary {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.caption {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.status-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.required-mark {
+  color: var(--danger);
+  margin-left: 2px;
+}
+
+/* ── Buttons: one clear hierarchy — gold primary, outline secondary,
+   red danger. Overrides the several earlier .btn* redefinitions. ── */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-outline,
+.btn-login,
+.btn-danger,
+.btn-success,
+.btn-sm {
+  border-radius: var(--radius-sm);
+  min-height: 38px;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-primary,
+.btn-login {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+  box-shadow: 0 2px 8px rgba(197, 139, 58, 0.28);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-login:hover:not(:disabled) {
+  background: var(--gold-hover);
+  border-color: var(--gold-hover);
+}
+
+.btn-secondary,
+.btn-outline {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--navy);
+  box-shadow: none;
+}
+
+.btn-secondary:hover:not(:disabled),
+.btn-outline:hover:not(:disabled) {
+  background: var(--teal-tint);
+  border-color: var(--teal);
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #96190f;
+  border-color: #96190f;
+}
+
+.btn-success {
+  background: var(--success);
+  border-color: var(--success);
+  color: #ffffff;
+}
+
+.btn-icon {
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--teal-tint);
+  color: var(--teal);
+}
+
+/* ── Status badges: one semantic palette. Both the modern .badge-* modifiers
+   and the many legacy per-status classNames already used throughout the
+   app (status-draft, status-pending*, status-approved, status-matched,
+   status-rejected, status-awarded, status-submitted, status-uploaded,
+   status-for-compliance, and the .status-pill.success/.warning/.danger
+   convention) are remapped here so every call site renders consistently
+   without any JSX changes. ── */
+.status-badge,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  text-transform: capitalize;
+  border: 1px solid transparent;
+}
+
+.status-approved,
+.status-matched,
+.status-awarded,
+.status-completed,
+.status-open,
+.status-pill.success,
+.supplier-status-card .status-pill.success,
+.badge-success {
+  background: var(--success-tint);
+  color: var(--success);
+  border-color: #a8dcb9;
+}
+
+.status-pending,
+.status-pending-review,
+.status-pending_review,
+.status-in_review,
+.status-under_review,
+.status-review,
+.status-pill.warning,
+.supplier-status-card .status-pill.warning,
+.badge-warning {
+  background: var(--warning-tint);
+  color: var(--warning);
+  border-color: #f2dca0;
+}
+
+.status-rejected,
+.status-for-compliance,
+.status-for_compliance,
+.status-merged,
+.status-pill.danger,
+.supplier-status-card .status-pill.danger,
+.badge-danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+  border-color: #f3b9b3;
+}
+
+.status-uploaded,
+.status-submitted,
+.status-sent,
+.status-pill.info,
+.badge-info {
+  background: var(--info-tint);
+  color: var(--info);
+  border-color: #a9d9d3;
+}
+
+.status-draft,
+.badge-neutral {
+  background: var(--neutral-tint);
+  color: var(--neutral);
+  border-color: #d3d9de;
+}
+
+/* ── Cards ── */
+.card,
+.admin-card,
+.admin-dashboard-panel,
+.admin-checklist,
+.detail-card,
+.supplier-status-card,
+.supplier-detail-panel,
+.opportunity-card,
+.dashboard-card,
+.dashboard-section,
+.rfq-review-card,
+.pr-monitor-table-shell,
+.opportunities-table-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-card {
+  border-left: 3px solid var(--gold);
+}
+
+/* ── Tables ── */
+.table-shell,
+.admin-table-wrapper,
+.pr-monitor-table-wrapper,
+.enterprise-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.admin-table th,
+.table-header,
+.items-table th,
+.pr-monitor-table-head {
+  background: var(--teal-tint);
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-table td,
+.items-table td,
+.pr-monitor-table-row {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.admin-table tbody tr:hover,
+.pr-monitor-table-row:hover {
+  background: var(--teal-tint);
+}
+
+.num,
+.text-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Forms ── */
+.form-field input,
+.form-field select,
+.form-field textarea,
+.form-field input[type="file"],
+input,
+select,
+textarea {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-field label,
+.field-shell label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* ── Modals ── */
+.modal-overlay {
+  background: rgba(16, 47, 67, 0.55);
+}
+
+.modal-content,
+.supplier-preview-modal {
+  border-radius: var(--radius-lg);
+  border-top: 3px solid var(--gold);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Empty & loading states ── */
+.empty-state {
+  background: var(--teal-tint);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+}
+
+.empty-state h3 {
+  color: var(--navy);
+}
+
+.empty-state svg {
+  color: var(--teal);
+  opacity: 0.55;
+}
+
+.skeleton-line {
+  background: linear-gradient(90deg, var(--border) 25%, #ffffff 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Sidebar / nav foundation (shared by Admin, Buyer and Supplier
+   shells today via the same className vocabulary) ── */
+.navbar,
+.admin-navbar,
+.supplier-nav {
+  background: var(--navy);
+  border-color: var(--gold);
+}
+
+.admin-layout {
+  background: var(--bg);
+}
+
+.admin-brand-mark {
+  background: var(--gold);
+  color: var(--navy);
+}
+
+.nav-item,
+.admin-nav-item,
+.supplier-nav-item {
+  color: #d7e4ea;
+  border-radius: var(--radius-sm);
+}
+
+.nav-item:hover,
+.nav-item:focus-visible,
+.admin-nav-item:hover,
+.supplier-nav-item:hover {
+  background: rgba(197, 139, 58, 0.16);
+  color: #ffffff;
+}
+
+.admin-nav-item.active,
+.supplier-nav-item.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+  font-weight: 700;
+}
+
+.admin-nav-section-label {
+  display: block;
+  padding: 10px 12px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(215, 228, 234, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.page-header,
+.supplier-header,
+.admin-header,
+.dashboard-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.supplier-header h1,
+.admin-header h1,
+.dashboard-header h1,
+.page-content h1 {
+  color: var(--navy);
+}
+
+/* ── PR OCR/signature review: document + extracted-fields split ── */
+.pr-review-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.pr-review-preview-pane {
+  position: sticky;
+  top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  max-height: calc(100vh - 96px);
+}
+
+.pr-review-preview-pane iframe,
+.pr-review-preview-pane img {
+  flex: 1;
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.pr-review-preview-empty {
+  flex: 1;
+  min-height: 420px;
+  margin: 0;
+}
+
+@media (max-width: 960px) {
+  .pr-review-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pr-review-preview-pane {
+    position: static;
+    max-height: none;
+  }
+
+  .pr-review-preview-pane iframe,
+  .pr-review-preview-pane img,
+  .pr-review-preview-empty {
+    min-height: 320px;
+  }
+}
+
+/* ── Sidebar on narrow screens: an earlier rule tried to stack the sidebar
+   full-width here (.admin-navbar { width: 100% }) but .admin-layout never
+   switched to a column flex direction to match, so the sidebar just stayed
+   a wide flex item squeezed beside the content. Collapsing it to the same
+   compact icon rail used for the desktop "collapsed" state keeps far more
+   width for actual content instead. ── */
+@media (max-width: 768px) {
+  .admin-navbar {
+    width: 72px;
+    min-width: 72px;
+    padding: 16px 10px;
+  }
+
+  .admin-sidebar-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .admin-brand-copy,
+  .admin-user-card,
+  .admin-nav-label,
+  .admin-nav-section-label {
+    display: none;
+  }
+
+  .admin-nav-item,
+  .admin-nav-logout {
+    justify-content: center;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .admin-content {
+    padding: 16px;
+  }
+}
+
+/* ── Supplier Registration wizard steps ── */
+.wizard-step {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.wizard-step.active {
+  background: var(--teal-tint);
+  border-color: var(--teal);
+  color: var(--navy);
+}
+
+.wizard-step-number {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.wizard-step.active .wizard-step-number {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+}
+
+/* ── Notifications: date-bucket grouping ── */
+.notifications-group + .notifications-group {
+  margin-top: var(--space-5);
+}
+
+.notifications-group-label {
+  display: block;
+  padding: 0 0 var(--space-2);
+  color: var(--text-muted);
 }

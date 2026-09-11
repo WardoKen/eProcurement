@@ -226,11 +226,11 @@ class RFQ(models.Model):
         (STATUS_COMPLETED, 'Completed'),
     ]
 
-    AWARD_BASIS_LOT = 'LOT'
-    AWARD_BASIS_LINE = 'LINE'
-    AWARD_BASIS_CHOICES = [
-        (AWARD_BASIS_LOT, 'By Lot'),
-        (AWARD_BASIS_LINE, 'By Line'),
+    QUOTATION_BASIS_LOT = 'LOT'
+    QUOTATION_BASIS_LINE = 'LINE'
+    QUOTATION_BASIS_CHOICES = [
+        (QUOTATION_BASIS_LOT, 'By Lot'),
+        (QUOTATION_BASIS_LINE, 'By Line'),
     ]
 
     # How the supplier came to be attached to this RFQ. ``category_match`` is the
@@ -276,7 +276,7 @@ class RFQ(models.Model):
     subject = models.CharField(max_length=255)
     message = models.TextField()
     mode_of_procurement = models.CharField(max_length=200, blank=True)
-    award_basis = models.CharField(max_length=10, choices=AWARD_BASIS_CHOICES, default=AWARD_BASIS_LOT)
+    quotation_basis = models.CharField(max_length=10, choices=QUOTATION_BASIS_CHOICES, default=QUOTATION_BASIS_LOT)
     selection_type = models.CharField(
         max_length=32, choices=SELECTION_TYPE_CHOICES, default=SELECTION_CATEGORY_MATCH
     )

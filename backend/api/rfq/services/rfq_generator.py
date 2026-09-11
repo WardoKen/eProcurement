@@ -81,7 +81,7 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
         # a generated document. The RFQ API enforces a valid selection before
         # a PDF is produced.
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
-        'award_basis': (rfq.award_basis or 'LOT').upper(),
+        'quotation_basis': (rfq.quotation_basis or 'LOT').upper(),
         # Company Name, Address and TIN are deliberately left blank on the
         # generated RFQ - the supplier writes them in by hand on the printed
         # copy they download. A manual / unregistered supplier has no Supplier

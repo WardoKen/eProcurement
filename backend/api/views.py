@@ -2275,7 +2275,7 @@ def _rfq_payload(rfq, request):
         # until the RFQ is issued.
         'quotation_no': rfq.rfq_no or '',
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
-        'award_basis': rfq.award_basis or RFQ.AWARD_BASIS_LOT,
+        'quotation_basis': rfq.quotation_basis or RFQ.QUOTATION_BASIS_LOT,
         'additional_notes': rfq.additional_notes,
         'pdf_file': rfq.pdf_file,
         'pdf_url': pdf_url,
@@ -2548,11 +2548,11 @@ def admin_rfq(request, pr_id):
         "Thank you.\n\nRegards,\nBAC Secretariat"
     )
 
-    valid_award_bases = {choice[0] for choice in RFQ.AWARD_BASIS_CHOICES}
+    valid_quotation_bases = {choice[0] for choice in RFQ.QUOTATION_BASIS_CHOICES}
 
-    def _resolve_award_basis(raw, fallback):
+    def _resolve_quotation_basis(raw, fallback):
         candidate = str(raw or '').strip().upper()
-        return candidate if candidate in valid_award_bases else fallback
+        return candidate if candidate in valid_quotation_bases else fallback
 
     should_send = bool(payload.get('send'))
     generate_pdf = bool(payload.get('generate_pdf') or payload.get('preview'))
@@ -2588,7 +2588,7 @@ def admin_rfq(request, pr_id):
                 abc=abc_value.strip(),
                 additional_notes=str(payload.get('additional_notes') or '').strip(),
                 mode_of_procurement=mode_of_procurement,
-                award_basis=_resolve_award_basis(payload.get('award_basis'), RFQ.AWARD_BASIS_LOT),
+                quotation_basis=_resolve_quotation_basis(payload.get('quotation_basis'), RFQ.QUOTATION_BASIS_LOT),
                 selection_type=selection_type,
             )
             _sync_rfq_items(rfq, group_items)
@@ -2598,7 +2598,7 @@ def admin_rfq(request, pr_id):
         rfq.message = str(payload.get('message') or rfq.message).strip()
         rfq.abc = abc_value
         rfq.mode_of_procurement = mode_of_procurement
-        rfq.award_basis = _resolve_award_basis(payload.get('award_basis'), rfq.award_basis or RFQ.AWARD_BASIS_LOT)
+        rfq.quotation_basis = _resolve_quotation_basis(payload.get('quotation_basis'), rfq.quotation_basis or RFQ.QUOTATION_BASIS_LOT)
         rfq.additional_notes = str(payload.get('additional_notes') or rfq.additional_notes).strip()
         rfq.created_by = rfq.created_by or User.objects.filter(username=_request_username(request)).first()
         if not rfq.category_id:
@@ -2611,7 +2611,7 @@ def admin_rfq(request, pr_id):
         if not rfq.rfq_items.exists():
             _sync_rfq_items(rfq, group_items)
         if request.method == 'PATCH':
-            rfq.save(update_fields=['subject', 'message', 'abc', 'additional_notes', 'mode_of_procurement', 'award_basis', 'selection_type', 'category', 'created_by', 'updated_at'])
+            rfq.save(update_fields=['subject', 'message', 'abc', 'additional_notes', 'mode_of_procurement', 'quotation_basis', 'selection_type', 'category', 'created_by', 'updated_at'])
 
     # Defer the RFQ / Quotation number until the RFQ is actually issued - a
     # preview or a saved draft never consumes a number (task 12/18).
@@ -2650,7 +2650,7 @@ def admin_rfq(request, pr_id):
 
         rfq.status = RFQ.STATUS_SENT
         rfq.sent_at = timezone.now()
-        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
+        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'quotation_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_RFQ_RECEIVED,
@@ -2663,7 +2663,7 @@ def admin_rfq(request, pr_id):
             related_rfq_id=rfq.id,
         )
     else:
-        rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'award_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
+        rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'quotation_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
 
     return JsonResponse(_rfq_payload(rfq, request), status=201 if rfq_created else 200)
 
@@ -2693,7 +2693,7 @@ def manual_rfq_create(request, pr_id):
 
     ``POST /api/pr/<pr_id>/manual-rfq/``  body:
         { "manual_supplier_name": "Juan's Aircon Services",
-          "mode_of_procurement": "...", "award_basis": "LOT",
+          "mode_of_procurement": "...", "quotation_basis": "LOT",
           "subject": "...", "message": "...", "additional_notes": "...",
           "force_new": false }
 
@@ -2740,10 +2740,10 @@ def manual_rfq_create(request, pr_id):
         if existing is not None:
             return JsonResponse({**_rfq_payload(existing, request), 'existing': True}, status=200)
 
-    valid_award_bases = {choice[0] for choice in RFQ.AWARD_BASIS_CHOICES}
-    award_basis = str(payload.get('award_basis') or RFQ.AWARD_BASIS_LOT).strip().upper()
-    if award_basis not in valid_award_bases:
-        award_basis = RFQ.AWARD_BASIS_LOT
+    valid_quotation_bases = {choice[0] for choice in RFQ.QUOTATION_BASIS_CHOICES}
+    quotation_basis = str(payload.get('quotation_basis') or RFQ.QUOTATION_BASIS_LOT).strip().upper()
+    if quotation_basis not in valid_quotation_bases:
+        quotation_basis = RFQ.QUOTATION_BASIS_LOT
 
     mode_of_procurement = normalize_procurement_mode(payload.get('mode_of_procurement'))
     if not mode_of_procurement:
@@ -2771,7 +2771,7 @@ def manual_rfq_create(request, pr_id):
                 abc=abc_value,
                 additional_notes=str(payload.get('additional_notes') or '').strip(),
                 mode_of_procurement=mode_of_procurement,
-                award_basis=award_basis,
+                quotation_basis=quotation_basis,
                 status=RFQ.STATUS_SENT,
                 sent_at=timezone.now(),
             )

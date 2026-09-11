@@ -328,6 +328,21 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const [removingRowIndex, setRemovingRowIndex] = useState(null)
 
   const fileInputRef = useRef(null)
+  const [previewUrl, setPreviewUrl] = useState('')
+
+  // The document preview is purely a client-side convenience - it reads the
+  // already-selected File object directly, no extra request or backend
+  // change needed. Revoke the previous object URL whenever it changes so we
+  // don't leak memory across repeated uploads.
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('')
+      return undefined
+    }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   useEffect(() => {
     let cancelled = false
@@ -857,7 +872,27 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         </div>
       )}
 
-      <div className="pr-upload-grid">
+      <div className="pr-review-split">
+        <aside className="pr-review-preview-pane card">
+          <header className="panel-header">
+            <h3>Document</h3>
+          </header>
+          {!file && (
+            <div className="empty-state pr-review-preview-empty">
+              <Upload size={28} aria-hidden="true" />
+              <p>No document selected yet.</p>
+            </div>
+          )}
+          {file && previewUrl && (
+            file.type === 'application/pdf' ? (
+              <iframe src={previewUrl} title="Uploaded Purchase Request document" />
+            ) : (
+              <img src={previewUrl} alt="Uploaded Purchase Request document" />
+            )
+          )}
+        </aside>
+
+        <div className="pr-upload-grid">
         {!reviewOnly && <section className="card form-panel pr-numbering-section">
           <header className="panel-header">
             <h3>PR Numbering</h3>
@@ -1266,6 +1301,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             </details>
           )}
         </section>
+        </div>
       </div>
     </div>
   )
