@@ -31,6 +31,31 @@ _PNG_BYTES = _image_bytes("PNG")
 _JPG_BYTES = _image_bytes("JPEG")
 
 
+def _login_as(client, role_name, *, user=None, supplier=None):
+    """Authenticate the Django test client's session as a user with the given role.
+
+    Mirrors what ``login_view`` stores in the session (user_id/role/username,
+    plus supplier_id for supplier accounts), without needing a real password
+    round trip in every test. Returns the ``User`` instance used.
+    """
+    if user is None:
+        role = Role.objects.get_or_create(name=role_name)[0]
+        user = User.objects.create(
+            username=f'test-{role_name}-{User.objects.count()}',
+            password_hash='x',
+            role=role,
+            is_active=True,
+        )
+    session = client.session
+    session['user_id'] = user.id
+    session['role'] = role_name
+    session['username'] = user.username
+    if supplier is not None:
+        session['supplier_id'] = supplier.id
+    session.save()
+    return user
+
+
 class SupplierRegistrationValidationTests(SimpleTestCase):
     def test_missing_required_fields_are_reported(self):
         payload = {
@@ -196,7 +221,7 @@ class SupplierAdminReviewTests(TestCase):
         supplier = Supplier.objects.create(
             company_name='Acme Supply',
             business_type='Sole Proprietorship',
-            email='acme@example.com',
+            email='supplierdemo@example.com',
             status='For Compliance',
         )
 
@@ -213,6 +238,7 @@ class SupplierAdminReviewTests(TestCase):
 
     def test_buyer_account_registration_stores_contact_details(self):
         Role.objects.get_or_create(name='buyer')
+        _login_as(self.client, 'admin')
         response = self.client.post(
             '/api/register/',
             data=json.dumps({
@@ -247,6 +273,7 @@ class SupplierAdminReviewTests(TestCase):
             email='acme@example.com',
             status='Pending Review',
         )
+        _login_as(self.client, 'admin')
 
         response = self.client.patch(
             f'/api/suppliers/{supplier.id}/status/',
@@ -265,6 +292,7 @@ class SupplierAdminReviewTests(TestCase):
             email='acme@example.com',
             status='Pending Review',
         )
+        _login_as(self.client, 'admin')
 
         response = self.client.patch(
             f'/api/suppliers/{supplier.id}/status/',
@@ -290,6 +318,7 @@ class SupplierAdminReviewTests(TestCase):
             verification_status='Pending',
         )
         Notification.objects.all().delete()
+        _login_as(self.client, 'admin')
 
         response = self.client.patch(
             f'/api/suppliers/{supplier.id}/status/',
@@ -311,6 +340,7 @@ class SupplierAdminReviewTests(TestCase):
 
     def test_supplier_status_no_longer_accepts_deactivated(self):
         supplier = Supplier.objects.create(company_name='Acme Supply', email='acme@example.com', status='Approved')
+        _login_as(self.client, 'admin')
         response = self.client.patch(
             f'/api/suppliers/{supplier.id}/status/',
             data=json.dumps({'status': 'Deactivated', 'remarks': 'no longer trading'}),
@@ -322,6 +352,9 @@ class SupplierAdminReviewTests(TestCase):
 
 
 class AccountDeletionTests(TestCase):
+    def setUp(self):
+        _login_as(self.client, 'admin')
+
     def _supplier_role(self):
         return Role.objects.get_or_create(name='supplier')[0]
 
@@ -409,6 +442,7 @@ class RFQWorkflowTests(TestCase):
             status='Approved',
         )
         SupplierCategory.objects.create(supplier=self.supplier, category=self.category)
+        _login_as(self.client, 'admin')
 
     def test_admin_can_save_rfq_draft_without_creating_pr(self):
         response = self.client.post(
@@ -520,6 +554,7 @@ class RFQWorkflowTests(TestCase):
             email='admin@example.com',
             role=admin_role,
         )
+        _login_as(self.client, 'admin', user=admin_user)
 
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
@@ -533,8 +568,6 @@ class RFQWorkflowTests(TestCase):
                 'quotation_no': 'RFQ-2026-001',
             }),
             content_type='application/json',
-            HTTP_X_USER_ROLE='admin',
-            HTTP_X_USER_USERNAME=admin_user.username,
         )
 
         self.assertEqual(response.status_code, 201)
@@ -545,12 +578,11 @@ class RFQWorkflowTests(TestCase):
         self.assertTrue(Path(settings.BASE_DIR, 'uploads', 'rfq', Path(rfq.pdf_file).name).exists())
 
     def test_non_admin_cannot_generate_rfq_pdf(self):
+        _login_as(self.client, 'supplier', supplier=self.supplier)
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.supplier.id, 'generate_pdf': True}),
             content_type='application/json',
-            HTTP_X_USER_ROLE='supplier',
-            HTTP_X_USER_USERNAME='supplierdemo',
         )
 
         self.assertEqual(response.status_code, 403)
@@ -560,6 +592,7 @@ class RFQWorkflowTests(TestCase):
             rfq_no='RFQ-2026-0001', purchase_request=self.pr, supplier=self.supplier,
             subject='RFQ', message='Please quote', status=RFQ.STATUS_SENT,
         )
+        _login_as(self.client, 'supplier', supplier=self.supplier)
         response = self.client.post(
             f'/api/suppliers/{self.supplier.id}/quotations/',
             data=json.dumps({'purchase_request_id': self.pr.id, 'rfq_id': rfq.id, 'quoted_amount': 1000}),
@@ -577,6 +610,7 @@ class RFQWorkflowTests(TestCase):
             subject='RFQ', message='Please quote', status=RFQ.STATUS_SENT,
         )
         csrf_checked_client = Client(enforce_csrf_checks=True)
+        _login_as(csrf_checked_client, 'supplier', supplier=self.supplier)
 
         response = csrf_checked_client.post(
             f'/api/suppliers/{self.supplier.id}/quotations/',
@@ -624,13 +658,20 @@ class ManualBACSupplierSelectionTests(TestCase):
 
     # ---- search endpoint ------------------------------------------------------
     def _search(self, term, role='admin'):
-        headers = {'HTTP_X_USER_ROLE': role} if role else {}
-        return self.client.get(f'/api/suppliers/search/?name={term}', **headers)
+        _login_as(self.client, role)
+        return self.client.get(f'/api/suppliers/search/?name={term}')
 
     def test_search_requires_admin_role(self):
-        self.assertEqual(self._search('cool', role='supplier').status_code, 403)
-        self.assertEqual(self._search('cool', role='buyer').status_code, 403)
-        self.assertEqual(self._search('cool', role='').status_code, 403)
+        supplier_client = Client()
+        _login_as(supplier_client, 'supplier')
+        self.assertEqual(supplier_client.get('/api/suppliers/search/?name=cool').status_code, 403)
+
+        buyer_client = Client()
+        _login_as(buyer_client, 'buyer')
+        self.assertEqual(buyer_client.get('/api/suppliers/search/?name=cool').status_code, 403)
+
+        anon_client = Client()
+        self.assertEqual(anon_client.get('/api/suppliers/search/?name=cool').status_code, 401)
 
     def test_search_is_partial_and_case_insensitive(self):
         for term in ('cool', 'COOL', 'CLIMATE', '  climate  '):
@@ -666,23 +707,23 @@ class ManualBACSupplierSelectionTests(TestCase):
     def test_exclude_pr_drops_category_matched_suppliers(self):
         # Default "Other Suppliers" list must never repeat the category-matched
         # section: ABC HVAC (in the PR category) is out, CoolTech (elsewhere) stays.
-        headers = {'HTTP_X_USER_ROLE': 'admin'}
-        data = self.client.get(f'/api/suppliers/search/?exclude_pr={self.pr.id}', **headers).json()
+        _login_as(self.client, 'admin')
+        data = self.client.get(f'/api/suppliers/search/?exclude_pr={self.pr.id}').json()
         names = [r['company_name'] for r in data['results']]
         self.assertIn('CoolTech Climate Solutions Inc.', names)
         self.assertNotIn('ABC HVAC Solutions', names)
 
     def test_exclude_pr_still_applies_the_name_filter(self):
-        headers = {'HTTP_X_USER_ROLE': 'admin'}
+        _login_as(self.client, 'admin')
         data = self.client.get(
-            f'/api/suppliers/search/?exclude_pr={self.pr.id}&name=abc', **headers
+            f'/api/suppliers/search/?exclude_pr={self.pr.id}&name=abc'
         ).json()
         self.assertEqual(data['results'], [])
 
     def test_exclude_pr_with_unknown_pr_returns_404(self):
-        headers = {'HTTP_X_USER_ROLE': 'admin'}
+        _login_as(self.client, 'admin')
         self.assertEqual(
-            self.client.get('/api/suppliers/search/?exclude_pr=999999', **headers).status_code,
+            self.client.get('/api/suppliers/search/?exclude_pr=999999').status_code,
             404,
         )
 
@@ -700,6 +741,7 @@ class ManualBACSupplierSelectionTests(TestCase):
 
     # ---- manual selection on the RFQ endpoint --------------------------------
     def test_manual_selection_accepts_supplier_outside_pr_category(self):
+        _login_as(self.client, 'admin')
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({
@@ -708,8 +750,6 @@ class ManualBACSupplierSelectionTests(TestCase):
                 'category': '',
             }),
             content_type='application/json',
-            HTTP_X_USER_ROLE='admin',
-            HTTP_X_USER_USERNAME='admin',
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()['selection_type'], 'manual_bac')
@@ -724,17 +764,17 @@ class ManualBACSupplierSelectionTests(TestCase):
             data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
             content_type='application/json',
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(RFQ.objects.count(), 0)
 
     def test_manual_selection_still_rejects_unapproved_supplier(self):
         self.other_supplier.status = 'Rejected'
         self.other_supplier.save(update_fields=['status'])
+        _login_as(self.client, 'admin')
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
             content_type='application/json',
-            HTTP_X_USER_ROLE='admin',
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn('approved', response.json()['message'].lower())
@@ -744,11 +784,11 @@ class ManualBACSupplierSelectionTests(TestCase):
             SupplierCategory.objects.filter(supplier=self.other_supplier)
             .values_list('category__name', flat=True)
         )
+        _login_as(self.client, 'admin')
         self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
             content_type='application/json',
-            HTTP_X_USER_ROLE='admin',
         )
         after = set(
             SupplierCategory.objects.filter(supplier=self.other_supplier)
@@ -758,6 +798,7 @@ class ManualBACSupplierSelectionTests(TestCase):
         self.assertEqual(before, {'HVAC Services'})
 
     def test_normal_path_still_rejects_category_mismatch_without_flag(self):
+        _login_as(self.client, 'admin')
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.other_supplier.id}),
@@ -767,6 +808,7 @@ class ManualBACSupplierSelectionTests(TestCase):
         self.assertIn('eligible', response.json()['message'])
 
     def test_category_matched_supplier_records_category_match(self):
+        _login_as(self.client, 'admin')
         response = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.matched_supplier.id}),
@@ -776,11 +818,11 @@ class ManualBACSupplierSelectionTests(TestCase):
         self.assertEqual(response.json()['selection_type'], 'category_match')
 
     def test_pr_is_unchanged_by_manual_selection(self):
+        _login_as(self.client, 'admin')
         self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.other_supplier.id, 'selection_type': 'manual_bac'}),
             content_type='application/json',
-            HTTP_X_USER_ROLE='admin',
         )
         self.pr.refresh_from_db()
         self.assertEqual(self.pr.category, 'Airconditioning and Airconditioning Systems')
@@ -807,13 +849,13 @@ class RFQModeOfProcurementTests(TestCase):
             contact_person='Juan Dela Cruz', email='supplier@example.com', status='Approved',
         )
         SupplierCategory.objects.create(supplier=self.supplier, category=self.category)
+        _login_as(self.client, 'admin')
 
     def _create_draft(self, **extra):
         payload = {'supplier_id': self.supplier.id, 'subject': 'RFQ', 'message': 'Please quote'}
         payload.update(extra)
         return self.client.post(
             f'/api/pr/{self.pr.id}/rfq/', data=json.dumps(payload), content_type='application/json',
-            HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
         )
 
     def test_procurement_modes_endpoint_lists_configured_options(self):
@@ -847,9 +889,7 @@ class RFQModeOfProcurementTests(TestCase):
         self.assertEqual(create.json()['mode_of_procurement'], 'Small Value Procurement')
         self.assertEqual(RFQ.objects.get(id=rfq_id).mode_of_procurement, 'Small Value Procurement')
 
-        reopened = self.client.get(
-            f'/api/pr/{self.pr.id}/rfq/', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
-        )
+        reopened = self.client.get(f'/api/pr/{self.pr.id}/rfq/')
         self.assertEqual(reopened.json()['rfqs'][0]['mode_of_procurement'], 'Small Value Procurement')
 
     def test_changing_mode_updates_same_rfq_without_new_record(self):
@@ -862,7 +902,7 @@ class RFQModeOfProcurementTests(TestCase):
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id,
                              'mode_of_procurement': 'Shopping', 'generate_pdf': True, 'preview': True}),
-            content_type='application/json', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+            content_type='application/json',
         )
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()['mode_of_procurement'], 'Shopping')
@@ -885,7 +925,7 @@ class RFQModeOfProcurementTests(TestCase):
             data=json.dumps({'supplier_id': self.supplier.id, 'rfq_id': rfq_id, 'subject': 'RFQ',
                              'message': 'Please quote', 'mode_of_procurement': 'Shopping',
                              'generate_pdf': True, 'preview': False, 'send': True}),
-            content_type='application/json', HTTP_X_USER_ROLE='admin', HTTP_X_USER_USERNAME='admin',
+            content_type='application/json',
         )
         self.assertEqual(sent.status_code, 200)
         self.assertEqual(sent.json()['status'], RFQ.STATUS_SENT)
@@ -932,6 +972,7 @@ class SupplierRFQResponseTests(TestCase):
         return SimpleUploadedFile(name, _PDF_BYTES, content_type='application/pdf')
 
     def _upload(self, supplier, rfq, file=None):
+        _login_as(self.client, 'supplier', supplier=supplier)
         return self.client.post(
             f'/api/suppliers/{supplier.id}/rfqs/{rfq.id}/response/',
             data={'file': file or self._pdf()},
@@ -1003,6 +1044,7 @@ class SupplierRFQResponseTests(TestCase):
     def test_supplier_only_sees_own_rfqs(self):
         RFQ.objects.create(rfq_no='RFQ-2026-0002', purchase_request=self.pr, supplier=self.other_supplier,
                            subject='RFQ', message='m', status=RFQ.STATUS_SENT)
+        _login_as(self.client, 'supplier', supplier=self.supplier)
         response = self.client.get(f'/api/suppliers/{self.supplier.id}/rfqs/')
         self.assertEqual(response.status_code, 200)
         ids = {r['id'] for r in response.json()['rfqs']}
@@ -1010,7 +1052,8 @@ class SupplierRFQResponseTests(TestCase):
 
     def test_admin_rfq_responses_shows_both_documents(self):
         self._upload(self.supplier, self.rfq)
-        response = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='admin')
+        _login_as(self.client, 'admin')
+        response = self.client.get('/api/rfqs/responses/')
         self.assertEqual(response.status_code, 200)
         row = next(r for r in response.json()['rfqs'] if r['id'] == self.rfq.id)
         self.assertTrue(row['generated_pdf_url'])
@@ -1019,19 +1062,23 @@ class SupplierRFQResponseTests(TestCase):
         self.assertEqual(row['purchase_request']['pr_no'], '2026-08-001')
 
     def test_admin_rfq_responses_filter_and_auth(self):
-        awaiting = self.client.get('/api/rfqs/responses/?status=awaiting', HTTP_X_USER_ROLE='admin')
+        _login_as(self.client, 'admin')
+        awaiting = self.client.get('/api/rfqs/responses/?status=awaiting')
         self.assertEqual({r['id'] for r in awaiting.json()['rfqs']}, {self.rfq.id})
 
         self._upload(self.supplier, self.rfq)
-        received = self.client.get('/api/rfqs/responses/?status=received', HTTP_X_USER_ROLE='admin')
+        _login_as(self.client, 'admin')
+        received = self.client.get('/api/rfqs/responses/?status=received')
         self.assertEqual({r['id'] for r in received.json()['rfqs']}, {self.rfq.id})
-        awaiting_after = self.client.get('/api/rfqs/responses/?status=awaiting', HTTP_X_USER_ROLE='admin')
+        awaiting_after = self.client.get('/api/rfqs/responses/?status=awaiting')
         self.assertEqual(awaiting_after.json()['rfqs'], [])
 
-        forbidden = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='supplier')
+        _login_as(self.client, 'supplier', supplier=self.supplier)
+        forbidden = self.client.get('/api/rfqs/responses/')
         self.assertEqual(forbidden.status_code, 403)
 
     def test_existing_quotation_endpoint_still_works(self):
+        _login_as(self.client, 'supplier', supplier=self.supplier)
         response = self.client.post(
             f'/api/suppliers/{self.supplier.id}/quotations/',
             data=json.dumps({'purchase_request_id': self.pr.id, 'rfq_id': self.rfq.id, 'quoted_amount': 5000}),
@@ -1066,6 +1113,9 @@ class SupplierRFQResponseTests(TestCase):
 
 
 class PurchaseRequestNumberTests(TestCase):
+    def setUp(self):
+        _login_as(self.client, 'buyer')
+
     def create_pr(self, entity='Test Entity'):
         return self.client.post(
             '/api/pr/',
@@ -1184,6 +1234,7 @@ class PurchaseRequestNumberTests(TestCase):
         details_response = self.client.get(f'/api/pr/{pr.id}/details/')
         self.assertEqual(details_response.status_code, 200)
         self.assertTrue(details_response.json()['source_file_url'].endswith('/uploads/buyer-pr.pdf'))
+        _login_as(self.client, 'admin')
         finalize_response = self.client.patch(
             f'/api/pr/{pr.id}/edit/',
             data=json.dumps({
@@ -1203,6 +1254,9 @@ class PurchaseRequestNumberTests(TestCase):
 
 
 class SupplierMatchingTests(TestCase):
+    def setUp(self):
+        _login_as(self.client, 'admin')
+
     def test_pr_list_includes_quotation_match_flag(self):
         unmatched = PurchaseRequest.objects.create(entity_name='Unmatched Entity', pr_no='2026-08-010')
         matched = PurchaseRequest.objects.create(entity_name='Matched Entity', pr_no='2026-08-011')
@@ -1325,6 +1379,7 @@ class FileValidationEndpointTests(TestCase):
     """Invalid uploads never reach storage / OCR / a database record."""
 
     def test_pr_upload_rejects_docx_before_ocr(self):
+        _login_as(self.client, 'buyer')
         with patch('api.views.ocr_service.process_file') as mocked_ocr:
             response = self.client.post(
                 '/api/upload/',
@@ -1335,6 +1390,7 @@ class FileValidationEndpointTests(TestCase):
         mocked_ocr.assert_not_called()
 
     def test_pr_upload_runs_ocr_for_a_valid_pdf(self):
+        _login_as(self.client, 'buyer')
         from ocr.ocr_service import OCRDocument
         stub = OCRDocument(pages=[], raw_text='', source='pdf-text', filename='pr.pdf', textract_blocks=[])
         with patch('api.views.ocr_service.process_file', return_value=stub) as mocked_ocr:
@@ -1367,6 +1423,7 @@ class FileValidationEndpointTests(TestCase):
 
     def test_supplier_resubmit_rejects_docx(self):
         supplier = Supplier.objects.create(company_name='Acme', email='a@a.test', status='For Compliance')
+        _login_as(self.client, 'supplier', supplier=supplier)
         response = self.client.post(
             f'/api/suppliers/{supplier.id}/documents/resubmit/',
             data={'doc_type': 'mayor_permit',
@@ -1385,6 +1442,7 @@ class SignaturePresenceValidationTests(TestCase):
 
     def setUp(self):
         self._written = []
+        _login_as(self.client, 'buyer')
 
     def tearDown(self):
         for path in self._written:
@@ -1502,6 +1560,7 @@ class SignaturePresenceValidationTests(TestCase):
     def test_admin_pr_edit_is_not_subject_to_the_signature_guard(self):
         # The Admin review path (pr_update) must stay unaffected.
         pr = PurchaseRequest.objects.create(entity_name='Legacy PR', status=PurchaseRequest.STATUS_UPLOADED)
+        _login_as(self.client, 'admin')
         response = self.client.patch(
             f'/api/pr/{pr.id}/edit/',
             data=json.dumps({'entity_name': 'Legacy PR (edited)', 'items': []}),
@@ -1574,7 +1633,10 @@ class ManualRFQTests(TestCase):
         PurchaseRequestItem.objects.create(
             purchase_request=self.pr, item_description='4.0HP Aircon unit', quantity=2, unit='unit',
         )
-        self.admin_headers = {'HTTP_X_USER_ROLE': 'admin', 'HTTP_X_USER_USERNAME': 'bacadmin'}
+        _login_as(self.client, 'admin', user=self.admin)
+        # Kept as an empty dict so the many `**self.admin_headers` call sites
+        # below still work unchanged - real auth now comes from the session.
+        self.admin_headers = {}
 
     def _create(self, name="Juan's Aircon Services", mode='Small Value Procurement', **extra):
         return self.client.post(
@@ -1652,10 +1714,11 @@ class ManualRFQTests(TestCase):
         self.assertEqual(RFQ.objects.get(id=body['id']).rfq_no, body['quotation_no'])
 
     def test_non_admin_cannot_create_a_manual_rfq(self):
+        _login_as(self.client, 'buyer')
         response = self.client.post(
             f'/api/pr/{self.pr.id}/manual-rfq/',
             data=json.dumps({'manual_supplier_name': 'X', 'mode_of_procurement': 'Shopping'}),
-            content_type='application/json', HTTP_X_USER_ROLE='buyer',
+            content_type='application/json',
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(RFQ.objects.count(), 0)
@@ -1803,6 +1866,7 @@ class RFQManagementGroupingTests(TestCase):
                                                   email='b@example.com', status='Approved')
         self.supplier_c = Supplier.objects.create(company_name='Metro Cooling Services',
                                                   email='c@example.com', status='Approved')
+        _login_as(self.client, 'admin')
 
     def _rfq(self, supplier, no, status=RFQ.STATUS_SENT, submitted=False):
         rfq = RFQ.objects.create(
@@ -1818,7 +1882,7 @@ class RFQManagementGroupingTests(TestCase):
         return rfq
 
     def _groups(self, query=''):
-        response = self.client.get(f'/api/rfqs/responses/?group_by=pr{query}', HTTP_X_USER_ROLE='admin')
+        response = self.client.get(f'/api/rfqs/responses/?group_by=pr{query}')
         self.assertEqual(response.status_code, 200)
         return response.json()['purchase_requests']
 
@@ -1884,12 +1948,13 @@ class RFQManagementGroupingTests(TestCase):
 
     def test_grouped_view_requires_admin(self):
         self._rfq(self.supplier_a, 'RFQ-2026-0001')
-        forbidden = self.client.get('/api/rfqs/responses/?group_by=pr', HTTP_X_USER_ROLE='supplier')
+        _login_as(self.client, 'supplier')
+        forbidden = self.client.get('/api/rfqs/responses/?group_by=pr')
         self.assertEqual(forbidden.status_code, 403)
 
     def test_flat_response_is_unchanged_without_group_by(self):
         self._rfq(self.supplier_a, 'RFQ-2026-0001')
-        response = self.client.get('/api/rfqs/responses/', HTTP_X_USER_ROLE='admin')
+        response = self.client.get('/api/rfqs/responses/')
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn('rfqs', body)

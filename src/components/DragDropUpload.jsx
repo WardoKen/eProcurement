@@ -12,6 +12,7 @@ import {
   Upload,
 } from 'lucide-react'
 
+import { apiFetch } from '../lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '').trim()
@@ -346,7 +347,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
 
   useEffect(() => {
     let cancelled = false
-    fetch(`${apiBase.replace(/\/$/, '')}/api/pr/next-number/`)
+    apiFetch(`${apiBase.replace(/\/$/, '')}/api/pr/next-number/`)
       .then((res) => {
         if (!res.ok) throw new Error('Unable to load PR number preview')
         return res.json()
@@ -499,7 +500,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     try {
       const form = new FormData()
       form.append('file', nextFile)
-      const res = await fetch(`${apiBase}/api/upload/`, { method: 'POST', body: form })
+      const res = await apiFetch(`${apiBase}/api/upload/`, { method: 'POST', body: form })
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
@@ -563,7 +564,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     setRechecking(true)
     setSaveBlockedMessage('')
     try {
-      const res = await fetch(`${apiBase}/api/pr/recheck-signatures/`, {
+      const res = await apiFetch(`${apiBase}/api/pr/recheck-signatures/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: sourceFilename, fields }),
@@ -637,7 +638,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         },
       }
 
-      const res = await fetch(`${apiBase}/api/pr/`, {
+      const res = await apiFetch(`${apiBase}/api/pr/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1094,14 +1095,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               <table className="enterprise-table items-table requested-items-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '70px' }}>Item No.</th>
-                    <th style={{ width: '15%' }}>Stock/Property No.</th>
-                    <th className="requested-item-unit-cell" style={{ width: '9%' }}>Unit</th>
-                    <th style={{ width: '48%' }}>Description</th>
-                    <th style={{ width: '7%' }}>Qty</th>
-                    <th style={{ width: '10%' }}>Unit Cost</th>
-                    <th style={{ width: '10%' }}>Total</th>
-                    <th style={{ width: '70px' }}>Actions</th>
+                    <th style={{ width: '56px' }}>Item No.</th>
+                    <th style={{ width: '140px' }}>Stock/Property No.</th>
+                    <th className="requested-item-unit-cell" style={{ width: '120px' }}>Unit</th>
+                    <th className="requested-item-description-cell">Description</th>
+                    <th style={{ width: '90px' }}>Qty</th>
+                    <th style={{ width: '140px' }}>Unit Cost</th>
+                    <th style={{ width: '140px' }}>Total</th>
+                    <th style={{ width: '60px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>

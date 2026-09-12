@@ -3226,13 +3226,15 @@ summary:focus-visible {
   overflow: auto;
 }
 
-.items-table {
-  min-width: 860px;
-}
-
+/* Requested Items table (PR upload/review workspace): a fixed layout so every
+   column keeps a guaranteed minimum width for its content type (currency,
+   short codes, free text) instead of silently compressing inputs below a
+   readable/usable size. The table's min-width intentionally exceeds its
+   container at laptop widths - .table-shell above scrolls the excess rather
+   than letting columns squeeze to fit. */
 .requested-items-table {
   table-layout: fixed;
-  min-width: 820px;
+  min-width: 1040px;
 }
 
 .requested-items-table th,
@@ -3241,19 +3243,11 @@ summary:focus-visible {
 }
 
 .requested-item-description-cell {
-  min-width: 220px;
+  min-width: 280px;
 }
 
 .requested-item-unit-cell {
-  min-width: 64px;
-}
-
-.items-table td input {
-  width: 100%;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  padding: 8px 9px;
-  font-size: 13px;
+  min-width: 120px;
 }
 
 /* Every editable field in a requested-items row shares one baseline height so
@@ -3268,6 +3262,23 @@ summary:focus-visible {
   font-size: 13px;
   font-family: inherit;
   text-align: left;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 9px;
+}
+
+/* Native number-input spinners eat 16-20px from an already tight numeric
+   column, on top of the border/padding - these fields are custom-bordered
+   already, so the spinner costs space without adding anything. */
+.requested-items-table td input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.requested-items-table td input[type='number']::-webkit-outer-spin-button,
+.requested-items-table td input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .requested-items-table td textarea.requested-item-description {
@@ -4009,7 +4020,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   border-top: 4px solid #e7b65a;
   border-radius: 10px;
   box-shadow: var(--shadow-sm);
-  bottom-margin: 32px;
+  margin-bottom: 32px;
 }
 
 .dashboard-cards-grid {
@@ -4230,6 +4241,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -6105,6 +6117,107 @@ textarea:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-top: 18px;
+}
+
+.admin-dashboard-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.admin-panel-total {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stat-bar-list {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.stat-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 2fr) 32px;
+  align-items: center;
+  gap: 10px;
+}
+
+.stat-bar-label {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-bar-track {
+  height: 10px;
+  border-radius: 6px;
+  background: #eef4f4;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #14b8a6, #0f766e);
+}
+
+.stat-bar-count {
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.trend-chart {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  height: 180px;
+  padding-top: 8px;
+}
+
+.trend-chart-col {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.trend-chart-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.trend-chart-bar-track {
+  width: 100%;
+  max-width: 44px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: #eef4f4;
+  border-radius: 6px 6px 2px 2px;
+  overflow: hidden;
+}
+
+.trend-chart-bar {
+  width: 100%;
+  min-height: 2px;
+  background: linear-gradient(180deg, #14b8a6, #0f766e);
+  border-radius: 6px 6px 0 0;
+}
+
+.trend-chart-label {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .admin-dashboard-panel {

@@ -17,7 +17,22 @@ from api.models import (
 _BASE_DOCS = ('mayor_permit', 'business_permit', 'philgeps_registration',
               'bir_registration', 'tax_clearance')
 
-ADMIN = {'HTTP_X_USER_ROLE': 'admin', 'HTTP_X_USER_USERNAME': 'bac'}
+
+def _login_as(client, role_name, *, user=None):
+    """Authenticate ``client``'s session as a user with the given role.
+
+    Mirrors what ``login_view`` stores in the session, without a real
+    password round trip in every test.
+    """
+    if user is None:
+        role = Role.objects.get_or_create(name=role_name)[0]
+        user = User.objects.create(username=f'test-{role_name}', password_hash='x', role=role)
+    session = client.session
+    session['user_id'] = user.id
+    session['role'] = role_name
+    session['username'] = user.username
+    session.save()
+    return user
 
 
 def make_eligible_supplier(name, *categories):
@@ -37,8 +52,9 @@ def make_eligible_supplier(name, *categories):
 
 class CategoryGroupingTests(TestCase):
     def setUp(self):
-        Role.objects.get_or_create(name='admin')
-        User.objects.create(username='bac', password_hash='x', role=Role.objects.get(name='admin'))
+        admin_role = Role.objects.get_or_create(name='admin')[0]
+        admin_user = User.objects.create(username='bac', password_hash='x', role=admin_role)
+        _login_as(self.client, 'admin', user=admin_user)
         self.aircon = Category.objects.create(name='Airconditioning and Airconditioning Systems')
         self.office_eq = Category.objects.create(name='Office Equipment')
         self.office_sup = Category.objects.create(name='Office Supplies')
@@ -109,8 +125,9 @@ class CategoryGroupingTests(TestCase):
 
 class CategoryScopedRFQTests(TestCase):
     def setUp(self):
-        Role.objects.get_or_create(name='admin')
-        User.objects.create(username='bac', password_hash='x', role=Role.objects.get(name='admin'))
+        admin_role = Role.objects.get_or_create(name='admin')[0]
+        admin_user = User.objects.create(username='bac', password_hash='x', role=admin_role)
+        _login_as(self.client, 'admin', user=admin_user)
         self.aircon = Category.objects.create(name='Airconditioning and Airconditioning Systems')
         self.office = Category.objects.create(name='Office Supplies')
         self.pr = PurchaseRequest.objects.create(
@@ -133,7 +150,7 @@ class CategoryScopedRFQTests(TestCase):
     def _rfq(self, body):
         return self.client.post(
             f'/api/pr/{self.pr.id}/rfq/', data=json.dumps(body),
-            content_type='application/json', **ADMIN,
+            content_type='application/json',
         )
 
     # TEST 6 / 7 - RFQ contains only its category's items
@@ -219,10 +236,11 @@ class CategoryScopedRFQTests(TestCase):
 
     # TEST 18 - security
     def test_non_admin_cannot_create_rfq(self):
+        _login_as(self.client, 'buyer')
         res = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
             data=json.dumps({'supplier_id': self.cooltech.id, 'category': self.aircon.name}),
-            content_type='application/json', HTTP_X_USER_ROLE='buyer',
+            content_type='application/json',
         )
         self.assertEqual(res.status_code, 403)
         self.assertEqual(RFQ.objects.count(), 0)

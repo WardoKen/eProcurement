@@ -1,4 +1,5 @@
 import React from 'react'
+import { apiFetch } from '../lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -68,7 +69,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
   React.useEffect(() => {
     let isMounted = true
-    fetch(`${apiBase.replace(/\/$/, '')}/api/categories/`)
+    apiFetch(`${apiBase.replace(/\/$/, '')}/api/categories/`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to load categories')
         return response.json()

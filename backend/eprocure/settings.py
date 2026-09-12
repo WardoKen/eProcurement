@@ -97,7 +97,16 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', '1').lower() in ('1', 'true', 'yes')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'BAC Secretariat <no-reply@eprocure.local>')
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+    if origin.strip()
+]
+# The frontend sends the session cookie via ``credentials: 'include'`` on every
+# request, so the browser must see it as an allowed, credentialed origin -
+# CORS_ALLOW_ALL_ORIGINS (the previous "*") cannot be combined with credentials.
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
     'authorization',
@@ -105,6 +114,20 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
-    'x-user-role',
-    'x-user-username',
 ]
+
+# The frontend (Vercel) and backend (Render) are on different domains in
+# production, so the session cookie must be sendable cross-site: that needs
+# SameSite=None, which in turn requires Secure. Default to that unconditionally
+# (not just in production) rather than switching on DEBUG, because the local
+# dev setup (VITE_API_BASE_URL=http://127.0.0.1:8000, Vite serving the
+# frontend on http://localhost:5173) already has the backend and frontend on
+# different hostnames, which browsers treat as cross-site regardless of DEBUG
+# - a Lax cookie would silently never be sent back on those fetch() calls.
+# Secure still works over plain HTTP here because Chrome/Firefox/Safari treat
+# loopback origins (localhost and 127.0.0.1) as secure contexts. Override via
+# env if the deployment needs something else.
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'None')
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'true').lower() in ('1', 'true', 'yes')
+CSRF_COOKIE_SAMESITE = SESSION_COOKIE_SAMESITE
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE

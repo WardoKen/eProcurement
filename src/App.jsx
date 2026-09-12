@@ -44,6 +44,7 @@ import logo from './assets/logo.png'
 import DragDropUpload from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import Sidebar from './components/Sidebar'
+import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
 
@@ -82,11 +83,86 @@ const SkeletonRows = ({ count = 4 }) => (
   </div>
 )
 
+// Lightweight, dependency-free horizontal bar chart for status/category breakdowns.
+const BreakdownBarList = ({ items, emptyLabel = 'No data yet.' }) => {
+  const max = Math.max(1, ...items.map((item) => item.count || 0))
+  if (items.length === 0) {
+    return <div className="dashboard-empty-state"><span>{emptyLabel}</span></div>
+  }
+  return (
+    <div className="stat-bar-list">
+      {items.map((item) => {
+        const pct = item.count > 0 ? Math.max((item.count / max) * 100, 3) : 0
+        return (
+          <div className="stat-bar-row" key={item.label}>
+            <span className="stat-bar-label" title={item.label}>{item.label}</span>
+            <div className="stat-bar-track">
+              <div className="stat-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="stat-bar-count">{item.count}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const formatMonthKey = (monthKey) => {
+  const [year, month] = (monthKey || '').split('-').map(Number)
+  if (!year || !month) return monthKey || ''
+  return `${MONTH_LABELS[month - 1]} '${String(year).slice(2)}`
+}
+
+// Simple 6-column vertical bar chart for the PR volume trend.
+const MonthlyTrendChart = ({ data, emptyLabel = 'No purchase requests yet.' }) => {
+  const max = Math.max(1, ...data.map((point) => point.count || 0))
+  if (data.length === 0) {
+    return <div className="dashboard-empty-state"><span>{emptyLabel}</span></div>
+  }
+  return (
+    <div className="trend-chart">
+      {data.map((point) => {
+        const heightPct = point.count > 0 ? Math.max((point.count / max) * 100, 6) : 0
+        return (
+          <div className="trend-chart-col" key={point.month}>
+            <span className="trend-chart-value">{point.count}</span>
+            <div className="trend-chart-bar-track">
+              <div className="trend-chart-bar" style={{ height: `${heightPct}%` }} />
+            </div>
+            <span className="trend-chart-label">{formatMonthKey(point.month)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Streams a CSV export from an admin endpoint and triggers a browser download.
+const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
+  try {
+    const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}${path}`)
+    if (!res.ok) throw new Error('Failed to export CSV.')
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error(error)
+    if (onError) onError(error?.message || 'Failed to export CSV.')
+  }
+}
+
 const verifyRecaptchaToken = async (token) => {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   if (!token) return false
 
-  const response = await fetch(`${apiBaseUrl}/api/verify-recaptcha`, {
+  const response = await apiFetch(`${apiBaseUrl}/api/verify-recaptcha`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
@@ -384,7 +460,7 @@ export const Opportunities = () => {
   React.useEffect(() => {
     setCatLoading(true)
     setCatError('')
-    fetch(`${apiBaseUrl}/api/categories/`)
+    apiFetch(`${apiBaseUrl}/api/categories/`)
       .then((r) => {
         if (!r.ok) throw new Error(`Server error ${r.status}`)
         return r.json()
@@ -404,7 +480,7 @@ export const Opportunities = () => {
     setPrLoading(true)
     setPrError('')
     setCategoryPRs([])
-    fetch(`${apiBaseUrl}/api/pr/list/?category=${encodeURIComponent(cat.name)}`)
+    apiFetch(`${apiBaseUrl}/api/pr/list/?category=${encodeURIComponent(cat.name)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`Server error ${r.status}`)
         return r.json()
@@ -667,7 +743,7 @@ const Tracking = () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
       if (!res.ok) {
         throw new Error('Failed to load tracking records')
       }
@@ -701,7 +777,7 @@ const Tracking = () => {
     try {
       let records = recentPRs
       if (!records.length) {
-        const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
+        const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
         if (!res.ok) {
           throw new Error('Failed to load tracking records')
         }
@@ -952,7 +1028,7 @@ const Login = () => {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
       try {
-        const response = await fetch(`${apiBaseUrl}/api/login/`, {
+        const response = await apiFetch(`${apiBaseUrl}/api/login/`, {
           method: 'POST',
           mode: 'cors',
           headers: { 'Content-Type': 'application/json' },
@@ -980,7 +1056,7 @@ const Login = () => {
         // If supplier, fetch their supplier profile ID
         if (user.role === 'supplier' && !user.supplier_id) {
           try {
-            const suppliersRes = await fetch(`${apiBaseUrl}/api/suppliers/`)
+            const suppliersRes = await apiFetch(`${apiBaseUrl}/api/suppliers/`)
             if (suppliersRes.ok) {
               const suppliers = await suppliersRes.json()
               // Try to find supplier by email or other identifier
@@ -1274,8 +1350,8 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
     setLoading(true)
     setError('')
     Promise.all([
-      fetch(`${apiBase}/api/categories/`).then((r) => { if (!r.ok) throw new Error('Failed to load categories'); return r.json() }),
-      fetch(`${apiBase}/api/pr/${prId}/items/`).then((r) => { if (!r.ok) throw new Error('Failed to load PR items'); return r.json() }),
+      apiFetch(`${apiBase}/api/categories/`).then((r) => { if (!r.ok) throw new Error('Failed to load categories'); return r.json() }),
+      apiFetch(`${apiBase}/api/pr/${prId}/items/`).then((r) => { if (!r.ok) throw new Error('Failed to load PR items'); return r.json() }),
     ])
       .then(([cats, itms]) => {
         setCategories(cats)
@@ -1305,7 +1381,7 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch(`${apiBase}/api/pr/${prId}/items/categories/`, {
+      const res = await apiFetch(`${apiBase}/api/pr/${prId}/items/categories/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignments: items.map((item) => ({ item_id: item.id, category: assignments[item.id] || '' })) }),
@@ -1447,12 +1523,8 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   }, [groupItems])
 
   React.useEffect(() => {
-    const headers = {
-      'Content-Type': 'application/json',
-      'X-User-Role': 'admin',
-      'X-User-Username': 'admin',
-    }
-    fetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, { headers })
+    const headers = { 'Content-Type': 'application/json' }
+    apiFetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, { headers })
       .then((response) => response.ok ? response.json() : { rfqs: [] })
       .then((data) => {
         const wantCategory = supplier.matched_category || ''
@@ -1490,7 +1562,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   }, [computedAbc, prId, rfqApiBase, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.email, supplier.id, supplier.matched_category])
 
   React.useEffect(() => {
-    fetch(`${rfqApiBase}/api/procurement-modes/`)
+    apiFetch(`${rfqApiBase}/api/procurement-modes/`)
       .then((response) => response.ok ? response.json() : { modes: [] })
       .then((data) => setProcurementModes(Array.isArray(data.modes) ? data.modes : []))
       .catch(() => {})
@@ -1526,13 +1598,9 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
     setError('')
     setNotice('')
     try {
-      const response = await fetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, {
+      const response = await apiFetch(`${rfqApiBase}/api/pr/${prId}/rfq/`, {
         method: rfq ? 'PATCH' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Role': 'admin',
-          'X-User-Username': 'admin',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supplier_id: supplier.id,
           selection_type: isManualSelection ? 'manual_bac' : 'category_match',
@@ -1717,9 +1785,7 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
     try {
       const params = new URLSearchParams()
       if (query.trim()) params.set('name', query.trim())
-      const res = await fetch(`${apiBase}/api/suppliers/search/?${params.toString()}`, {
-        headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
-      })
+      const res = await apiFetch(`${apiBase}/api/suppliers/search/?${params.toString()}`)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.message || `Search failed (HTTP ${res.status})`)
       setResults((Array.isArray(data.results) ? data.results : []).filter((s) => !matchedIds.has(s.id)))
@@ -1876,7 +1942,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [manualRfqResult, setManualRfqResult] = React.useState(null)
 
   React.useEffect(() => {
-    fetch(`${apiBase}/api/procurement-modes/`)
+    apiFetch(`${apiBase}/api/procurement-modes/`)
       .then((r) => (r.ok ? r.json() : { modes: [] }))
       .then((d) => setManualRfqModes(Array.isArray(d.modes) ? d.modes : []))
       .catch(() => {})
@@ -1893,9 +1959,9 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     setManualRfqBusy(true)
     setManualRfqError('')
     try {
-      const res = await fetch(`${apiBase}/api/pr/${prId}/manual-rfq/`, {
+      const res = await apiFetch(`${apiBase}/api/pr/${prId}/manual-rfq/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           manual_supplier_name: name,
           category: manualRfqGroup?.category || '',
@@ -1921,9 +1987,9 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     setLoading(true)
     setError('')
     Promise.all([
-      fetch(`${apiBase}/api/pr/${prId}/supplier-match/`).then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() }),
-      fetch(`${apiBase}/api/pr/${prId}/details/`).then((r) => { if (!r.ok) throw new Error('Failed to load Purchase Request details'); return r.json() }),
-      fetch(`${apiBase}/api/pr/${prId}/rfq/`, { headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' } })
+      apiFetch(`${apiBase}/api/pr/${prId}/supplier-match/`).then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() }),
+      apiFetch(`${apiBase}/api/pr/${prId}/details/`).then((r) => { if (!r.ok) throw new Error('Failed to load Purchase Request details'); return r.json() }),
+      apiFetch(`${apiBase}/api/pr/${prId}/rfq/`)
         .then((r) => r.ok ? r.json() : { rfqs: [] })
         .catch(() => ({ rfqs: [] })),
     ])
@@ -2092,7 +2158,7 @@ const UnmatchedPurchaseRequests = ({ apiBase, onContinue }) => {
   React.useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetch(`${apiBase}/api/pr/unmatched/`)
+    apiFetch(`${apiBase}/api/pr/unmatched/`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to load unmatched Purchase Requests')
         return response.json()
@@ -2360,8 +2426,6 @@ const RFQDetailView = ({ group, rfq, onBack, onView }) => {
   )
 }
 
-const MANUAL_RFQ_ADMIN_HEADERS = { 'X-User-Role': 'admin', 'X-User-Username': 'admin' }
-
 const ManualRFQsView = ({ apiBaseUrl }) => {
   const [rfqs, setRfqs] = React.useState([])
   const [loading, setLoading] = React.useState(true)
@@ -2377,7 +2441,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
     setError('')
     try {
       const url = `${base}/api/manual-rfqs/${term ? `?search=${encodeURIComponent(term)}` : ''}`
-      const res = await fetch(url, { headers: MANUAL_RFQ_ADMIN_HEADERS, cache: 'no-store' })
+      const res = await apiFetch(url, { cache: 'no-store' })
       if (!res.ok) throw new Error('Unable to load Manual RFQs.')
       const data = await res.json()
       setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
@@ -2397,7 +2461,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
     try {
       const body = new FormData()
       body.append('file', file)
-      const res = await fetch(`${base}/api/manual-rfqs/${rfq.id}/completed/`, { method: 'POST', headers: MANUAL_RFQ_ADMIN_HEADERS, body })
+      const res = await apiFetch(`${base}/api/manual-rfqs/${rfq.id}/completed/`, { method: 'POST', body })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.message || data.error || 'Upload failed.')
       await load(activeSearch)
@@ -2547,9 +2611,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
       const params = new URLSearchParams({ group_by: 'pr', sort })
       if (filter !== 'all') params.set('status', filter)
       if (search) params.set('search', search)
-      const response = await fetch(`${base}/api/rfqs/responses/?${params.toString()}`, {
-        headers: { 'X-User-Role': 'admin', 'X-User-Username': 'admin' },
-      })
+      const response = await apiFetch(`${base}/api/rfqs/responses/?${params.toString()}`)
       if (!response.ok) throw new Error('Unable to load RFQ Management data.')
       const data = await response.json()
       setGroups(Array.isArray(data.purchase_requests) ? data.purchase_requests : [])
@@ -2724,7 +2786,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
 
 const Admin = () => {
   const navigate = useNavigate()
-  const [currentTab, setCurrentTab] = React.useState('suppliers')
+  const [currentTab, setCurrentTab] = React.useState('dashboard')
   const [workflowPrId, setWorkflowPrId] = React.useState(null)
   const [prRecords, setPrRecords] = React.useState([])
   const [prLoading, setPrLoading] = React.useState(false)
@@ -2742,6 +2804,9 @@ const Admin = () => {
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
+  const [exportingSuppliers, setExportingSuppliers] = React.useState(false)
+  const [exportingPrs, setExportingPrs] = React.useState(false)
+  const [exportError, setExportError] = React.useState('')
   const [editingStatusById, setEditingStatusById] = React.useState({})
   const [pendingStatusById, setPendingStatusById] = React.useState({})
   const [supplierRegistrations, setSupplierRegistrations] = React.useState([])
@@ -2780,6 +2845,7 @@ const Admin = () => {
   ]
 
   const handleLogout = () => {
+    apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
     authStore.clear()
     navigate('/login')
   }
@@ -2787,7 +2853,7 @@ const Admin = () => {
   const loadBuyerAccounts = React.useCallback(async () => {
     setBuyerAccountsLoading(true)
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/`)
+      const response = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/`)
       if (!response.ok) throw new Error('Unable to load End User accounts.')
       setBuyerAccounts(await response.json())
     } catch (error) {
@@ -2812,7 +2878,7 @@ const Admin = () => {
 
     setBuyerAccountSaving(true)
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/register/`, {
+      const response = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/register/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2847,7 +2913,7 @@ const Admin = () => {
     setBuyerAccountActionId(account.id)
     setBuyerAccountError('')
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/`, {
+      const response = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -2872,7 +2938,7 @@ const Admin = () => {
     setSupplierLoading(true)
     setSupplierError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/`)
       if (!res.ok) {
         throw new Error('Failed to load supplier registrations')
       }
@@ -2890,7 +2956,7 @@ const Admin = () => {
     setDashboardLoading(true)
     setDashboardError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/dashboard-summary/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/dashboard-summary/`)
       if (!res.ok) throw new Error('Failed to load dashboard data')
       setDashboardStats(await res.json())
     } catch (error) {
@@ -2901,9 +2967,23 @@ const Admin = () => {
     }
   }, [apiBaseUrl])
 
+  const handleExportSuppliers = React.useCallback(async () => {
+    setExportError('')
+    setExportingSuppliers(true)
+    await downloadCsvExport(apiBaseUrl, '/api/admin/export/suppliers/', 'suppliers.csv', setExportError)
+    setExportingSuppliers(false)
+  }, [apiBaseUrl])
+
+  const handleExportPurchaseRequests = React.useCallback(async () => {
+    setExportError('')
+    setExportingPrs(true)
+    await downloadCsvExport(apiBaseUrl, '/api/admin/export/purchase-requests/', 'purchase_requests.csv', setExportError)
+    setExportingPrs(false)
+  }, [apiBaseUrl])
+
   const loadSupplierDetails = React.useCallback(async (supplierId) => {
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/profile/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/profile/`)
       if (!res.ok) {
         throw new Error('Failed to load supplier details')
       }
@@ -2965,7 +3045,7 @@ const Admin = () => {
     setSupplierActioningId(supplierId)
     setSupplierError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/status/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/status/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3003,7 +3083,7 @@ const Admin = () => {
     setSupplierActioningId(supplierId)
     setSupplierError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/status/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/status/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3050,7 +3130,7 @@ const Admin = () => {
     setSupplierDeletingId(supplierId)
     setSupplierError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/${supplierId}/`, {
         method: 'DELETE',
       })
       if (!res.ok) {
@@ -3096,6 +3176,36 @@ const Admin = () => {
   const selectedSupplier = React.useMemo(() => (
     supplierRegistrations.find((supplier) => supplier.id === selectedSupplierId) || null
   ), [selectedSupplierId, supplierRegistrations])
+
+  const PR_STATUS_LABELS = { uploaded: 'Uploaded', in_review: 'In Review', matched: 'Matched', approved: 'Approved', rejected: 'Rejected' }
+
+  const dashboardBreakdowns = React.useMemo(() => {
+    const toBarItems = (rows, labels = {}) => (rows || []).map((row) => ({
+      label: labels[row.status] || row.status,
+      count: row.count,
+    }))
+
+    const categoryBreakdown = dashboardStats?.supplier_category_breakdown || []
+    const categoryItems = categoryBreakdown
+      .filter((row) => row.count > 0)
+      .slice(0, 10)
+      .map((row) => ({ label: row.category, count: row.count }))
+
+    const rfq = dashboardStats?.rfq_stats || { total_sent: 0, with_response: 0, avg_quotations_per_rfq: 0 }
+    const responseRate = rfq.total_sent > 0 ? Math.round((rfq.with_response / rfq.total_sent) * 100) : 0
+
+    return {
+      supplierStatus: toBarItems(dashboardStats?.supplier_status_breakdown),
+      documentStatus: toBarItems(dashboardStats?.document_status_breakdown),
+      prStatus: toBarItems(dashboardStats?.pr_status_breakdown, PR_STATUS_LABELS),
+      categoryItems,
+      categoryTotal: categoryBreakdown.length,
+      categoryWithSuppliers: categoryBreakdown.filter((row) => row.count > 0).length,
+      monthlyVolume: dashboardStats?.pr_monthly_volume || [],
+      rfq,
+      responseRate,
+    }
+  }, [dashboardStats])
 
   const getSupplierStatusMeta = (status) => {
     if (status === 'Approved') return { label: 'Approved', className: 'status-open' }
@@ -3146,7 +3256,7 @@ const Admin = () => {
     setPrLoading(true)
     setPrError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
       if (!res.ok) {
         throw new Error('Failed to load PR records')
       }
@@ -3183,7 +3293,7 @@ const Admin = () => {
     setPrSavingId(prId)
     setPrError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${prId}/status/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${prId}/status/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus }),
@@ -3205,7 +3315,7 @@ const Admin = () => {
     setPrDeletingId(prId)
     setPrError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${prId}/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${prId}/`, {
         method: 'DELETE',
       })
       if (!res.ok) {
@@ -3273,7 +3383,7 @@ const Admin = () => {
     setEditPrLoading(true)
     setPrError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${pr.id}/details/`)
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${pr.id}/details/`)
       if (!res.ok) throw new Error('Failed to load Purchase Request details')
       const details = await res.json()
       setEditPrForm({
@@ -3320,7 +3430,7 @@ const Admin = () => {
     setEditPrSaving(true)
     setPrError('')
     try {
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${editingPr.id}/edit/`, {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${editingPr.id}/edit/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3407,28 +3517,103 @@ const Admin = () => {
               <p>System overview and management controls</p>
             </div>
             {dashboardError && <div className="alert alert-error" style={{ marginBottom: '16px' }}>{dashboardError}</div>}
-            <div className="admin-cards">
-              <div className="admin-card">
-                <div className="admin-card-eyebrow">Procurement</div>
-                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.total_purchase_requests ?? 0}</div>
-                <div className="admin-card-label">Total Purchase Requests</div>
+
+            {dashboardLoading && !dashboardStats ? (
+              <div className="admin-dashboard-grid">
+                <section className="admin-dashboard-panel"><SkeletonRows count={5} /></section>
+                <section className="admin-dashboard-panel"><SkeletonRows count={5} /></section>
               </div>
-              <div className="admin-card">
-                <div className="admin-card-eyebrow">Needs attention</div>
-                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.pending_purchase_requests ?? 0}</div>
-                <div className="admin-card-label">Open Purchase Requests</div>
-              </div>
-              <div className="admin-card">
-                <div className="admin-card-eyebrow">Completed</div>
-                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.approved_purchase_requests ?? 0}</div>
-                <div className="admin-card-label">Approved Purchase Requests</div>
-              </div>
-              <div className="admin-card">
-                <div className="admin-card-eyebrow">Supplier network</div>
-                <div className="admin-card-value">{dashboardLoading && !dashboardStats ? '...' : dashboardStats?.total_suppliers ?? 0}</div>
-                <div className="admin-card-label">Registered Suppliers</div>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="admin-dashboard-grid">
+                  <section className="admin-dashboard-panel">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Supplier network</span>
+                        <h2>Suppliers by Status</h2>
+                      </div>
+                      <span className="admin-panel-total">{dashboardStats?.total_suppliers ?? 0} total</span>
+                    </div>
+                    <BreakdownBarList items={dashboardBreakdowns.supplierStatus} emptyLabel="No suppliers registered yet." />
+                  </section>
+
+                  <section className="admin-dashboard-panel">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Eligibility documents</span>
+                        <h2>Document Verification Status</h2>
+                      </div>
+                      <span className="admin-panel-total">{dashboardBreakdowns.documentStatus.reduce((sum, item) => sum + item.count, 0)} documents</span>
+                    </div>
+                    <BreakdownBarList items={dashboardBreakdowns.documentStatus} emptyLabel="No documents uploaded yet." />
+                  </section>
+
+                  <section className="admin-dashboard-panel">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Procurement categories</span>
+                        <h2>Verified Suppliers by Category</h2>
+                      </div>
+                      <span className="admin-panel-total">{dashboardBreakdowns.categoryWithSuppliers}/{dashboardBreakdowns.categoryTotal} covered</span>
+                    </div>
+                    <BreakdownBarList items={dashboardBreakdowns.categoryItems} emptyLabel="No approved suppliers are assigned to a category yet." />
+                  </section>
+
+                  <section className="admin-dashboard-panel">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Procurement</span>
+                        <h2>Purchase Request Pipeline</h2>
+                      </div>
+                      <span className="admin-panel-total">{dashboardStats?.total_purchase_requests ?? 0} total</span>
+                    </div>
+                    <BreakdownBarList items={dashboardBreakdowns.prStatus} emptyLabel="No purchase requests yet." />
+                  </section>
+
+                  <section className="admin-dashboard-panel admin-dashboard-panel-wide">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Trend</span>
+                        <h2>Purchase Request Volume (Last 6 Months)</h2>
+                      </div>
+                    </div>
+                    <MonthlyTrendChart data={dashboardBreakdowns.monthlyVolume} />
+                  </section>
+
+                  <section className="admin-dashboard-panel admin-dashboard-panel-wide">
+                    <div className="admin-dashboard-panel-header">
+                      <div>
+                        <span className="section-kicker">Supplier engagement</span>
+                        <h2>RFQ Response Summary</h2>
+                      </div>
+                    </div>
+                    <div className="admin-cards">
+                      <div className="admin-card">
+                        <div className="admin-card-eyebrow">Issued</div>
+                        <div className="admin-card-value">{dashboardBreakdowns.rfq.total_sent}</div>
+                        <div className="admin-card-label">RFQs Sent</div>
+                      </div>
+                      <div className="admin-card">
+                        <div className="admin-card-eyebrow">Engaged</div>
+                        <div className="admin-card-value">{dashboardBreakdowns.rfq.with_response}</div>
+                        <div className="admin-card-label">RFQs with a Quotation</div>
+                      </div>
+                      <div className="admin-card">
+                        <div className="admin-card-eyebrow">Rate</div>
+                        <div className="admin-card-value">{dashboardBreakdowns.responseRate}%</div>
+                        <div className="admin-card-label">RFQ Response Rate</div>
+                      </div>
+                      <div className="admin-card">
+                        <div className="admin-card-eyebrow">Competitiveness</div>
+                        <div className="admin-card-value">{dashboardBreakdowns.rfq.avg_quotations_per_rfq}</div>
+                        <div className="admin-card-label">Avg. Quotations per RFQ</div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </>
+            )}
+
             <div className="admin-dashboard-grid">
               <section className="admin-dashboard-panel">
                 <div className="admin-dashboard-panel-header">
@@ -3497,6 +3682,9 @@ const Admin = () => {
                 <strong>Review action blocked.</strong> {supplierError}
               </div>
             )}
+            {exportError && (
+              <div className="alert alert-error" style={{ marginBottom: '16px' }}>{exportError}</div>
+            )}
 
             <div className="supplier-verification-shell">
               <div className="supplier-verification-list-card">
@@ -3515,6 +3703,15 @@ const Admin = () => {
                       aria-label="Search suppliers"
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="btn-sm btn-secondary"
+                    onClick={handleExportSuppliers}
+                    disabled={exportingSuppliers}
+                  >
+                    <Download size={14} />
+                    {exportingSuppliers ? 'Exporting...' : 'Export Report'}
+                  </button>
                 </div>
 
                 <div className="supplier-verification-table">
@@ -3935,12 +4132,24 @@ const Admin = () => {
                 <RefreshCw size={14} className={prLoading ? 'spin' : ''} />
                 {prLoading ? 'Refreshing...' : 'Refresh'}
               </button>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={handleExportPurchaseRequests}
+                disabled={exportingPrs}
+              >
+                <Download size={14} />
+                {exportingPrs ? 'Exporting...' : 'Export Report'}
+              </button>
             </div>
 
             {prError && (
               <div className="alert alert-error" style={{ marginBottom: '16px' }}>
                 <strong>Unable to load PR records.</strong> {prError}
               </div>
+            )}
+            {exportError && (
+              <div className="alert alert-error" style={{ marginBottom: '16px' }}>{exportError}</div>
             )}
 
             <div className="admin-checklist pr-review-queue" style={{ marginBottom: '16px' }}>
@@ -4374,7 +4583,7 @@ const UploadForm = () => {
       const fd = new FormData()
       fd.append('file', file)
 
-      const res = await fetch(`${apiBaseUrl}/api/upload/`, {
+      const res = await apiFetch(`${apiBaseUrl}/api/upload/`, {
         method: 'POST',
         body: fd,
       })
@@ -4570,7 +4779,7 @@ const Register = () => {
     }
 
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/register`, {
+      const response = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/suppliers/register`, {
         method: 'POST',
         body: payload,
       })
@@ -4753,6 +4962,7 @@ const Register = () => {
 const Buyer = () => {
   const navigate = useNavigate()
   const user = React.useMemo(() => getStoredUser(), [])
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const [currentTab, setCurrentTab] = React.useState('dashboard')
   const [navCollapsed, setNavCollapsed] = React.useState(false)
   const buyerStorageKey = `buyer_pr_ids_${user?.username || 'current'}`
@@ -4773,6 +4983,7 @@ const Buyer = () => {
   }
 
   const handleLogout = () => {
+    apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
     authStore.clear()
     navigate('/login')
   }
@@ -5016,7 +5227,7 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}&t=${Date.now()}`,
         { cache: 'no-store' },
       )
@@ -5077,6 +5288,7 @@ const Supplier = () => {
   const supplierStatus = user?.supplier_status || authStore.get('supplier_status') || 'Pending Review'
 
   const handleLogout = () => {
+    apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
     authStore.clear()
     navigate('/login')
   }
@@ -5166,7 +5378,7 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
+      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
       if (!response.ok) throw new Error('Unable to load RFQs')
       const data = await response.json()
       setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
@@ -5254,7 +5466,7 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
     try {
       const body = new FormData()
       body.append('file', file)
-      const res = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/${rfq.id}/response/`, { method: 'POST', body })
+      const res = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/${rfq.id}/response/`, { method: 'POST', body })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.message || data.error || 'Upload failed. Please try again.')
       setUploadedRfq(data)
@@ -5379,7 +5591,7 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
 
     const fetchSupplierDetails = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
         if (!response.ok) return
 
         const data = await response.json()
@@ -5430,8 +5642,8 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
       try {
         setLoading(true)
         const [summaryRes, opportunitiesRes] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/dashboard/`),
-          fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
+          apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/dashboard/`),
+          apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
         ])
 
         if (summaryRes.ok) {
@@ -5567,7 +5779,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
     const fetchOpportunities = async () => {
       try {
         setLoading(true)
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
         if (response.ok) {
           const data = await response.json()
           setOpportunities(data.opportunities)
@@ -5675,7 +5887,7 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl, supplierId }) => {
   React.useEffect(() => {
     const fetchDetails = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/pr/${opportunity.id}/details/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/pr/${opportunity.id}/details/`)
         if (response.ok) {
           const data = await response.json()
           setPrDetails(data)
@@ -5812,7 +6024,7 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
     setError(null)
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5830,7 +6042,7 @@ const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess
         if (quotationFile && result.quotation_id) {
           const upload = new FormData()
           upload.append('file', quotationFile)
-          const fileResponse = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/${result.quotation_id}/attachment/`, { method: 'POST', body: upload })
+          const fileResponse = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/${result.quotation_id}/attachment/`, { method: 'POST', body: upload })
           if (!fileResponse.ok) throw new Error('Quotation submitted, but the PDF upload failed.')
         }
         alert('Quotation submitted successfully!')
@@ -5951,7 +6163,7 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
     const fetchQuotations = async () => {
       try {
         setLoading(true)
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`)
         if (response.ok) {
           const data = await response.json()
           setQuotations(data.quotations)
@@ -6098,12 +6310,12 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   React.useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`)
         if (response.ok) {
           const data = await response.json()
           setProfile(data)
           setFormData(data)
-          const categoriesResponse = await fetch(`${apiBaseUrl}/api/categories/`)
+          const categoriesResponse = await apiFetch(`${apiBaseUrl}/api/categories/`)
           const availableCategories = categoriesResponse.ok ? await categoriesResponse.json() : []
           setCategories(Array.isArray(availableCategories) ? availableCategories : [])
           const selectedIds = new Set(data.category_ids || [])
@@ -6123,7 +6335,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
     setMessage(null)
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, category_ids: selectedCategories.map((category) => category.id) }),
@@ -6160,7 +6372,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       const body = new FormData()
       body.append('doc_type', docType)
       body.append('file', file)
-      const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/documents/resubmit/`, { method: 'POST', body })
+      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/documents/resubmit/`, { method: 'POST', body })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Unable to resubmit document')
       setProfile((current) => ({
@@ -6436,7 +6648,7 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
     const fetchNotifications = async () => {
       try {
         setLoading(true)
-        const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/notifications/`)
+        const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/notifications/`)
         if (response.ok) {
           const data = await response.json()
           setNotifications(data.notifications)
@@ -6501,7 +6713,7 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
                         type="button"
                         className="btn-sm btn-primary"
                         onClick={async () => {
-                          const response = await fetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
+                          const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
                           if (response.ok) {
                             const data = await response.json()
                             setSelectedRfq((data.rfqs || []).find((rfq) => rfq.id === notif.related_rfq_id) || null)
@@ -6600,6 +6812,8 @@ const AppLayout = () => {
                 type="button"
                 className="login-link"
                 onClick={() => {
+                  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+                  apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
                   authStore.clear()
                   setUser(null)
                   navigate('/login')

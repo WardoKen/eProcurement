@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import json
 import re
@@ -9,14 +10,16 @@ from pathlib import Path
 
 from io import BytesIO
 
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.core.mail import EmailMessage
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from django.db import IntegrityError, transaction
-from django.db.models import Case, Count, Exists, IntegerField, Min, OuterRef, Q, Value, When
+from django.db.models import Avg, Case, Count, Exists, IntegerField, Min, OuterRef, Q, Value, When
+from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.utils.text import slugify
 from xhtml2pdf import pisa
@@ -44,6 +47,7 @@ except ImportError:  # pragma: no cover
 
 from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory
 from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quotation, Notification, RFQ, RFQItem
+from .auth import require_auth
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
     REQUIRED_UPLOAD_KEYS,
@@ -344,16 +348,14 @@ def validate_custom_pr_number(value):
 
 
 @require_GET
+@require_auth(role='buyer')
 def next_pr_number_preview(request):
     return JsonResponse({'pr_no': next_pr_number()})
 
 
 @csrf_exempt
 @require_POST
-@csrf_exempt
-@require_POST
-@csrf_exempt
-@require_POST
+@require_auth(role='buyer')
 def upload_file(request):
     file = request.FILES.get('file')
     if not file:
@@ -414,6 +416,7 @@ def upload_file(request):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='buyer')
 def pr_recheck_signatures(request):
     """Re-run signature-presence validation for an already-uploaded PR document.
 
@@ -438,6 +441,7 @@ def pr_recheck_signatures(request):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='buyer')
 def pr_scan(request):
     """Accept a single PDF upload, run the extractor and return parsed JSON.
 
@@ -492,6 +496,7 @@ def pr_scan(request):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='buyer')
 def create_pr(request):
     """Create a PurchaseRequest and its line items from validated JSON (officer-confirmed).
 
@@ -858,6 +863,7 @@ def pr_list(request):
 
 @csrf_exempt
 @require_http_methods(["PATCH"])
+@require_auth(role='admin')
 def pr_update_status(request, pr_id: int):
     try:
         payload = json.loads(request.body.decode('utf-8'))
@@ -878,6 +884,7 @@ def pr_update_status(request, pr_id: int):
 
 @csrf_exempt
 @require_http_methods(["PATCH"])
+@require_auth(role='admin')
 def pr_update(request, pr_id: int):
     try:
         payload = json.loads(request.body.decode('utf-8'))
@@ -956,6 +963,7 @@ def pr_update(request, pr_id: int):
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@require_auth(role='admin')
 def pr_delete(request, pr_id: int):
     deleted, _ = PurchaseRequest.objects.filter(id=pr_id).delete()
     if not deleted:
@@ -965,6 +973,7 @@ def pr_delete(request, pr_id: int):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='admin')
 def register(request):
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -1007,6 +1016,7 @@ def register(request):
 
 
 @require_GET
+@require_auth(role='admin')
 def buyer_account_list(request):
     accounts = User.objects.filter(role__name='buyer').select_related('role').order_by('-created_at')
     payload = [{
@@ -1023,6 +1033,7 @@ def buyer_account_list(request):
 
 @csrf_exempt
 @require_http_methods(['DELETE'])
+@require_auth(role='admin')
 def buyer_account_delete(request, user_id: int):
     account = User.objects.filter(id=user_id, role__name='buyer').first()
     if not account:
@@ -1043,7 +1054,6 @@ def login_view(request):
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
     role_name = data.get('role', 'buyer')
-    supplier_id = data.get('supplier_id')
 
     if not username or not password:
         return json_error('Username and password are required', 400)
@@ -1055,18 +1065,22 @@ def login_view(request):
     if role_name and user.role.name != role_name:
         return json_error('Role mismatch', 403)
 
+    # Resolve which Supplier record this account represents. There is no FK
+    # between User and Supplier (see ``_supplier_login_accounts``), so this is
+    # derived from the same account-matches-supplier heuristic used
+    # elsewhere - it is NEVER taken from client input. A client-supplied
+    # ``supplier_id`` would let anyone log in with their own credentials and
+    # bind the session to a different supplier's data, so it is ignored, and
+    # an account with no server-derivable match gets no supplier binding at
+    # all rather than an arbitrary one.
     supplier_payload = None
+    supplier = None
     if user.role.name == 'supplier':
-        supplier = None
-        if supplier_id:
-            try:
-                supplier = Supplier.objects.get(id=supplier_id)
-            except Supplier.DoesNotExist:
-                supplier = None
-        if supplier is None:
-            supplier = Supplier.objects.filter(email__icontains=username).order_by('-created_at').first()
-        if supplier is None:
-            supplier = Supplier.objects.order_by('-created_at').first()
+        supplier = Supplier.objects.filter(email__icontains=username).order_by('-created_at').first()
+        if supplier is None and user.full_name:
+            supplier = Supplier.objects.filter(
+                contact_person__iexact=user.full_name.strip()
+            ).order_by('-created_at').first()
         if supplier is not None:
             supplier_payload = {
                 'supplier_id': supplier.id,
@@ -1075,6 +1089,16 @@ def login_view(request):
 
     user.last_login = timezone.now()
     user.save(update_fields=['last_login'])
+
+    # Start a fresh session for this login (flush drops any prior anonymous
+    # session data and rotates the session key) and record only what the
+    # server itself resolved above.
+    request.session.flush()
+    request.session['user_id'] = user.id
+    request.session['role'] = user.role.name
+    request.session['username'] = user.username
+    if supplier is not None:
+        request.session['supplier_id'] = supplier.id
 
     return JsonResponse({
         'success': True,
@@ -1092,6 +1116,14 @@ def login_view(request):
 
 
 @csrf_exempt
+@require_POST
+def logout_view(request):
+    request.session.flush()
+    return JsonResponse({'success': True})
+
+
+@csrf_exempt
+@require_auth(role='admin')
 def supplier_list_create(request):
     if request.method == 'GET':
         suppliers = list(
@@ -1136,6 +1168,7 @@ def supplier_list_create(request):
 
 
 @require_GET
+@require_auth(role='admin')
 def suppliers_search(request):
     """Manual BAC supplier search by company name.
 
@@ -1152,9 +1185,6 @@ def suppliers_search(request):
 
     Restricted to admin/BAC users; buyers and suppliers cannot use it.
     """
-    if _request_role(request) != 'admin':
-        return json_error('Admin access is required for manual supplier search.', 403)
-
     query = normalize_text(request.GET.get('name') or request.GET.get('q') or '')
 
     supplier_qs = Supplier.objects.all()
@@ -1223,10 +1253,83 @@ def suppliers_search(request):
     })
 
 
+KNOWN_SUPPLIER_STATUSES = ['Pending', 'Pending Review', 'In Review', 'For Compliance', 'Approved', 'Rejected']
+KNOWN_DOCUMENT_STATUSES = ['Pending', 'Verified', 'Rejected']
+
+
+def _status_breakdown(queryset, known_order, field='status'):
+    """Count rows per ``field`` value, ordered with ``known_order`` first.
+
+    Any status value present in the data but not in ``known_order`` (legacy or
+    unexpected values) is appended afterwards rather than silently dropped.
+    """
+    counts = {row[field]: row['count'] for row in queryset.values(field).annotate(count=Count('id'))}
+    breakdown = [{'status': status, 'count': counts.pop(status, 0)} for status in known_order]
+    breakdown.extend({'status': status, 'count': count} for status, count in sorted(counts.items()))
+    return breakdown
+
+
+def _pr_monthly_volume(months=6):
+    """Purchase request counts for each of the last ``months`` calendar months, oldest first."""
+    now = timezone.localtime()
+    year, month = now.year, now.month
+    month_keys = []
+    for _ in range(months):
+        month_keys.append((year, month))
+        month -= 1
+        if month == 0:
+            month, year = 12, year - 1
+    month_keys.reverse()
+
+    range_start = datetime(month_keys[0][0], month_keys[0][1], 1, tzinfo=now.tzinfo)
+    counts_by_month = {
+        row['month'].strftime('%Y-%m'): row['count']
+        for row in (
+            PurchaseRequest.objects.filter(created_at__gte=range_start)
+            .annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(count=Count('id'))
+            .order_by('month')
+        )
+    }
+    return [
+        {'month': f'{year:04d}-{month:02d}', 'count': counts_by_month.get(f'{year:04d}-{month:02d}', 0)}
+        for year, month in month_keys
+    ]
+
+
+def _rfq_stats():
+    sent_rfqs = RFQ.objects.filter(sent_at__isnull=False).annotate(quotation_count=Count('quotations'))
+    aggregates = sent_rfqs.aggregate(
+        total_sent=Count('id'),
+        with_response=Count('id', filter=Q(quotation_count__gt=0)),
+        avg_quotations=Avg('quotation_count'),
+    )
+    return {
+        'total_sent': aggregates['total_sent'] or 0,
+        'with_response': aggregates['with_response'] or 0,
+        'avg_quotations_per_rfq': round(aggregates['avg_quotations'] or 0, 2),
+    }
+
+
 @require_GET
+@require_auth(role='admin')
 def admin_dashboard_summary(request):
-    """Return live summary counts for the BAC administrator dashboard."""
+    """Return live summary counts and breakdowns for the BAC administrator dashboard."""
+    supplier_category_breakdown = list(
+        Category.objects.annotate(
+            verified_supplier_count=Count(
+                'supplier_categories',
+                filter=Q(supplier_categories__supplier__status='Approved'),
+                distinct=True,
+            )
+        )
+        .values('name', 'verified_supplier_count')
+        .order_by('-verified_supplier_count', 'name')
+    )
+
     return JsonResponse({
+        # Legacy fields, kept for any other consumer of this endpoint.
         'pending_suppliers': Supplier.objects.filter(status__in=['Pending', 'Pending Review']).count(),
         'under_review_suppliers': Supplier.objects.filter(status='In Review').count(),
         'action_required_suppliers': Supplier.objects.filter(status='For Compliance').count(),
@@ -1234,7 +1337,132 @@ def admin_dashboard_summary(request):
         'total_purchase_requests': PurchaseRequest.objects.count(),
         'pending_purchase_requests': PurchaseRequest.objects.filter(status__in=['uploaded', 'in_review', 'matched']).count(),
         'approved_purchase_requests': PurchaseRequest.objects.filter(status='approved').count(),
+
+        'supplier_status_breakdown': _status_breakdown(Supplier.objects, KNOWN_SUPPLIER_STATUSES),
+        'supplier_category_breakdown': [
+            {'category': row['name'], 'count': row['verified_supplier_count']}
+            for row in supplier_category_breakdown
+        ],
+        'document_status_breakdown': _status_breakdown(
+            SupplierDocument.objects, KNOWN_DOCUMENT_STATUSES, field='verification_status'
+        ),
+        'pr_status_breakdown': _status_breakdown(
+            PurchaseRequest.objects, [choice[0] for choice in PurchaseRequest.STATUS_CHOICES]
+        ),
+        'pr_monthly_volume': _pr_monthly_volume(),
+        'rfq_stats': _rfq_stats(),
     })
+
+
+def _parse_date_range(request):
+    """Parse ``date_from``/``date_to`` (YYYY-MM-DD) query params into a Q filter, or None."""
+    date_from = parse_date(request.GET.get('date_from', '') or '')
+    date_to = parse_date(request.GET.get('date_to', '') or '')
+    q = Q()
+    if date_from:
+        q &= Q(created_at__date__gte=date_from)
+    if date_to:
+        q &= Q(created_at__date__lte=date_to)
+    return q
+
+
+class _Echo:
+    """A file-like object that returns what it's given, for streaming CSV rows."""
+
+    def write(self, value):
+        return value
+
+
+def _csv_stream_response(filename, header, rows):
+    writer = csv.writer(_Echo())
+
+    def generate():
+        yield writer.writerow(header)
+        for row in rows:
+            yield writer.writerow(row)
+
+    response = StreamingHttpResponse(generate(), content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_suppliers(request):
+    """Stream a CSV of suppliers, optionally filtered by status/category/date range."""
+    queryset = Supplier.objects.all().order_by('company_name')
+
+    status = request.GET.get('status', '').strip()
+    if status:
+        queryset = queryset.filter(status=status)
+
+    category = request.GET.get('category', '').strip()
+    if category:
+        queryset = queryset.filter(supplier_categories__category__name=category)
+
+    queryset = queryset.filter(_parse_date_range(request)).distinct()
+    queryset = queryset.prefetch_related('supplier_categories__category')
+
+    def rows():
+        for supplier in queryset.iterator(chunk_size=200):
+            categories = '; '.join(sc.category.name for sc in supplier.supplier_categories.all())
+            yield [
+                supplier.id,
+                supplier.company_name,
+                supplier.business_type,
+                supplier.tin,
+                supplier.contact_person,
+                supplier.contact_phone,
+                supplier.email,
+                supplier.status,
+                categories,
+                supplier.business_address,
+                supplier.created_at.strftime('%Y-%m-%d %H:%M') if supplier.created_at else '',
+            ]
+
+    header = [
+        'ID', 'Company Name', 'Business Type', 'TIN', 'Contact Person', 'Contact Phone',
+        'Email', 'Status', 'Categories', 'Business Address', 'Created At',
+    ]
+    return _csv_stream_response('suppliers.csv', header, rows())
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_purchase_requests(request):
+    """Stream a CSV of purchase requests, optionally filtered by status/category/date range."""
+    queryset = PurchaseRequest.objects.all().order_by('-created_at')
+
+    status = request.GET.get('status', '').strip()
+    if status:
+        queryset = queryset.filter(status=status)
+
+    category = request.GET.get('category', '').strip()
+    if category:
+        queryset = queryset.filter(category=category)
+
+    queryset = queryset.filter(_parse_date_range(request))
+
+    def rows():
+        for pr in queryset.iterator():
+            yield [
+                pr.id,
+                pr.pr_no or '',
+                pr.entity_name,
+                pr.category or '',
+                pr.office_section or '',
+                pr.status,
+                pr.grand_total,
+                pr.requested_by or '',
+                pr.date.strftime('%Y-%m-%d') if pr.date else '',
+                pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else '',
+            ]
+
+    header = [
+        'ID', 'PR No.', 'Entity Name', 'Category', 'Office/Section', 'Status',
+        'Grand Total', 'Requested By', 'PR Date', 'Created At',
+    ]
+    return _csv_stream_response('purchase_requests.csv', header, rows())
 
 
 @csrf_exempt
@@ -1397,6 +1625,7 @@ def supplier_register(request):
 
 @csrf_exempt
 @require_http_methods(["PATCH"])
+@require_auth(role='admin')
 def supplier_update_status(request, supplier_id: int):
     try:
         payload = json.loads(request.body.decode('utf-8'))
@@ -1477,6 +1706,7 @@ def _supplier_login_accounts(supplier):
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
+@require_auth(role='admin')
 def supplier_delete(request, supplier_id: int):
     """Permanently remove a supplier and everything attached to it.
 
@@ -1498,6 +1728,7 @@ def supplier_delete(request, supplier_id: int):
 # ─── SUPPLIER PORTAL ENDPOINTS ──────────────────────────────────────────────────
 
 @require_GET
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_matching_opportunities(request, supplier_id):
     """Get all Purchase Requests matching supplier's registered categories."""
     try:
@@ -1567,6 +1798,7 @@ def supplier_matching_opportunities(request, supplier_id):
 
 
 @require_GET
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_dashboard_summary(request, supplier_id):
     """Get summary data for supplier dashboard."""
     try:
@@ -1613,6 +1845,7 @@ def supplier_dashboard_summary(request, supplier_id):
 
 @csrf_exempt
 @require_http_methods(['POST'])
+@require_auth(role='supplier', owner_param='supplier_id')
 def quotation_attachment_upload(request, supplier_id, quotation_id):
     try:
         quotation = Quotation.objects.get(id=quotation_id, supplier_id=supplier_id)
@@ -1634,6 +1867,7 @@ def quotation_attachment_upload(request, supplier_id, quotation_id):
 
 @csrf_exempt
 @require_http_methods(['GET', 'POST'])
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_quotations(request, supplier_id):
     """Get supplier's quotations or submit a new quotation."""
     try:
@@ -1743,6 +1977,7 @@ def supplier_quotations(request, supplier_id):
 
 
 @require_GET
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_notifications(request, supplier_id):
     """Get supplier's notifications."""
     try:
@@ -1768,18 +2003,27 @@ def supplier_notifications(request, supplier_id):
 
 
 @require_POST
+@require_auth(role='supplier')
 def supplier_mark_notification_read(request, notification_id):
-    """Mark a notification as read."""
+    """Mark a notification as read.
+
+    ``notification_id`` alone doesn't carry a ``supplier_id`` for the
+    ``owner_param`` check on the decorator, so ownership is verified here
+    instead - a supplier may only mark their own notifications read.
+    """
     try:
         notification = Notification.objects.get(id=notification_id)
-        notification.is_read = True
-        notification.save()
-        return JsonResponse({'success': True})
     except Notification.DoesNotExist:
         return JsonResponse({'error': 'Notification not found'}, status=404)
+    if notification.supplier_id != request.auth_supplier_id:
+        return JsonResponse({'error': 'You do not have permission to access this notification.'}, status=403)
+    notification.is_read = True
+    notification.save()
+    return JsonResponse({'success': True})
 
 
 @require_http_methods(['GET', 'PATCH'])
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_profile(request, supplier_id):
     """Get or update supplier profile."""
     try:
@@ -1884,6 +2128,7 @@ def supplier_profile(request, supplier_id):
             return JsonResponse({'error': str(e)}, status=500)
 
 @require_POST
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_resubmit_document(request, supplier_id):
     """Store a replacement supplier document for BAC verification."""
     try:
@@ -1922,8 +2167,16 @@ def supplier_resubmit_document(request, supplier_id):
 
 
 @require_GET
+@require_auth()
 def purchase_request_details(request, pr_id):
-    """Get detailed information about a Purchase Request."""
+    """Get detailed information about a Purchase Request.
+
+    Quotations are commercially sensitive - a supplier competing on this PR
+    must never see another supplier's bid. Only an admin (BAC Secretariat)
+    sees every quotation; a supplier sees only their own, and a buyer sees
+    none (buyers never see supplier identities or quotations, matching the
+    rest of the buyer-facing API - see ``_buyer_pr_stage``).
+    """
     try:
         pr = PurchaseRequest.objects.get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
@@ -1942,13 +2195,21 @@ def purchase_request_details(request, pr_id):
             'category': item.category,
         })
 
+    all_quotations = pr.quotations.select_related('supplier').all()
+    if request.auth_role == 'admin':
+        visible_quotations = all_quotations
+    elif request.auth_role == 'supplier':
+        visible_quotations = [q for q in all_quotations if q.supplier_id == request.auth_supplier_id]
+    else:
+        visible_quotations = []
+
     quotations = [{
         'id': q.id, 'supplier_id': q.supplier_id,
         'supplier_name': q.supplier.company_name,
         'quoted_amount': float(q.quoted_amount), 'status': q.status,
         'attachment_filename': q.attachment_filename,
         'attachment_url': request.build_absolute_uri(f'/uploads/{q.attachment_filename}') if q.attachment_filename else '',
-    } for q in pr.quotations.select_related('supplier').all()]
+    } for q in visible_quotations]
 
     return JsonResponse({
         'id': pr.id,
@@ -1983,6 +2244,7 @@ def verify_recaptcha(request):
 # ─── PR Item Category Assignment ─────────────────────────────────────────────
 
 @require_GET
+@require_auth(role='admin')
 def pr_items_view(request, pr_id):
     """Return all line items for a given Purchase Request."""
     try:
@@ -2000,6 +2262,7 @@ def pr_items_view(request, pr_id):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='admin')
 def pr_items_assign_categories(request, pr_id):
     """Save the selected category for each Purchase Request item."""
     try:
@@ -2058,6 +2321,7 @@ def _item_brief(item):
 
 
 @require_GET
+@require_auth(role='admin')
 def pr_supplier_match(request, pr_id):
     """Category-grouped supplier matching for a Purchase Request.
 
@@ -2180,6 +2444,7 @@ def pr_supplier_match(request, pr_id):
 
 
 @require_GET
+@require_auth(role='admin')
 def pr_unmatched_list(request):
     """Return existing PRs that do not yet have a supplier quotation."""
     prs = (
@@ -2346,15 +2611,8 @@ def _rfq_number(today=None, lock=False):
     return f'RFQ-{year}-{highest + 1:04d}'
 
 
-def _request_role(request):
-    return (request.META.get('HTTP_X_USER_ROLE') or '').strip().lower()
-
-
-def _request_username(request):
-    return (request.META.get('HTTP_X_USER_USERNAME') or '').strip()
-
-
 @require_GET
+@require_auth(role='admin')
 def procurement_modes_view(request):
     """Suggested procurement modes offered on the RFQ preparation form.
 
@@ -2441,11 +2699,8 @@ def _sync_rfq_items(rfq, items):
 
 @csrf_exempt
 @require_http_methods(['GET', 'POST', 'PATCH'])
+@require_auth(role='admin')
 def admin_rfq(request, pr_id):
-    request_role = _request_role(request)
-    if request_role and request_role != 'admin':
-        return json_error('Admin access required to generate an RFQ.', 403)
-
     try:
         pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
@@ -2476,15 +2731,13 @@ def admin_rfq(request, pr_id):
     if supplier.status != 'Approved':
         return json_error('Supplier is not eligible because the supplier is not approved.', 400)
 
-    # A manual BAC selection is a deliberate override recorded for audit. It is
-    # accepted only from an admin/BAC user (header role is already gated above
-    # when present; require it explicitly for the override).
+    # A manual BAC selection is a deliberate override recorded for audit. The
+    # whole endpoint is admin-only (see decorator), so no separate check is
+    # needed here beyond identifying the selection type.
     is_manual_selection = (
         str(payload.get('selection_type') or '').strip() == RFQ.SELECTION_MANUAL_BAC
         or bool(payload.get('manual_selection'))
     )
-    if is_manual_selection and request_role != 'admin':
-        return json_error('Manual BAC supplier selection requires an authorized BAC user.', 403)
 
     # Resolve the procurement category group this RFQ serves and the exact PR
     # items it covers. Every RFQ now belongs to one category group and contains
@@ -2582,7 +2835,7 @@ def admin_rfq(request, pr_id):
                 purchase_request=pr,
                 supplier=supplier,
                 category=group_category,
-                created_by=User.objects.filter(username=_request_username(request)).first(),
+                created_by=request.auth_user,
                 subject=str(payload.get('subject') or default_subject).strip(),
                 message=str(payload.get('message') or default_message).strip(),
                 abc=abc_value.strip(),
@@ -2600,7 +2853,7 @@ def admin_rfq(request, pr_id):
         rfq.mode_of_procurement = mode_of_procurement
         rfq.quotation_basis = _resolve_quotation_basis(payload.get('quotation_basis'), rfq.quotation_basis or RFQ.QUOTATION_BASIS_LOT)
         rfq.additional_notes = str(payload.get('additional_notes') or rfq.additional_notes).strip()
-        rfq.created_by = rfq.created_by or User.objects.filter(username=_request_username(request)).first()
+        rfq.created_by = rfq.created_by or request.auth_user
         if not rfq.category_id:
             rfq.category = group_category
         # Keep the audit designation in sync when the caller restates it, but
@@ -2688,6 +2941,7 @@ def _manual_rfq_defaults(pr, manual_name):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='admin')
 def manual_rfq_create(request, pr_id):
     """Create (and issue) a manual RFQ for an unregistered supplier.
 
@@ -2700,9 +2954,6 @@ def manual_rfq_create(request, pr_id):
     Re-posting the same supplier name for the same PR returns the existing RFQ
     (same quotation number) unless ``force_new`` is true.
     """
-    if _request_role(request) != 'admin':
-        return json_error('Admin access is required to issue a manual RFQ.', 403)
-
     try:
         pr = PurchaseRequest.objects.prefetch_related('line_items').get(id=pr_id)
     except PurchaseRequest.DoesNotExist:
@@ -2753,7 +3004,7 @@ def manual_rfq_create(request, pr_id):
 
     subject_default, message_default = _manual_rfq_defaults(pr, manual_name)
     abc_value = str(payload.get('abc') or _format_peso(sum(float(i.total_cost or 0) for i in group_items))).strip()
-    issuer = User.objects.filter(username=_request_username(request)).first()
+    issuer = request.auth_user
 
     try:
         with transaction.atomic():
@@ -2789,14 +3040,12 @@ def manual_rfq_create(request, pr_id):
 
 
 @require_GET
+@require_auth(role='admin')
 def manual_rfq_list(request):
     """List manual / unregistered-supplier RFQs for the Admin "Manual RFQs" area.
 
     Search (``?search=``) matches supplier name, PR number and quotation number.
     """
-    if _request_role(request) and _request_role(request) != 'admin':
-        return json_error('Admin access required.', 403)
-
     search = normalize_text(request.GET.get('search') or '')
     rfqs = (
         RFQ.objects.filter(delivery_method=RFQ.DELIVERY_MANUAL)
@@ -2814,6 +3063,7 @@ def manual_rfq_list(request):
 
 
 @require_GET
+@require_auth(role='admin')
 def manual_rfq_pdf(request, rfq_id):
     """Stream the generated RFQ PDF, regenerating it if the file is missing.
 
@@ -2847,15 +3097,13 @@ def manual_rfq_pdf(request, rfq_id):
 
 @csrf_exempt
 @require_POST
+@require_auth(role='admin')
 def manual_rfq_completed(request, rfq_id):
     """Admin uploads the completed RFQ a manual supplier returned physically.
 
     Mirrors ``supplier_rfq_response`` (generated PDF untouched, completed stored
     separately) - quotation number and supplier name are never changed.
     """
-    if _request_role(request) != 'admin':
-        return json_error('Admin access is required.', 403)
-
     rfq = RFQ.objects.filter(id=rfq_id, delivery_method=RFQ.DELIVERY_MANUAL).select_related('purchase_request').first()
     if rfq is None:
         return json_error('Manual RFQ not found', 404)
@@ -2877,6 +3125,7 @@ def manual_rfq_completed(request, rfq_id):
 
 
 @require_GET
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_rfqs(request, supplier_id):
     try:
         supplier = Supplier.objects.get(id=supplier_id)
@@ -2892,6 +3141,7 @@ RFQ_RESPONSE_OPEN_STATUSES = {RFQ.STATUS_SENT, RFQ.STATUS_QUOTATION_RECEIVED}
 
 @csrf_exempt
 @require_POST
+@require_auth(role='supplier', owner_param='supplier_id')
 def supplier_rfq_response(request, supplier_id, rfq_id):
     """Supplier uploads (or replaces) the completed, signed RFQ PDF.
 
@@ -2942,6 +3192,7 @@ def supplier_rfq_response(request, supplier_id, rfq_id):
 
 
 @require_GET
+@require_auth(role='admin')
 def admin_rfq_responses(request):
     """All issued RFQs with their generated + submitted documents, for the BAC
     RFQ Management screen. Role-gated like the other admin RFQ endpoints.
@@ -2951,10 +3202,6 @@ def admin_rfq_responses(request):
     sent / received / awaiting counts, which is what the PR-centered RFQ
     Management interface consumes.
     """
-    request_role = _request_role(request)
-    if request_role and request_role != 'admin':
-        return json_error('Admin access required.', 403)
-
     status_filter = (request.GET.get('status') or '').strip().lower()
     search = (request.GET.get('search') or '').strip()
     group_by = (request.GET.get('group_by') or '').strip().lower()
