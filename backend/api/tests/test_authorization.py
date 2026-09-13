@@ -136,6 +136,79 @@ class AdminExportEndpointAuthTests(TestCase):
         self.assertNotIn('2026-09-011', body)
 
 
+class AdminPrNumberFormatEndpointAuthTests(TestCase):
+    """admin_pr_number_format (GET/PATCH): admin-only PR numbering settings."""
+
+    def test_unauthenticated_requests_are_rejected_with_401(self):
+        self.assertEqual(self.client.get('/api/admin/pr-number-format/').status_code, 401)
+        self.assertEqual(self.client.patch('/api/admin/pr-number-format/', data='{}', content_type='application/json').status_code, 401)
+
+    def test_non_admin_requests_are_rejected_with_403(self):
+        _login_as(self.client, 'buyer')
+        self.assertEqual(self.client.get('/api/admin/pr-number-format/').status_code, 403)
+        self.assertEqual(self.client.patch('/api/admin/pr-number-format/', data='{}', content_type='application/json').status_code, 403)
+
+    def test_admin_can_view_and_update_settings(self):
+        _login_as(self.client, 'admin')
+        get_response = self.client.get('/api/admin/pr-number-format/')
+        self.assertEqual(get_response.status_code, 200)
+        self.assertIn('pattern', get_response.json())
+
+        patch_response = self.client.patch(
+            '/api/admin/pr-number-format/',
+            data=json.dumps({'prefix': 'CTU', 'sequence_digits': 4}),
+            content_type='application/json',
+        )
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.json()['prefix'], 'CTU')
+        self.assertEqual(patch_response.json()['sequence_digits'], 4)
+
+
+class AdminPrNotificationSettingsEndpointAuthTests(TestCase):
+    """admin_pr_notification_settings (GET/PATCH): admin-only PR email settings."""
+
+    def test_unauthenticated_requests_are_rejected_with_401(self):
+        self.assertEqual(self.client.get('/api/admin/pr-notification-settings/').status_code, 401)
+        self.assertEqual(
+            self.client.patch('/api/admin/pr-notification-settings/', data='{}', content_type='application/json').status_code,
+            401,
+        )
+
+    def test_non_admin_requests_are_rejected_with_403(self):
+        _login_as(self.client, 'buyer')
+        self.assertEqual(self.client.get('/api/admin/pr-notification-settings/').status_code, 403)
+        self.assertEqual(
+            self.client.patch('/api/admin/pr-notification-settings/', data='{}', content_type='application/json').status_code,
+            403,
+        )
+
+    def test_admin_can_view_and_update_settings(self):
+        _login_as(self.client, 'admin')
+        get_response = self.client.get('/api/admin/pr-notification-settings/')
+        self.assertEqual(get_response.status_code, 200)
+        self.assertIn('mute_automatic_transitions', get_response.json())
+
+        patch_response = self.client.patch(
+            '/api/admin/pr-notification-settings/',
+            data=json.dumps({'notify_matched': False, 'mute_automatic_transitions': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertFalse(patch_response.json()['notify_matched'])
+        self.assertTrue(patch_response.json()['mute_automatic_transitions'])
+        # Untouched fields are left as-is, not reset to defaults.
+        self.assertTrue(patch_response.json()['notify_rejected'])
+
+    def test_non_boolean_value_is_rejected(self):
+        _login_as(self.client, 'admin')
+        response = self.client.patch(
+            '/api/admin/pr-notification-settings/',
+            data=json.dumps({'enabled': 'yes'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+
 class BuyerEndpointAuthTests(TestCase):
     """next_pr_number_preview as a representative buyer-only endpoint."""
 

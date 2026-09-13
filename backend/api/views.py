@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import logging
 import re
 import secrets
 import sys
@@ -46,7 +47,7 @@ except ImportError:  # pragma: no cover
     from backend.ocr import signature_detection
 
 from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory
-from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, Quotation, Notification, RFQ, RFQItem
+from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, PRNumberFormat, PRNotificationSettings, Quotation, Notification, RFQ, RFQItem
 from .auth import require_auth
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
@@ -67,6 +68,8 @@ from api.rfq.procurement_modes import (
 
 UPLOADS_DIR = Path(settings.BASE_DIR) / 'uploads'
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger(__name__)
 
 
 ocr_service = TextractOCRService(language='en')
@@ -306,27 +309,123 @@ def json_error(message: str, status: int = 400):
     return JsonResponse({'success': False, 'message': message}, status=status)
 
 
-PR_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}-\d{3}$')
+def get_pr_number_format():
+    """The single admin-configurable PR numbering settings row.
+
+    Normally seeded by migration 0026, but guard against environments where
+    it is missing (same pattern as the PRNumberSequence lock row below) so
+    numbering never 500s.
+    """
+    config, _ = PRNumberFormat.objects.get_or_create(key='global')
+    return config
 
 
-def next_pr_number(today=None, lock=False):
+def _pr_number_structural_regex(config):
+    """Build a regex that matches PR numbers in `config`'s current shape.
+
+    Named groups ``year``/``month`` (only present when the format embeds
+    them) and ``seq`` let callers recover the sequence number - and, where
+    the date is embedded, which calendar period a given number belongs to -
+    without depending on any one hardcoded format.
+    """
+    sep = re.escape(config.separator)
+    parts = []
+    if config.prefix:
+        parts.append(re.escape(config.prefix))
+    if config.date_granularity in (PRNumberFormat.DATE_GRANULARITY_YEAR, PRNumberFormat.DATE_GRANULARITY_YEAR_MONTH):
+        parts.append(r'(?P<year>\d{4})')
+    if config.date_granularity == PRNumberFormat.DATE_GRANULARITY_YEAR_MONTH:
+        parts.append(r'(?P<month>\d{2})')
+    parts.append(rf'(?P<seq>\d{{{config.sequence_digits}}})')
+    return re.compile(rf'^{sep.join(parts)}$')
+
+
+def _compose_pr_number(config, today, sequence):
+    parts = []
+    if config.prefix:
+        parts.append(config.prefix)
+    if config.date_granularity in (PRNumberFormat.DATE_GRANULARITY_YEAR, PRNumberFormat.DATE_GRANULARITY_YEAR_MONTH):
+        parts.append(f'{today:%Y}')
+    if config.date_granularity == PRNumberFormat.DATE_GRANULARITY_YEAR_MONTH:
+        parts.append(f'{today:%m}')
+    parts.append(f'{sequence:0{config.sequence_digits}d}')
+    return config.separator.join(parts)
+
+
+def _pr_number_pattern_description(config):
+    """Human-readable shape of the current format, e.g. 'YYYY-MM-NNN'."""
+    parts = []
+    if config.prefix:
+        parts.append(config.prefix)
+    if config.date_granularity == PRNumberFormat.DATE_GRANULARITY_YEAR_MONTH:
+        parts.extend(['YYYY', 'MM'])
+    elif config.date_granularity == PRNumberFormat.DATE_GRANULARITY_YEAR:
+        parts.append('YYYY')
+    parts.append('N' * config.sequence_digits)
+    return config.separator.join(parts)
+
+
+def _row_matches_current_period(config, match, today, created_at):
+    """Whether an existing PR number belongs to the period the sequence is
+    currently counting for (per `config.reset_period`).
+
+    Prefers the date embedded in the number itself (matching the pre-config
+    behavior of scanning by the printed year/month), since that's what a
+    human reading the number would expect "the current period" to mean. Only
+    a format axis that isn't embedded in the number at all (e.g.
+    date_granularity='none' with reset_period='yearly') falls back to the
+    row's own timestamp - there is no other way to know which period such a
+    number belongs to.
+    """
+    if config.reset_period == PRNumberFormat.RESET_NEVER:
+        return True
+
+    year_group = match.groupdict().get('year')
+    if year_group is not None:
+        if int(year_group) != today.year:
+            return False
+    elif created_at is None or created_at.year != today.year:
+        return False
+
+    if config.reset_period == PRNumberFormat.RESET_MONTHLY:
+        month_group = match.groupdict().get('month')
+        if month_group is not None:
+            if int(month_group) != today.month:
+                return False
+        elif created_at is None or created_at.month != today.month:
+            return False
+
+    return True
+
+
+def _highest_existing_sequence(config, today):
+    regex = _pr_number_structural_regex(config)
+    highest = 0
+    rows = PurchaseRequest.objects.exclude(pr_no__isnull=True).exclude(pr_no='').values_list('pr_no', 'created_at')
+    for pr_no, created_at in rows:
+        match = regex.fullmatch(pr_no or '')
+        if not match:
+            # Numbers generated under a since-changed format won't match the
+            # current pattern - skip rather than crash, so a mid-year format
+            # change never breaks generation for historical PRs.
+            continue
+        if not _row_matches_current_period(config, match, today, created_at):
+            continue
+        highest = max(highest, int(match.group('seq')))
+    return highest
+
+
+def next_pr_number(today=None, lock=False, config=None):
     today = today or timezone.localdate()
-    prefix = f'{today:%Y-%m}-'
-    year_prefix = f'{today:%Y}-'
+    config = config or get_pr_number_format()
     if lock:
         # The advisory-lock row is normally seeded by migration 0009, but guard
         # against environments where it is missing so numbering never 500s.
         PRNumberSequence.objects.get_or_create(key='global')
         PRNumberSequence.objects.select_for_update().filter(key='global').first()
 
-    highest = 0
-    valid_number = re.compile(rf'^{re.escape(year_prefix)}\d{{2}}-(\d{{3}})$')
-    for value in PurchaseRequest.objects.filter(pr_no__startswith=year_prefix).values_list('pr_no', flat=True):
-        match = valid_number.fullmatch(value or '')
-        if match:
-            highest = max(highest, int(match.group(1)))
-
-    return f'{prefix}{highest + 1:03d}'
+    highest = _highest_existing_sequence(config, today)
+    return _compose_pr_number(config, today, highest + 1)
 
 
 def generate_pr_number():
@@ -336,12 +435,20 @@ def generate_pr_number():
 _RFQ_NUMBER_RE = re.compile(r'^RFQ-(\d{4})-(\d+)$')
 
 
-def validate_custom_pr_number(value):
+def validate_custom_pr_number(value, config=None):
+    config = config or get_pr_number_format()
     number = str(value or '').strip()
-    if not PR_NUMBER_PATTERN.fullmatch(number):
+    match = _pr_number_structural_regex(config).fullmatch(number)
+    if not match:
         return None
+
+    year = match.groupdict().get('year')
+    month = match.groupdict().get('month')
     try:
-        datetime.strptime(number[:7], '%Y-%m')
+        if month is not None:
+            datetime.strptime(f'{year}-{month}', '%Y-%m')
+        elif year is not None:
+            datetime.strptime(year, '%Y')
     except ValueError:
         return None
     return number
@@ -351,6 +458,85 @@ def validate_custom_pr_number(value):
 @require_auth(role='buyer')
 def next_pr_number_preview(request):
     return JsonResponse({'pr_no': next_pr_number()})
+
+
+PR_NUMBER_SEQUENCE_DIGITS_MIN = 2
+PR_NUMBER_SEQUENCE_DIGITS_MAX = 6
+PR_NUMBER_MAX_PREFIX_LENGTH = 20
+PR_NUMBER_MAX_SEPARATOR_LENGTH = 5
+
+
+def _serialize_pr_number_format(config, today=None):
+    today = today or timezone.localdate()
+    next_sequence = _highest_existing_sequence(config, today) + 1
+    return {
+        'prefix': config.prefix,
+        'date_granularity': config.date_granularity,
+        'separator': config.separator,
+        'sequence_digits': config.sequence_digits,
+        'reset_period': config.reset_period,
+        'pattern': _pr_number_pattern_description(config),
+        'preview': _compose_pr_number(config, today, next_sequence),
+        # Exposed so the admin settings panel can preview an unsaved edit's
+        # effect on the *string shape* without re-deriving "what the next
+        # sequence number is" client-side.
+        'next_sequence': next_sequence,
+    }
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH"])
+@require_auth(role='admin')
+def admin_pr_number_format(request):
+    """View/update the admin-configurable PR numbering settings (single row)."""
+    config = get_pr_number_format()
+
+    if request.method == 'GET':
+        return JsonResponse(_serialize_pr_number_format(config))
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    valid_granularities = {choice[0] for choice in PRNumberFormat.DATE_GRANULARITY_CHOICES}
+    valid_resets = {choice[0] for choice in PRNumberFormat.RESET_PERIOD_CHOICES}
+
+    date_granularity = payload.get('date_granularity', config.date_granularity)
+    if date_granularity not in valid_granularities:
+        return json_error(f"date_granularity must be one of {sorted(valid_granularities)}", 400)
+
+    reset_period = payload.get('reset_period', config.reset_period)
+    if reset_period not in valid_resets:
+        return json_error(f"reset_period must be one of {sorted(valid_resets)}", 400)
+
+    try:
+        sequence_digits = int(payload.get('sequence_digits', config.sequence_digits))
+    except (TypeError, ValueError):
+        return json_error('sequence_digits must be an integer', 400)
+    if not (PR_NUMBER_SEQUENCE_DIGITS_MIN <= sequence_digits <= PR_NUMBER_SEQUENCE_DIGITS_MAX):
+        return json_error(
+            f'sequence_digits must be between {PR_NUMBER_SEQUENCE_DIGITS_MIN} and {PR_NUMBER_SEQUENCE_DIGITS_MAX}',
+            400,
+        )
+
+    prefix = str(payload.get('prefix', config.prefix) or '').strip()
+    if len(prefix) > PR_NUMBER_MAX_PREFIX_LENGTH:
+        return json_error(f'prefix must be at most {PR_NUMBER_MAX_PREFIX_LENGTH} characters', 400)
+
+    separator = payload.get('separator', config.separator)
+    separator = '' if separator is None else str(separator)
+    if len(separator) > PR_NUMBER_MAX_SEPARATOR_LENGTH:
+        return json_error(f'separator must be at most {PR_NUMBER_MAX_SEPARATOR_LENGTH} characters', 400)
+
+    config.prefix = prefix
+    config.date_granularity = date_granularity
+    config.separator = separator
+    config.sequence_digits = sequence_digits
+    config.reset_period = reset_period
+    config.save()
+
+    return JsonResponse(_serialize_pr_number_format(config))
 
 
 @csrf_exempt
@@ -515,7 +701,8 @@ def create_pr(request):
     items = fields.get('requested_items') or fields.get('line_items') or fields.get('items') or []
     numbering_mode = str(fields.get('prNumberMode') or fields.get('pr_number_mode') or 'automatic').lower()
     review_only = bool(fields.get('reviewOnly') or fields.get('review_only'))
-    custom_pr_number = validate_custom_pr_number(fields.get('prNumber') or fields.get('pr_no'))
+    pr_number_config = get_pr_number_format()
+    custom_pr_number = validate_custom_pr_number(fields.get('prNumber') or fields.get('pr_no'), config=pr_number_config)
 
     declaration_ack = _declaration_acknowledged(fields)
 
@@ -558,7 +745,7 @@ def create_pr(request):
         assigned_pr_number = None
     elif numbering_mode == 'custom':
         if not custom_pr_number:
-            return json_error('Custom PR number must use YYYY-MM-NNN format', 400)
+            return json_error(f'Custom PR number must use {_pr_number_pattern_description(pr_number_config)} format', 400)
         if PurchaseRequest.objects.filter(pr_no=custom_pr_number).exists():
             return json_error('PR number is already assigned', 409)
     elif numbering_mode != 'automatic':
@@ -861,6 +1048,151 @@ def pr_list(request):
     return JsonResponse(records, safe=False)
 
 
+PR_STATUS_LABELS = dict(PurchaseRequest.STATUS_CHOICES)
+
+# 'uploaded' has no toggle - it's the PR's initial state, never something a
+# status change *reaches* as a transition worth muting.
+_PR_STATUS_NOTIFY_FIELDS = {
+    PurchaseRequest.STATUS_IN_REVIEW: 'notify_in_review',
+    PurchaseRequest.STATUS_MATCHED: 'notify_matched',
+    PurchaseRequest.STATUS_APPROVED: 'notify_approved',
+    PurchaseRequest.STATUS_REJECTED: 'notify_rejected',
+}
+
+
+def get_pr_notification_settings():
+    """The single admin-configurable PR notification settings row.
+
+    Normally seeded by migration 0027, but guard against environments where
+    it is missing (same pattern as get_pr_number_format) so a status update
+    never 500s.
+    """
+    settings_row, _ = PRNotificationSettings.objects.get_or_create(key='global')
+    return settings_row
+
+
+def _is_status_notification_enabled(settings_row, status):
+    field_name = _PR_STATUS_NOTIFY_FIELDS.get(status)
+    if field_name is None:
+        return True
+    return getattr(settings_row, field_name)
+
+
+def _notify_pr_status_change(pr, old_status, new_status, *, is_automatic=False):
+    """Email the submitting End User when their PR's status changes.
+
+    ``is_automatic`` marks calls coming from pr_items_assign_categories's
+    automatic matched/in_review flip (as opposed to an explicit admin
+    decision via pr_update_status) - only that path is affected by the
+    ``mute_automatic_transitions`` setting.
+
+    Best-effort only - the status update is the primary action and must
+    succeed regardless of whether this notification can be sent, so every
+    failure mode here (no matching user, no email on file, SMTP error) is
+    logged and swallowed rather than raised.
+    """
+    if old_status == new_status:
+        return
+
+    notification_settings = get_pr_notification_settings()
+    if not notification_settings.enabled:
+        return
+    if is_automatic and notification_settings.mute_automatic_transitions:
+        return
+    if not _is_status_notification_enabled(notification_settings, new_status):
+        return
+
+    submitted_by = (pr.submitted_by or '').strip()
+    if not submitted_by:
+        return
+
+    user = User.objects.filter(username=submitted_by, is_active=True).first()
+    if user is None or not user.email:
+        logger.info(
+            "Skipping PR status email for PR %s: no active user with an email on file for submitted_by=%r",
+            pr.pr_no or pr.id, submitted_by,
+        )
+        return
+
+    old_label = PR_STATUS_LABELS.get(old_status, old_status)
+    new_label = PR_STATUS_LABELS.get(new_status, new_status)
+    pr_label = pr.pr_no or f'#{pr.id}'
+
+    body_lines = [
+        f'The status of your Purchase Request {pr_label} has changed.',
+        '',
+        f'Previous status: {old_label}',
+        f'New status: {new_label}',
+    ]
+    if new_status == PurchaseRequest.STATUS_REJECTED:
+        body_lines.append('')
+        body_lines.append(
+            'This Purchase Request was rejected. Please contact the BAC Secretariat for the '
+            'reason and next steps before resubmitting.'
+        )
+    body_lines.append('')
+    body_lines.append('This is an automated notification from eProcure. Please do not reply to this email.')
+
+    email = EmailMessage(
+        subject=f'Purchase Request {pr_label} status update: {new_label}',
+        body='\n'.join(body_lines),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    try:
+        email.send(fail_silently=True)
+    except Exception:
+        logger.exception("Failed to send PR status change email for PR %s", pr_label)
+
+
+def _serialize_pr_notification_settings(settings_row):
+    return {
+        'enabled': settings_row.enabled,
+        'notify_in_review': settings_row.notify_in_review,
+        'notify_matched': settings_row.notify_matched,
+        'notify_approved': settings_row.notify_approved,
+        'notify_rejected': settings_row.notify_rejected,
+        'mute_automatic_transitions': settings_row.mute_automatic_transitions,
+    }
+
+
+_PR_NOTIFICATION_BOOLEAN_FIELDS = [
+    'enabled', 'notify_in_review', 'notify_matched', 'notify_approved', 'notify_rejected',
+    'mute_automatic_transitions',
+]
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH"])
+@require_auth(role='admin')
+def admin_pr_notification_settings(request):
+    """View/update the admin-configurable PR status email settings (single row)."""
+    settings_row = get_pr_notification_settings()
+
+    if request.method == 'GET':
+        return JsonResponse(_serialize_pr_notification_settings(settings_row))
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    updates = {}
+    for field in _PR_NOTIFICATION_BOOLEAN_FIELDS:
+        if field not in payload:
+            continue
+        value = payload[field]
+        if not isinstance(value, bool):
+            return json_error(f'{field} must be a boolean', 400)
+        updates[field] = value
+
+    for field, value in updates.items():
+        setattr(settings_row, field, value)
+    settings_row.save()
+
+    return JsonResponse(_serialize_pr_notification_settings(settings_row))
+
+
 @csrf_exempt
 @require_http_methods(["PATCH"])
 @require_auth(role='admin')
@@ -875,9 +1207,15 @@ def pr_update_status(request, pr_id: int):
     if status not in allowed:
         return json_error('Invalid PR status', 400)
 
-    updated = PurchaseRequest.objects.filter(id=pr_id).update(status=status)
-    if not updated:
+    try:
+        pr = PurchaseRequest.objects.get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
         return json_error('Purchase Request not found', 404)
+
+    old_status = pr.status
+    pr.status = status
+    pr.save(update_fields=['status'])
+    _notify_pr_status_change(pr, old_status, status)
 
     return JsonResponse({'success': True, 'id': pr_id, 'status': status})
 
@@ -911,9 +1249,10 @@ def pr_update(request, pr_id: int):
             numbering_mode = str(payload.get('pr_number_mode') or 'automatic').lower()
             if finalize_review and not pr.pr_no:
                 if numbering_mode == 'custom':
-                    assigned_number = validate_custom_pr_number(payload.get('custom_pr_number'))
+                    pr_number_config = get_pr_number_format()
+                    assigned_number = validate_custom_pr_number(payload.get('custom_pr_number'), config=pr_number_config)
                     if not assigned_number:
-                        return json_error('Custom PR number must use YYYY-MM-NNN format', 400)
+                        return json_error(f'Custom PR number must use {_pr_number_pattern_description(pr_number_config)} format', 400)
                     if PurchaseRequest.objects.filter(pr_no=assigned_number).exclude(id=pr.id).exists():
                         return json_error('PR number is already assigned', 409)
                 else:
@@ -2279,6 +2618,8 @@ def pr_items_assign_categories(request, pr_id):
     if not isinstance(assignments, list):
         return json_error('assignments must be a list', 400)
 
+    old_status = pr.status
+
     with transaction.atomic():
         for a in assignments:
             item_id = a.get('item_id')
@@ -2304,6 +2645,8 @@ def pr_items_assign_categories(request, pr_id):
         )
         pr.status = PurchaseRequest.STATUS_MATCHED if all_items_categorized else PurchaseRequest.STATUS_IN_REVIEW
         pr.save(update_fields=['category', 'status'])
+
+    _notify_pr_status_change(pr, old_status, pr.status, is_automatic=True)
 
     return JsonResponse({'success': True, 'category': pr.category or '', 'status': pr.status})
 

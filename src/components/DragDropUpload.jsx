@@ -64,8 +64,6 @@ const getCurrentDate = () => {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
-const PR_NUMBER_PATTERN = /^\d{4}-\d{2}-\d{3}$/
-
 function normalizeOcrDate(value, rawText = '') {
   const source = String(value || '').trim() || String(rawText || '')
   const match = source.match(/\b(\d{1,2})\s*[\/-]\s*(\d{1,2})\s*[\/-]\s*(\d{4})\b/)
@@ -591,8 +589,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   }
 
   async function savePurchaseRequest() {
-    if (numberingMode === 'custom' && !PR_NUMBER_PATTERN.test(customPrNumber.trim())) {
-      setNumberError('Use the format YYYY-MM-NNN.')
+    if (numberingMode === 'custom' && !customPrNumber.trim()) {
+      setNumberError('Enter a custom PR number.')
       return
     }
     if (!systemChecksPass) {
@@ -942,10 +940,9 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                   setCustomPrNumber(event.target.value)
                   setNumberError('')
                 }}
-                placeholder="YYYY-MM-NNN"
-                inputMode="numeric"
+                placeholder="e.g. 2026-09-001"
               />
-              <small>Use the format YYYY-MM-NNN.</small>
+              <small>Must match the PR number format configured in PR Numbering settings.</small>
             </div>
           )}
           {numberError && <div className="field-error">{numberError}</div>}

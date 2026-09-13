@@ -2807,6 +2807,17 @@ const Admin = () => {
   const [exportingSuppliers, setExportingSuppliers] = React.useState(false)
   const [exportingPrs, setExportingPrs] = React.useState(false)
   const [exportError, setExportError] = React.useState('')
+  const [prNumberFormat, setPrNumberFormat] = React.useState(null)
+  const [prNumberFormatDraft, setPrNumberFormatDraft] = React.useState(null)
+  const [prNumberFormatLoading, setPrNumberFormatLoading] = React.useState(false)
+  const [prNumberFormatSaving, setPrNumberFormatSaving] = React.useState(false)
+  const [prNumberFormatError, setPrNumberFormatError] = React.useState('')
+  const [prNumberFormatMessage, setPrNumberFormatMessage] = React.useState('')
+  const [prNotificationSettingsDraft, setPrNotificationSettingsDraft] = React.useState(null)
+  const [prNotificationSettingsLoading, setPrNotificationSettingsLoading] = React.useState(false)
+  const [prNotificationSettingsSaving, setPrNotificationSettingsSaving] = React.useState(false)
+  const [prNotificationSettingsError, setPrNotificationSettingsError] = React.useState('')
+  const [prNotificationSettingsMessage, setPrNotificationSettingsMessage] = React.useState('')
   const [editingStatusById, setEditingStatusById] = React.useState({})
   const [pendingStatusById, setPendingStatusById] = React.useState({})
   const [supplierRegistrations, setSupplierRegistrations] = React.useState([])
@@ -2980,6 +2991,111 @@ const Admin = () => {
     await downloadCsvExport(apiBaseUrl, '/api/admin/export/purchase-requests/', 'purchase_requests.csv', setExportError)
     setExportingPrs(false)
   }, [apiBaseUrl])
+
+  const loadPrNumberFormat = React.useCallback(async () => {
+    setPrNumberFormatLoading(true)
+    setPrNumberFormatError('')
+    try {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/pr-number-format/`)
+      if (!res.ok) throw new Error('Failed to load PR numbering settings')
+      const data = await res.json()
+      setPrNumberFormat(data)
+      setPrNumberFormatDraft(data)
+    } catch (error) {
+      console.error(error)
+      setPrNumberFormatError(error?.message || 'Failed to load PR numbering settings')
+    } finally {
+      setPrNumberFormatLoading(false)
+    }
+  }, [apiBaseUrl])
+
+  const handleSavePrNumberFormat = async (event) => {
+    event.preventDefault()
+    setPrNumberFormatSaving(true)
+    setPrNumberFormatError('')
+    setPrNumberFormatMessage('')
+    try {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/pr-number-format/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prefix: prNumberFormatDraft.prefix,
+          date_granularity: prNumberFormatDraft.date_granularity,
+          separator: prNumberFormatDraft.separator,
+          sequence_digits: Number(prNumberFormatDraft.sequence_digits),
+          reset_period: prNumberFormatDraft.reset_period,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed to save PR numbering settings')
+      setPrNumberFormat(data)
+      setPrNumberFormatDraft(data)
+      setPrNumberFormatMessage('PR numbering settings saved.')
+    } catch (error) {
+      console.error(error)
+      setPrNumberFormatError(error?.message || 'Failed to save PR numbering settings')
+    } finally {
+      setPrNumberFormatSaving(false)
+    }
+  }
+
+  // Mirrors backend _compose_pr_number() so the panel can preview the effect
+  // of an unsaved edit without a round trip; the authoritative value always
+  // comes back from the GET/PATCH response once loaded/saved.
+  const previewPrNumber = (draft, sequence) => {
+    if (!draft) return ''
+    const now = new Date()
+    const parts = []
+    if (draft.prefix) parts.push(draft.prefix)
+    if (draft.date_granularity === 'year' || draft.date_granularity === 'year_month') {
+      parts.push(String(now.getFullYear()))
+    }
+    if (draft.date_granularity === 'year_month') {
+      parts.push(String(now.getMonth() + 1).padStart(2, '0'))
+    }
+    const digits = Number(draft.sequence_digits) || 1
+    parts.push(String(sequence).padStart(digits, '0'))
+    return parts.join(draft.separator ?? '')
+  }
+
+  const loadPrNotificationSettings = React.useCallback(async () => {
+    setPrNotificationSettingsLoading(true)
+    setPrNotificationSettingsError('')
+    try {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/pr-notification-settings/`)
+      if (!res.ok) throw new Error('Failed to load PR notification settings')
+      const data = await res.json()
+      setPrNotificationSettingsDraft(data)
+    } catch (error) {
+      console.error(error)
+      setPrNotificationSettingsError(error?.message || 'Failed to load PR notification settings')
+    } finally {
+      setPrNotificationSettingsLoading(false)
+    }
+  }, [apiBaseUrl])
+
+  const handleSavePrNotificationSettings = async (event) => {
+    event.preventDefault()
+    setPrNotificationSettingsSaving(true)
+    setPrNotificationSettingsError('')
+    setPrNotificationSettingsMessage('')
+    try {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/pr-notification-settings/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prNotificationSettingsDraft),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.message || 'Failed to save PR notification settings')
+      setPrNotificationSettingsDraft(data)
+      setPrNotificationSettingsMessage('PR notification settings saved.')
+    } catch (error) {
+      console.error(error)
+      setPrNotificationSettingsError(error?.message || 'Failed to save PR notification settings')
+    } finally {
+      setPrNotificationSettingsSaving(false)
+    }
+  }
 
   const loadSupplierDetails = React.useCallback(async (supplierId) => {
     try {
@@ -3287,7 +3403,13 @@ const Admin = () => {
     if (currentTab === 'pr-monitoring') {
       loadPrRecords()
     }
-  }, [currentTab, loadBuyerAccounts, loadDashboardStats, loadPrRecords, loadSupplierRegistrations])
+    if (currentTab === 'pr-numbering-settings') {
+      loadPrNumberFormat()
+    }
+    if (currentTab === 'pr-notification-settings') {
+      loadPrNotificationSettings()
+    }
+  }, [currentTab, loadBuyerAccounts, loadDashboardStats, loadPrNotificationSettings, loadPrNumberFormat, loadPrRecords, loadSupplierRegistrations])
 
   const handlePrStatusChange = async (prId, nextStatus) => {
     setPrSavingId(prId)
@@ -3504,6 +3626,10 @@ const Admin = () => {
           { section: 'ACCOUNTS', items: [
             { id: 'suppliers', label: 'Supplier Management', icon: Users },
             { id: 'buyer-accounts', label: 'End User Accounts', icon: Users },
+          ] },
+          { section: 'SETTINGS', items: [
+            { id: 'pr-numbering-settings', label: 'PR Numbering', icon: Settings },
+            { id: 'pr-notification-settings', label: 'PR Notifications', icon: Bell },
           ] },
         ]}
       />
@@ -4093,6 +4219,187 @@ const Admin = () => {
           </div>
         )}
 
+        {currentTab === 'pr-numbering-settings' && (
+          <div className="supplier-section">
+            <div className="supplier-header">
+              <h1>PR Numbering</h1>
+              <p>Configure how Purchase Request numbers are formatted and when the running sequence resets.</p>
+            </div>
+            <div className="buyer-account-layout">
+              <section className="card buyer-account-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Number Format</h2>
+                    <p className="supplier-subtext">Changes apply to PR numbers generated from now on - existing numbers are never rewritten.</p>
+                  </div>
+                </div>
+                {prNumberFormatLoading && !prNumberFormatDraft ? (
+                  <SkeletonRows count={5} />
+                ) : !prNumberFormatDraft ? (
+                  <div className="dashboard-empty-state"><span>Unable to load PR numbering settings.</span></div>
+                ) : (
+                  <form className="buyer-account-form" onSubmit={handleSavePrNumberFormat}>
+                    <label className="form-field">
+                      <span>Prefix (optional)</span>
+                      <input
+                        value={prNumberFormatDraft.prefix}
+                        onChange={(event) => setPrNumberFormatDraft((prev) => ({ ...prev, prefix: event.target.value }))}
+                        placeholder="e.g. CTU"
+                        maxLength={20}
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Date in number</span>
+                      <select
+                        value={prNumberFormatDraft.date_granularity}
+                        onChange={(event) => setPrNumberFormatDraft((prev) => ({ ...prev, date_granularity: event.target.value }))}
+                      >
+                        <option value="none">No date</option>
+                        <option value="year">Year only (YYYY)</option>
+                        <option value="year_month">Year and month (YYYY-MM)</option>
+                      </select>
+                    </label>
+                    <label className="form-field">
+                      <span>Separator</span>
+                      <input
+                        value={prNumberFormatDraft.separator}
+                        onChange={(event) => setPrNumberFormatDraft((prev) => ({ ...prev, separator: event.target.value }))}
+                        placeholder="-"
+                        maxLength={5}
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Sequence digits</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={6}
+                        value={prNumberFormatDraft.sequence_digits}
+                        onChange={(event) => setPrNumberFormatDraft((prev) => ({ ...prev, sequence_digits: event.target.value }))}
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Sequence resets</span>
+                      <select
+                        value={prNumberFormatDraft.reset_period}
+                        onChange={(event) => setPrNumberFormatDraft((prev) => ({ ...prev, reset_period: event.target.value }))}
+                      >
+                        <option value="never">Never (accumulate forever)</option>
+                        <option value="yearly">Yearly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </label>
+
+                    <div className="number-preview" aria-live="polite">
+                      <span>Next PR number will look like</span>
+                      <strong>{previewPrNumber(prNumberFormatDraft, prNumberFormat?.next_sequence || 1)}</strong>
+                      <small>Recalculated once you save, based on existing PR numbers.</small>
+                    </div>
+
+                    {prNumberFormatError && <div className="alert alert-error" role="alert">{prNumberFormatError}</div>}
+                    {prNumberFormatMessage && <div className="alert alert-success" role="status">{prNumberFormatMessage}</div>}
+                    <div className="form-actions">
+                      <button type="submit" className="btn btn-primary" disabled={prNumberFormatSaving}>
+                        {prNumberFormatSaving ? 'Saving...' : 'Save PR Numbering Settings'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+
+        {currentTab === 'pr-notification-settings' && (
+          <div className="supplier-section">
+            <div className="supplier-header">
+              <h1>PR Notifications</h1>
+              <p>Configure when End Users are emailed about their Purchase Request's status.</p>
+            </div>
+            <div className="buyer-account-layout">
+              <section className="card buyer-account-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>Status Email Settings</h2>
+                    <p className="supplier-subtext">Applies to notifications going forward - already-sent emails are unaffected.</p>
+                  </div>
+                </div>
+                {prNotificationSettingsLoading && !prNotificationSettingsDraft ? (
+                  <SkeletonRows count={5} />
+                ) : !prNotificationSettingsDraft ? (
+                  <div className="dashboard-empty-state"><span>Unable to load PR notification settings.</span></div>
+                ) : (
+                  <form className="buyer-account-form" onSubmit={handleSavePrNotificationSettings}>
+                    <div className="settings-toggle-list">
+                      <label className="settings-toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={prNotificationSettingsDraft.enabled}
+                          onChange={(event) => setPrNotificationSettingsDraft((prev) => ({ ...prev, enabled: event.target.checked }))}
+                        />
+                        <span>
+                          <span className="settings-toggle-label">Enable PR status email notifications</span>
+                          <small className="settings-toggle-hint">Master switch. Turn off to stop all PR status-change emails to End Users.</small>
+                        </span>
+                      </label>
+                    </div>
+
+                    <hr className="settings-toggle-divider" />
+
+                    <div className="settings-toggle-list">
+                      <span className="form-field-label">Notify when a PR reaches</span>
+                      {[
+                        ['notify_in_review', 'In Review'],
+                        ['notify_matched', 'Matched'],
+                        ['notify_approved', 'Approved'],
+                        ['notify_rejected', 'Rejected'],
+                      ].map(([field, label]) => (
+                        <label key={field} className={`settings-toggle-row ${!prNotificationSettingsDraft.enabled ? 'is-disabled' : ''}`}>
+                          <input
+                            type="checkbox"
+                            disabled={!prNotificationSettingsDraft.enabled}
+                            checked={prNotificationSettingsDraft[field]}
+                            onChange={(event) => setPrNotificationSettingsDraft((prev) => ({ ...prev, [field]: event.target.checked }))}
+                          />
+                          <span className="settings-toggle-label">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <hr className="settings-toggle-divider" />
+
+                    <div className="settings-toggle-list">
+                      <label className={`settings-toggle-row ${!prNotificationSettingsDraft.enabled ? 'is-disabled' : ''}`}>
+                        <input
+                          type="checkbox"
+                          disabled={!prNotificationSettingsDraft.enabled}
+                          checked={prNotificationSettingsDraft.mute_automatic_transitions}
+                          onChange={(event) => setPrNotificationSettingsDraft((prev) => ({ ...prev, mute_automatic_transitions: event.target.checked }))}
+                        />
+                        <span>
+                          <span className="settings-toggle-label">Don't notify for automatic status changes during category assignment</span>
+                          <small className="settings-toggle-hint">
+                            Prevents repeated emails while an admin is actively re-categorizing a PR's items (the automatic Matched/In Review
+                            flip). Explicit status changes made from PR Review &amp; Monitoring always still notify, per the toggles above.
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+
+                    {prNotificationSettingsError && <div className="alert alert-error" role="alert">{prNotificationSettingsError}</div>}
+                    {prNotificationSettingsMessage && <div className="alert alert-success" role="status">{prNotificationSettingsMessage}</div>}
+                    <div className="form-actions">
+                      <button type="submit" className="btn btn-primary" disabled={prNotificationSettingsSaving}>
+                        {prNotificationSettingsSaving ? 'Saving...' : 'Save PR Notification Settings'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+
         {currentTab === 'assign-categories' && workflowPrId && (
           <AssignCategories
             prId={workflowPrId}
@@ -4386,8 +4693,8 @@ const Admin = () => {
                             ) : (
                               <div className="pr-review-custom-number">
                                 <label htmlFor="review-custom-pr-number">Custom PR Number</label>
-                                <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="YYYY-MM-NNN" inputMode="numeric" />
-                                <small>Use the format YYYY-MM-NNN.</small>
+                                <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="e.g. 2026-09-001" />
+                                <small>Must match the PR number format configured in PR Numbering settings.</small>
                               </div>
                             )}
                           </div>

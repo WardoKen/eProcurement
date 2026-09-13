@@ -127,6 +127,75 @@ class PRNumberSequence(models.Model):
     key = models.CharField(max_length=20, primary_key=True, default='global')
 
 
+class PRNumberFormat(models.Model):
+    """Admin-configurable PR number format (single-row settings, key='global').
+
+    Numbers are composed as ``[prefix][sep][YYYY][sep][MM][sep]NNN...`` with
+    whichever of those segments ``date_granularity`` includes, zero-padded to
+    ``sequence_digits``. ``reset_period`` controls when the running sequence
+    starts back over at 1 - it is independent of ``date_granularity`` because
+    an admin may want the count to reset yearly/monthly even if the printed
+    number doesn't itself show a date (see api.views for how that's resolved).
+    """
+
+    DATE_GRANULARITY_NONE = 'none'
+    DATE_GRANULARITY_YEAR = 'year'
+    DATE_GRANULARITY_YEAR_MONTH = 'year_month'
+    DATE_GRANULARITY_CHOICES = [
+        (DATE_GRANULARITY_NONE, 'No date'),
+        (DATE_GRANULARITY_YEAR, 'Year only (YYYY)'),
+        (DATE_GRANULARITY_YEAR_MONTH, 'Year and month (YYYY-MM)'),
+    ]
+
+    RESET_NEVER = 'never'
+    RESET_YEARLY = 'yearly'
+    RESET_MONTHLY = 'monthly'
+    RESET_PERIOD_CHOICES = [
+        (RESET_NEVER, 'Never (accumulate forever)'),
+        (RESET_YEARLY, 'Yearly'),
+        (RESET_MONTHLY, 'Monthly'),
+    ]
+
+    key = models.CharField(max_length=20, primary_key=True, default='global')
+    prefix = models.CharField(max_length=20, blank=True, default='')
+    date_granularity = models.CharField(
+        max_length=12, choices=DATE_GRANULARITY_CHOICES, default=DATE_GRANULARITY_YEAR_MONTH
+    )
+    separator = models.CharField(max_length=5, default='-')
+    sequence_digits = models.PositiveSmallIntegerField(default=3)
+    reset_period = models.CharField(max_length=10, choices=RESET_PERIOD_CHOICES, default=RESET_YEARLY)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"PR Number Format ({self.key})"
+
+
+class PRNotificationSettings(models.Model):
+    """Admin-configurable PR status-change email settings (single-row, key='global').
+
+    ``enabled`` is the master switch; each ``notify_*`` flag additionally
+    gates whether *reaching that specific status* sends an email at all -
+    'uploaded' has no toggle since it's the PR's initial state, never a
+    transition. ``mute_automatic_transitions`` only affects the automatic
+    matched/in_review flip in ``pr_items_assign_categories`` (which can fire
+    repeatedly while an admin is actively re-categorizing items); an explicit
+    status change via ``pr_update_status`` always still follows the
+    per-status toggles above, regardless of this flag.
+    """
+
+    key = models.CharField(max_length=20, primary_key=True, default='global')
+    enabled = models.BooleanField(default=True)
+    notify_in_review = models.BooleanField(default=True)
+    notify_matched = models.BooleanField(default=True)
+    notify_approved = models.BooleanField(default=True)
+    notify_rejected = models.BooleanField(default=True)
+    mute_automatic_transitions = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"PR Notification Settings ({self.key})"
+
+
 class PurchaseRequestItem(models.Model):
     purchase_request = models.ForeignKey(PurchaseRequest, related_name="line_items", on_delete=models.CASCADE)
     stock_property_no = models.CharField(max_length=100, blank=True, null=True)

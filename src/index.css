@@ -6342,8 +6342,61 @@ textarea:focus {
 }
 
 .buyer-account-form .alert,
-.buyer-account-form .form-actions {
+.buyer-account-form .form-actions,
+.buyer-account-form .number-preview,
+.buyer-account-form .settings-toggle-list {
   grid-column: 1 / -1;
+}
+
+.buyer-account-form .number-preview {
+  margin: 0;
+}
+
+.settings-toggle-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.settings-toggle-row input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.settings-toggle-row.is-disabled {
+  opacity: 0.6;
+}
+
+.settings-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-toggle-hint {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.settings-toggle-divider {
+  grid-column: 1 / -1;
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
 }
 
 .buyer-account-form .buyer-password-field {
