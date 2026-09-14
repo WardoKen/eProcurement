@@ -40,7 +40,7 @@ import {
   Building2,
   HelpCircle,
 } from 'lucide-react'
-import logo from './assets/logo.png'
+import logo from './assets/logo.webp'
 import DragDropUpload from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import Sidebar from './components/Sidebar'
@@ -6116,7 +6116,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
   if (loading) return <SkeletonRows count={5} />
 
   if (selectedOpp) {
-    return <OpportunityDetail opportunity={selectedOpp} onBack={() => setSelectedOpp(null)} apiBaseUrl={apiBaseUrl} supplierId={supplierId} />
+    return <OpportunityDetail opportunity={selectedOpp} onBack={() => setSelectedOpp(null)} apiBaseUrl={apiBaseUrl} />
   }
 
   return (
@@ -6167,7 +6167,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
                       className="action-link"
                       onClick={() => setSelectedOpp(opp)}
                     >
-                      {opp.quotation_status ? 'View Quotation' : 'View Details'}
+                      View Details
                     </button>
                   </td>
                 </tr>
@@ -6186,9 +6186,8 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
   )
 }
 
-const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl, supplierId }) => {
+const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
   const [prDetails, setPrDetails] = React.useState(null)
-  const [showQuotationForm, setShowQuotationForm] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
@@ -6282,179 +6281,11 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl, supplierId }) => {
         </div>
       </div>
 
-      {!opportunity.quotation_status && (
-        <div className="detail-card">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowQuotationForm(true)}
-          >
-            <Send size={16} /> Submit Quotation
-          </button>
-        </div>
-      )}
-
-      {showQuotationForm && (
-        <QuotationForm
-          supplierId={supplierId}
-          prId={opportunity.id}
-          apiBaseUrl={apiBaseUrl}
-          onClose={() => setShowQuotationForm(false)}
-          onSuccess={() => {
-            setShowQuotationForm(false)
-            onBack()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-const QuotationForm = ({ supplierId, prId, rfqId, apiBaseUrl, onClose, onSuccess }) => {
-  const [formData, setFormData] = React.useState({
-    quoted_amount: '',
-    estimated_delivery_days: '',
-    warranty_months: '',
-    remarks: '',
-  })
-  const [submitting, setSubmitting] = React.useState(false)
-  const [error, setError] = React.useState(null)
-  const [quotationFile, setQuotationFile] = React.useState(null)
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (quotationFile) {
-      const check = validateFile(quotationFile, UPLOAD_KINDS.COMPLETED_RFQ)
-      if (!check.ok) { setError(check.error); return }
-    }
-    setSubmitting(true)
-    setError(null)
-
-    try {
-      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          purchase_request_id: prId,
-          rfq_id: rfqId,
-          quoted_amount: parseFloat(formData.quoted_amount),
-          estimated_delivery_days: formData.estimated_delivery_days ? parseInt(formData.estimated_delivery_days) : null,
-          warranty_months: formData.warranty_months ? parseInt(formData.warranty_months) : null,
-        }),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        if (quotationFile && result.quotation_id) {
-          const upload = new FormData()
-          upload.append('file', quotationFile)
-          const fileResponse = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/${result.quotation_id}/attachment/`, { method: 'POST', body: upload })
-          if (!fileResponse.ok) throw new Error('Quotation submitted, but the PDF upload failed.')
-        }
-        alert('Quotation submitted successfully!')
-        onSuccess()
-      } else {
-        const data = await response.json().catch(() => ({}))
-        setError(data.error || data.message || `Failed to submit quotation (${response.status})`)
-      }
-    } catch (err) {
-      setError(err?.message || 'Unable to reach the quotation service. Please try again.')
-      console.error(err)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Submit Quotation</h3>
-          <button type="button" className="modal-close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <form className="modal-form" onSubmit={handleSubmit}>
-          {error && <div className="error-message">{error}</div>}
-
-          <div className="form-group">
-            <label htmlFor="quoted_amount">Quoted Amount *</label>
-            <input
-              type="number"
-              id="quoted_amount"
-              min="0"
-              step="0.01"
-              required
-              value={formData.quoted_amount}
-              onChange={(e) => setFormData({ ...formData, quoted_amount: e.target.value })}
-              placeholder="Enter amount in PHP"
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="estimated_delivery_days">Est. Delivery (days)</label>
-              <input
-                type="number"
-                id="estimated_delivery_days"
-                min="0"
-                value={formData.estimated_delivery_days}
-                onChange={(e) => setFormData({ ...formData, estimated_delivery_days: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="warranty_months">Warranty (months)</label>
-              <input
-                type="number"
-                id="warranty_months"
-                min="0"
-                value={formData.warranty_months}
-                onChange={(e) => setFormData({ ...formData, warranty_months: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="remarks">Remarks</label>
-            <textarea
-              id="remarks"
-              rows="4"
-              value={formData.remarks}
-              onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              placeholder="Any additional notes for the end user..."
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="quotation-file">Completed RFQ PDF *</label>
-            <input
-              id="quotation-file"
-              type="file"
-              accept={acceptAttr(UPLOAD_KINDS.COMPLETED_RFQ)}
-              required
-              onChange={(e) => {
-                const picked = e.target.files?.[0] || null
-                if (picked) {
-                  const check = validateFile(picked, UPLOAD_KINDS.COMPLETED_RFQ)
-                  if (!check.ok) { setQuotationFile(null); setError(check.error); e.target.value = ''; return }
-                }
-                setQuotationFile(picked); setError(null)
-              }}
-            />
-            <small>Download the RFQ, fill it out, save it as PDF, then upload it here. Accepted file type: {acceptedTypesLabel(UPLOAD_KINDS.COMPLETED_RFQ)}.</small>
-          </div>
-
-          <div className="modal-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit Quotation'}
-            </button>
-          </div>
-        </form>
+      <div className="detail-card">
+        <p className="supplier-subtext">
+          To respond to this opportunity, wait for the RFQ from the BAC and submit your quotation from the{' '}
+          <strong>RFQs</strong> tab.
+        </p>
       </div>
     </div>
   )

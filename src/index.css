@@ -1027,14 +1027,24 @@ summary:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   margin-top: 16px;
   padding-right: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-nav-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .admin-nav-item {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   border: 1px solid rgba(148, 163, 184, 0.3);
   background: rgba(15, 23, 42, 0.4);
   color: #e2e8f0;
@@ -1048,6 +1058,9 @@ summary:focus-visible {
 }
 
 .admin-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

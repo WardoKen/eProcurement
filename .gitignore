@@ -38,17 +38,8 @@ venv/
 # Python virtual environment
 .venv/
 
-.env
-.venv/
 backend/uploads/
 debug/
-
-# Environment variables
-.env
-.env.*
-
-# Virtual environments
-.venv/
 
 backend/staticfiles/
 
