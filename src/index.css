@@ -320,7 +320,7 @@ summary:focus-visible {
 }
 
 .bac-news-dot.active {
-  background: #ffffff;
+  background: var(--card);
   transform: scale(1.15);
 }
 
@@ -351,7 +351,7 @@ summary:focus-visible {
 .dashboard-section ul,
 .admin-checklist ul {
   margin: 12px 0 0;
-  color: #334155;
+  color: var(--text-secondary);
   padding-left: 18px;
 }
 
@@ -440,7 +440,7 @@ summary:focus-visible {
 
 .btn-secondary,
 .btn-outline {
-  background: #ffffff;
+  background: var(--card);
   border-color: #d1d5db;
   color: #1e293b;
 }
@@ -515,7 +515,7 @@ summary:focus-visible {
   width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   color: #0f172a;
   padding: 12px;
   font-size: 15px;
@@ -579,7 +579,7 @@ summary:focus-visible {
   overflow: hidden;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .login-instructions {
@@ -622,7 +622,7 @@ summary:focus-visible {
 
 .login-form-container {
   padding: 30px;
-  background: #ffffff;
+  background: var(--card);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -801,7 +801,7 @@ summary:focus-visible {
   height: 36px;
   border: 1px solid #cbd5e1;
   border-radius: 9px;
-  background: #ffffff;
+  background: var(--card);
   color: #1e293b;
   cursor: pointer;
   font-weight: 500;
@@ -837,7 +837,7 @@ summary:focus-visible {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .pr-loading,
@@ -1158,7 +1158,7 @@ summary:focus-visible {
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1209,7 +1209,7 @@ summary:focus-visible {
 .admin-table-entry {
   border-bottom: 1px solid var(--border);
   font-size: 14px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .admin-entry-id {
@@ -1253,7 +1253,7 @@ summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1287,7 +1287,7 @@ summary:focus-visible {
 .pr-monitor-table-row {
   border-top: 1px solid #edf2f7;
   font-size: 13px;
-  background: #ffffff;
+  background: var(--card);
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1323,7 +1323,7 @@ summary:focus-visible {
   padding: 6px 8px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-size: 13px;
 }
 
@@ -1341,7 +1341,7 @@ summary:focus-visible {
   justify-content: center;
   border-radius: 8px;
   border: 1px solid #cbd5e1;
-  background: #ffffff;
+  background: var(--card);
   color: #334155;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
@@ -1525,7 +1525,7 @@ summary:focus-visible {
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid #dbe2ea;
-  background: #ffffff;
+  background: var(--card);
   color: #334155;
   font-size: 13px;
   font-weight: 600;
@@ -1721,7 +1721,7 @@ summary:focus-visible {
 .supplier-category-badge {
   border: 1px solid #b9deda;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--card);
   color: #195c61;
   padding: 8px 11px;
   line-height: 1.25;
@@ -1731,7 +1731,7 @@ summary:focus-visible {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 12px 14px;
-  background: #ffffff;
+  background: var(--card);
   color: #334155;
 }
 
@@ -1744,7 +1744,7 @@ summary:focus-visible {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 14px;
-  background: #ffffff;
+  background: var(--card);
   display: grid;
   gap: 12px;
 }
@@ -1772,7 +1772,7 @@ summary:focus-visible {
   min-width: 82px;
   min-height: 36px;
   border: 1px solid #b8c8ce;
-  background: #ffffff;
+  background: var(--card);
   color: #526976;
 }
 
@@ -1823,7 +1823,7 @@ summary:focus-visible {
   width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   padding: 10px 12px;
   font-size: 14px;
   color: #0f172a;
@@ -1872,7 +1872,7 @@ summary:focus-visible {
 
 .supplier-action-btn-outline {
   border-color: #d1d5db;
-  background: #fff;
+  background: var(--card);
   color: #334155;
 }
 
@@ -1893,7 +1893,7 @@ summary:focus-visible {
 .supplier-preview-modal {
   width: min(960px, 100%);
   max-height: 90vh;
-  background: #ffffff;
+  background: var(--card);
   border-radius: 16px;
   box-shadow: var(--shadow-lg);
   padding: 18px;
@@ -1912,7 +1912,7 @@ summary:focus-visible {
   max-height: calc(100vh - 40px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: #ffffff;
+  background: var(--card);
   color: #193247;
   border: 1px solid #cbd7dc;
   border-top: 4px solid #c58b3a;
@@ -1934,7 +1934,7 @@ summary:focus-visible {
 }
 
 .supplier-review-modal .supplier-panel-title {
-  color: #102f43;
+  color: var(--heading);
   font-size: 21px;
   font-weight: 700;
 }
@@ -1978,7 +1978,7 @@ summary:focus-visible {
 .supplier-match-card {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--card);
   padding: 12px;
   display: grid;
   gap: 10px;
@@ -2238,7 +2238,7 @@ summary:focus-visible {
 }
 
 .faq-item {
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px;
@@ -2340,7 +2340,7 @@ summary:focus-visible {
   padding: 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: #0f172a;
   font-size: 13px;
   font-family: inherit;
@@ -2369,7 +2369,7 @@ summary:focus-visible {
   padding: 8px 28px 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: #0f172a;
   font-size: 13px;
   font-family: inherit;
@@ -2422,7 +2422,7 @@ summary:focus-visible {
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
   overflow-y: auto;
   z-index: 1200;
@@ -2605,7 +2605,7 @@ summary:focus-visible {
   place-items: center;
   text-align: center;
   gap: 8px;
-  color: #334155;
+  color: var(--text-secondary);
 }
 
 .dropzone-file-row {
@@ -2666,7 +2666,8 @@ summary:focus-visible {
   gap: 10px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
-  background: #f8fafc;
+  background: var(--teal-tint);
+  color: var(--heading);
 }
 
 .panel-header h3 {
@@ -2715,7 +2716,7 @@ summary:focus-visible {
   padding: 12px;
   border: 1px solid #dbe4ee;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .pr-review-number-preview span,
@@ -2818,7 +2819,7 @@ summary:focus-visible {
   width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   color: #0f172a;
   padding: 18px 12px 10px;
   font-size: 14px;
@@ -2838,7 +2839,7 @@ summary:focus-visible {
   font-size: 13px;
   pointer-events: none;
   transition: all 0.2s ease;
-  background: #ffffff;
+  background: var(--card);
   padding: 0 4px;
 }
 
@@ -2903,6 +2904,29 @@ summary:focus-visible {
   border-color: #93c5fd;
 }
 
+/* End User PR upload screen - extracted fields are view-only; BAC review
+   keeps the normal editable styling (this class is never applied there). */
+.floating-field.is-readonly input,
+.floating-field.is-readonly textarea,
+.requested-items-table input[readonly],
+.requested-items-table textarea[readonly] {
+  background: var(--surface-muted, #f1f5f9);
+  color: #334155;
+  border-color: #e2e8f0;
+  cursor: default;
+  box-shadow: none;
+}
+
+.floating-field.is-readonly input:focus,
+.floating-field.is-readonly textarea:focus {
+  box-shadow: none;
+  border-color: #e2e8f0;
+}
+
+.pr-readonly-note {
+  margin: 4px 0 16px;
+}
+
 .signature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2914,7 +2938,7 @@ summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  background: #ffffff;
+  background: var(--card);
   display: grid;
   gap: 10px;
 }
@@ -3354,7 +3378,7 @@ summary:focus-visible {
   height: 32px;
   border-radius: 999px;
   border: 1px solid #d1d5db;
-  background: #ffffff;
+  background: var(--card);
   color: #dc2626;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -3425,7 +3449,7 @@ summary:focus-visible {
 .g-recaptcha-box {
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   padding: 10px;
 }
 
@@ -3592,7 +3616,7 @@ summary:focus-visible {
   gap: 24px;
   padding: 0 24px;
   height: 70px;
-  background: #ffffff;
+  background: var(--card);
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   position: sticky;
@@ -3879,7 +3903,7 @@ body {
 .info-card, .home-notices, .process-step { border-radius: 3px; box-shadow: none; }
 .info-card { border-top: 3px solid var(--teal); }
 .home-notices { border-left: 3px solid var(--gold); }
-.process-step { position: relative; padding: 18px 18px 18px 48px; background: rgba(255,255,255,.82); }
+.process-step { position: relative; padding: 18px 18px 18px 48px; background: var(--card); }
 /* The timeline lives in a dedicated left gutter, clear of the step text. */
 .process-step::after { content: none; }
 .process-step::before { content: none; }
@@ -3892,7 +3916,7 @@ body {
 .btn, .btn-primary, .btn-secondary, .btn-outline, .btn-login, .btn-danger, .btn-sm { border-radius: 3px; font-weight: 700; letter-spacing: .015em; }
 .btn-primary, .btn-login { background: var(--teal); border-color: var(--teal); }
 .btn-primary:hover, .btn-login:hover { background: #095d57; border-color: #095d57; }
-.btn-secondary, .btn-outline { background: #fff; }
+.btn-secondary, .btn-outline { background: var(--card); }
 
 .enterprise-table thead th, .opportunity-table th, .admin-table th, .items-table th { background: #e3ebec; color: #28485b; font-size: 10px; letter-spacing: .09em; }
 .enterprise-table tbody tr:hover, .opportunity-table tbody tr:hover, .admin-table tbody tr:hover { background: #edf7f5; }
@@ -3901,8 +3925,8 @@ body {
 
 input, select, textarea { border-color: #afc2c9; background: #fffefb; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(15,118,110,.13); }
-.dropzone { border: 1px dashed #6e969e; border-radius: 3px; background: #f9fcfa; }
-.dropzone[data-drag="true"] { border-color: var(--teal); background: #e9f6f3; }
+.dropzone { border: 1px dashed #6e969e; border-radius: 3px; background: var(--bg); }
+.dropzone[data-drag="true"] { border-color: var(--teal); background: var(--teal-tint); }
 .modal-content, .supplier-preview-modal { border-radius: 4px; border-top: 4px solid var(--gold); }
 
 @media (max-width: 768px) {
@@ -3946,7 +3970,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   height: 36px;
   object-fit: contain;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--card);
   padding: 3px;
 }
 
@@ -4016,7 +4040,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .supplier-header h2 {
   margin-bottom: 6px;
-  color: #173042;
+  color: var(--heading);
   font-size: 30px;
   font-weight: 700;
 }
@@ -4028,7 +4052,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .supplier-status-card {
   padding: 24px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid #d9e3e5;
   border-top: 4px solid #e7b65a;
   border-radius: 10px;
@@ -4064,7 +4088,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 }
 
 .stat-value {
-  color: #173042;
+  color: var(--heading);
   font-size: 24px;
 }
 
@@ -4075,7 +4099,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .supplier-section > h3,
 .supplier-section > .supplier-header + h3 {
-  color: #173042;
+  color: var(--heading);
 }
 
 .opportunities-grid {
@@ -4157,7 +4181,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   align-items: center;
   gap: 16px;
   padding: 16px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -4211,7 +4235,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .opportunity-card {
   padding: 16px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -4531,7 +4555,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .detail-card {
   padding: 20px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -4613,7 +4637,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   max-width: 520px;
@@ -4658,7 +4682,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   width: 100%;
   height: 280px;
   border: 0;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .pr-edit-signatories {
@@ -4882,7 +4906,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .profile-card {
   padding: 20px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -4976,7 +5000,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   padding: 9px 10px;
   border: 1px solid #d9e3e5;
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--card);
   color: var(--text);
   cursor: pointer;
 }
@@ -5014,7 +5038,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .profile-form {
   padding: 20px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -5033,7 +5057,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   display: flex;
   gap: 12px;
   padding: 14px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -5111,7 +5135,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   padding: 0 10px;
   border: 1px solid var(--line, #d1d5db);
   border-radius: 5px;
-  background: #fff;
+  background: var(--card);
   color: var(--muted, #64748b);
 }
 
@@ -5129,7 +5153,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   font-size: 13px;
   border: 1px solid var(--line, #d1d5db);
   border-radius: 5px;
-  background: #fff;
+  background: var(--card);
 }
 
 .rfq-mgmt-groups {
@@ -5141,7 +5165,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 .rfq-mgmt-group {
   border: 1px solid var(--line, #d1d5db);
   border-radius: 4px;
-  background: #fff;
+  background: var(--card);
   overflow: hidden;
 }
 
@@ -5323,7 +5347,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   padding: 12px 14px;
   border: 1px solid var(--line, #e2e8f0);
   border-radius: 4px;
-  background: #fff;
+  background: var(--card);
 }
 
 .rfq-mgmt-doc-row + .rfq-mgmt-doc-row {
@@ -5338,7 +5362,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 /* Settings Styles */
 .settings-section {
   padding: 20px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   margin-bottom: 16px;
@@ -5389,7 +5413,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 20px;
@@ -5527,7 +5551,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--card);
   font-weight: 700;
 }
 
@@ -5563,7 +5587,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   border-radius: 12px;
   padding: 12px 13px;
   font: inherit;
-  background: #fff;
+  background: var(--card);
 }
 
 .form-field textarea {
@@ -5589,7 +5613,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   border-radius: 12px;
   padding: 12px 13px;
   font: inherit;
-  background: #fff;
+  background: var(--card);
 }
 
 .category-groups {
@@ -5601,7 +5625,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  background: #fff;
+  background: var(--card);
 }
 
 .category-group-header {
@@ -5852,7 +5876,7 @@ textarea {
 .supplier-header h2,
 .admin-header h1,
 .dashboard-header h1 {
-  color: #173042;
+  color: var(--heading);
   letter-spacing: 0;
 }
 
@@ -5979,7 +6003,7 @@ textarea {
 
 .btn-secondary,
 .btn-outline {
-  background: #ffffff;
+  background: var(--card);
   border-color: #c7d5d8;
   color: #315064;
 }
@@ -6002,8 +6026,8 @@ textarea,
 .pr-status-select {
   border-color: #c7d5d8;
   border-radius: 8px;
-  background: #ffffff;
-  color: #173042;
+  background: var(--card);
+  color: var(--text);
 }
 
 input:focus,
@@ -6113,7 +6137,7 @@ textarea:focus {
   border: 1px solid #d9e3e5;
   border-left: 4px solid #14b8a6;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -6238,7 +6262,7 @@ textarea:focus {
   padding: 18px;
   border: 1px solid #d9e3e5;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -6546,7 +6570,7 @@ textarea:focus {
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -6707,7 +6731,7 @@ textarea:focus {
   height: 22px;
   border-radius: 50%;
   border: 2px solid #c7d5d8;
-  background: #ffffff;
+  background: var(--card);
   font-size: 11px;
   font-weight: 800;
   color: #94a3b8;
@@ -6865,7 +6889,7 @@ textarea:focus {
 
 .modal-header h2,
 .modal-header h3 {
-  color: #173042;
+  color: var(--heading);
 }
 
 .modal-actions {
@@ -7013,7 +7037,7 @@ textarea:focus {
 
 .btn-secondary {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   color: var(--text);
   padding: 10px 14px;
   border-radius: 10px;
@@ -7380,7 +7404,7 @@ h4,
 
 .admin-brand-mark {
   background: #c58b3a;
-  color: #102f43;
+  color: var(--navy);
   border-radius: 5px;
 }
 
@@ -7435,7 +7459,7 @@ h4,
 .page-content h1 {
   font-size: 28px;
   font-weight: 700;
-  color: #102f43;
+  color: var(--heading);
 }
 
 .admin-card,
@@ -7467,7 +7491,7 @@ h4,
 }
 
 .admin-card-value {
-  color: #102f43;
+  color: var(--navy);
 }
 
 .btn,
@@ -7745,7 +7769,7 @@ textarea:focus-visible {
 }
 
 .faq-item {
-  background: #ffffff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 16px;
@@ -7901,6 +7925,13 @@ textarea:focus-visible {
   --text-secondary: #5b6b78;
   --text-muted: #8a97a1;
 
+  /* Heading/emphasis text color. Kept separate from --navy because --navy
+     is also used as a fixed dark background fill (sidebar, top navbar, the
+     news slider panel) that should stay dark in both themes, whereas
+     heading text needs to invert to a light color in dark mode so it stays
+     legible on --card/--surface. */
+  --heading: var(--navy);
+
   /* Legacy aliases so untouched rules elsewhere in the file keep working */
   --primary: var(--teal);
   --primary-soft: var(--teal-soft);
@@ -7939,7 +7970,7 @@ body {
   margin: 0;
   font-size: 26px;
   font-weight: 700;
-  color: var(--navy);
+  color: var(--heading);
   letter-spacing: -0.01em;
 }
 
@@ -7947,7 +7978,7 @@ body {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: var(--navy);
+  color: var(--heading);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -7986,7 +8017,7 @@ body {
 .status-text {
   font-size: 13px;
   font-weight: 600;
-  color: var(--navy);
+  color: var(--heading);
 }
 
 .required-mark {
@@ -8035,7 +8066,7 @@ body {
 .btn-outline {
   background: var(--surface);
   border-color: var(--border-strong);
-  color: var(--navy);
+  color: var(--heading);
   box-shadow: none;
 }
 
@@ -8188,7 +8219,7 @@ body {
 .items-table th,
 .pr-monitor-table-head {
   background: var(--teal-tint);
-  color: var(--navy);
+  color: var(--heading);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -8280,7 +8311,7 @@ textarea:focus-visible,
 }
 
 .empty-state h3 {
-  color: var(--navy);
+  color: var(--heading);
 }
 
 .empty-state svg {
@@ -8361,7 +8392,7 @@ textarea:focus-visible,
 .admin-header h1,
 .dashboard-header h1,
 .page-content h1 {
-  color: var(--navy);
+  color: var(--heading);
 }
 
 /* ── PR OCR/signature review: document + extracted-fields split ── */
@@ -8389,7 +8420,7 @@ textarea:focus-visible,
   min-height: 420px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--card);
   object-fit: contain;
 }
 
@@ -8463,7 +8494,7 @@ textarea:focus-visible,
 .wizard-step.active {
   background: var(--teal-tint);
   border-color: var(--teal);
-  color: var(--navy);
+  color: var(--heading);
 }
 
 .wizard-step-number {
@@ -8487,4 +8518,165 @@ textarea:focus-visible,
   display: block;
   padding: 0 0 var(--space-2);
   color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Dark mode
+
+   Overrides the canonical token block above (line ~7867) for anything that
+   already reads its colors from those variables - cards, buttons, badges,
+   tables, forms, modals, empty/skeleton states, the wizard and notifications
+   all already do, so they adapt automatically. A few older, portal-specific
+   sections earlier in this file paint literal hex colors instead of using
+   variables and won't repaint here; this covers the shared chrome and the
+   majority of actual surface area.
+
+   Two ways to end up in dark mode:
+   - No explicit choice (`--root` has no data-theme attribute): follow the
+     OS-level preference via prefers-color-scheme.
+   - An explicit choice from the theme toggle: `[data-theme="dark"]` /
+     `[data-theme="light"]` on <html>, which always wins over the OS setting.
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* --navy stays fixed (not overridden here) - it's the dark chrome
+       background for the sidebar/navbar/news-slider, which stays dark in
+       both themes. --heading is the one that inverts, for heading text
+       placed on --card/--surface. */
+    --heading: #dbe8f0;
+
+    --teal: #4fd8c8;
+    --teal-soft: #7fe4d8;
+    --teal-tint: #10302c;
+
+    --gold: #e8b93f;
+    --gold-hover: #f2ca66;
+    --gold-tint: #3a2f10;
+    --on-gold: #1c1706;
+
+    --success: #4ade80;
+    --success-tint: #10301e;
+    --warning: #fbbf24;
+    --warning-tint: #3a2c0c;
+    --danger: #f87171;
+    --danger-tint: #3a1616;
+    --info: #4fd8c8;
+    --info-tint: #10302c;
+    --neutral: #9aa7b3;
+    --neutral-tint: #1e2733;
+
+    --bg: #0e1a24;
+    --surface: #16242f;
+    --border: #26394a;
+    --border-strong: #354d61;
+    --text: #eaf1f6;
+    --text-secondary: #b7c6d1;
+    --text-muted: #869aa8;
+
+    --primary: var(--teal);
+    --primary-soft: var(--teal-soft);
+    --muted: var(--text-secondary);
+    --card: var(--surface);
+    --ring: rgba(79, 216, 200, 0.32);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.28);
+    --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.44);
+    --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.56);
+  }
+}
+
+:root[data-theme="dark"] {
+  --heading: #dbe8f0;
+
+  --teal: #4fd8c8;
+  --teal-soft: #7fe4d8;
+  --teal-tint: #10302c;
+
+  --gold: #e8b93f;
+  --gold-hover: #f2ca66;
+  --gold-tint: #3a2f10;
+  --on-gold: #1c1706;
+
+  --success: #4ade80;
+  --success-tint: #10301e;
+  --warning: #fbbf24;
+  --warning-tint: #3a2c0c;
+  --danger: #f87171;
+  --danger-tint: #3a1616;
+  --info: #4fd8c8;
+  --info-tint: #10302c;
+  --neutral: #9aa7b3;
+  --neutral-tint: #1e2733;
+
+  --bg: #0e1a24;
+  --surface: #16242f;
+  --border: #26394a;
+  --border-strong: #354d61;
+  --text: #eaf1f6;
+  --text-secondary: #b7c6d1;
+  --text-muted: #869aa8;
+
+  --primary: var(--teal);
+  --primary-soft: var(--teal-soft);
+  --muted: var(--text-secondary);
+  --card: var(--surface);
+  --ring: rgba(79, 216, 200, 0.32);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.44);
+  --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.56);
+}
+
+:root[data-theme="dark"] body,
+:root:not([data-theme="light"]) body {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body {
+    background-image: none;
+  }
+}
+
+:root[data-theme="dark"] body {
+  background-image: none;
+}
+
+/* ── Theme toggle button ── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.28);
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.theme-toggle:hover {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.theme-toggle:active {
+  transform: translateY(1px);
+}
+
+.navbar-theme-toggle {
+  margin-right: 4px;
+}
+
+.admin-theme-toggle {
+  justify-self: center;
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.28);
+  color: #cbd5e1;
+}
+
+.admin-theme-toggle:hover {
+  background: rgba(15, 23, 42, 0.44);
 }

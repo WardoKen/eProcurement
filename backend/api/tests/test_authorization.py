@@ -260,6 +260,21 @@ class SupplierOwnershipAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['id'], self.mine.id)
 
+    def test_admin_can_view_any_suppliers_profile(self):
+        _login_as(self.client, 'admin')
+        response = self.client.get(f'/api/suppliers/{self.theirs.id}/profile/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['id'], self.theirs.id)
+
+    def test_admin_cannot_edit_a_suppliers_profile(self):
+        _login_as(self.client, 'admin')
+        response = self.client.patch(
+            f'/api/suppliers/{self.theirs.id}/profile/',
+            data=json.dumps({'company_name': 'Renamed'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_supplier_cannot_upload_a_document_for_another_supplier(self):
         _login_as(self.client, 'supplier', supplier=self.mine)
         response = self.client.post(f'/api/suppliers/{self.theirs.id}/documents/resubmit/')

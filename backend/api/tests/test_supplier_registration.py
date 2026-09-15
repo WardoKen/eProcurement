@@ -1557,6 +1557,32 @@ class SignaturePresenceValidationTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_admin_can_also_review_signature_presence(self):
+        # BAC review needs the same signature-presence check the buyer used at
+        # submission - admin is allowed here too (buyer access is unchanged).
+        name = self._make_pr_pdf(
+            'sigtest-admin-review.pdf',
+            signed={'requested_by': True, 'funds_available': True, 'approved_by': True},
+        )
+        _login_as(self.client, 'admin')
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': name}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['signature_validation']['summary']['can_save'])
+
+    def test_supplier_cannot_use_the_signature_recheck_endpoint(self):
+        supplier = Supplier.objects.create(company_name='Not Relevant Co', status='Approved')
+        _login_as(self.client, 'supplier', supplier=supplier)
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': 'whatever.pdf'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_admin_pr_edit_is_not_subject_to_the_signature_guard(self):
         # The Admin review path (pr_update) must stay unaffected.
         pr = PurchaseRequest.objects.create(entity_name='Legacy PR', status=PurchaseRequest.STATUS_UPLOADED)
@@ -1649,8 +1675,8 @@ class ManualRFQTests(TestCase):
         response = self._create()
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
-        self.assertRegex(body['quotation_no'], r'^RFQ-\d{4}-\d{4}$')
-        self.assertEqual(body['quotation_no'], body['rfq_no'])
+        self.assertEqual(body['quotation_no'], '2026-09-001:01')
+        self.assertRegex(body['rfq_no'], r'^RFQ-\d{4}-\d{4}$')
         self.assertEqual(body['supplier']['id'], None)
         self.assertTrue(body['is_manual'])
         self.assertEqual(body['delivery_method'], 'manual')
@@ -1702,7 +1728,7 @@ class ManualRFQTests(TestCase):
         a = self._create(name='Supplier A').json()['quotation_no']
         b = self._create(name='Supplier B').json()['quotation_no']
         c = self._create(name='Supplier C').json()['quotation_no']
-        seqs = sorted(int(x.split('-')[2]) for x in (a, b, c))
+        seqs = sorted(int(x.split(':')[1]) for x in (a, b, c))
         self.assertEqual(seqs, [seqs[0], seqs[0] + 1, seqs[0] + 2])
 
     def test_redownload_keeps_the_same_quotation_number(self):
@@ -1711,7 +1737,7 @@ class ManualRFQTests(TestCase):
         again = self.client.get(f'/api/manual-rfqs/{body["id"]}/pdf/', **self.admin_headers)
         self.assertEqual(again.status_code, 200)
         RFQ.objects.get(id=body['id']).refresh_from_db()
-        self.assertEqual(RFQ.objects.get(id=body['id']).rfq_no, body['quotation_no'])
+        self.assertEqual(RFQ.objects.get(id=body['id']).quotation_no, body['quotation_no'])
 
     def test_non_admin_cannot_create_a_manual_rfq(self):
         _login_as(self.client, 'buyer')
@@ -1743,7 +1769,7 @@ class ManualRFQTests(TestCase):
         rfq = RFQ.objects.get(id=body['id'])
         self.assertTrue(rfq.submitted_pdf)
         self.assertTrue(rfq.pdf_file)  # generated RFQ untouched
-        self.assertEqual(rfq.rfq_no, body['quotation_no'])
+        self.assertEqual(rfq.quotation_no, body['quotation_no'])
         self.assertEqual(rfq.manual_supplier_name, "Juan's Aircon Services")
 
     def test_completed_rfq_upload_rejects_non_pdf(self):
@@ -1779,7 +1805,7 @@ class ManualRFQTests(TestCase):
         SupplierCategory.objects.create(supplier=supplier, category=category)
 
         def seq(value):
-            return int(value.split('-')[2])
+            return int(value.split(':')[1])
 
         a = self._create(name='Manual A').json()['quotation_no']
 
@@ -1808,14 +1834,14 @@ class ManualRFQTests(TestCase):
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_manual_rfq_number_continues_after_registered_rfqs(self):
-        """RFQ-2026-0001, RFQ-2026-0002 registered -> manual RFQ is RFQ-2026-0003."""
+        """2026-09-001:01, 2026-09-001:02 registered -> manual RFQ is 2026-09-001:03."""
         category = Category.objects.create(name='Aircon P')
         self.pr.category = 'Aircon P'
         self.pr.save(update_fields=['category'])
         PurchaseRequestItem.objects.filter(purchase_request=self.pr).update(category='Aircon P')
 
         def seq(value):
-            return int(value.split('-')[2])
+            return int(value.split(':')[1])
 
         registered = []
         for i in range(2):
@@ -1834,7 +1860,7 @@ class ManualRFQTests(TestCase):
 
         manual = self._create(name='Manual After').json()['quotation_no']
 
-        self.assertRegex(manual, r'^RFQ-\d{4}-\d{4}$')
+        self.assertRegex(manual, r'^2026-09-001:\d{2}$')
         self.assertEqual(seq(manual), seq(registered[1]) + 1)
         self.assertEqual(seq(registered[1]), seq(registered[0]) + 1)
 
@@ -1843,11 +1869,11 @@ class ManualRFQTests(TestCase):
         """The next number follows the highest generated, not a live row count."""
         first = self._create(name='First').json()['quotation_no']
         second = self._create(name='Second').json()['quotation_no']
-        RFQ.objects.filter(rfq_no=first).delete()
+        RFQ.objects.filter(quotation_no=first).delete()
 
         third = self._create(name='Third').json()['quotation_no']
         self.assertNotIn(third, {first, second})
-        self.assertEqual(int(third.split('-')[2]), int(second.split('-')[2]) + 1)
+        self.assertEqual(int(third.split(':')[1]), int(second.split(':')[1]) + 1)
 
 
 class RFQManagementGroupingTests(TestCase):

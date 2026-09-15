@@ -20,7 +20,8 @@ const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '
 // Textarea that grows with its content so the visible box always matches what
 // has been typed. Modern browsers get this natively via `field-sizing: content`
 // (see index.css); this keeps the rest in sync and caps the height at `maxRows`.
-function AutoGrowTextarea({ value, maxRows = 12, className, ...rest }) {
+// Exported for reuse by the BAC/admin PR review page (App.jsx).
+export function AutoGrowTextarea({ value, maxRows = 12, className, ...rest }) {
   const ref = useRef(null)
 
   const resize = () => {
@@ -75,7 +76,9 @@ function normalizeOcrDate(value, rawText = '') {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-const FieldShell = ({
+// Exported for reuse by the BAC/admin PR review page (App.jsx) - same
+// floating-label input/textarea shell, editable there (readOnly is never set).
+export const FieldShell = ({
   id,
   label,
   value,
@@ -85,11 +88,13 @@ const FieldShell = ({
   full,
   isTextarea,
   editedByUser,
+  readOnly,
 }) => {
   const wrapperClass = [
     'floating-field',
     full ? 'full' : '',
     editedByUser ? 'manual-edited' : '',
+    readOnly ? 'is-readonly' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -97,9 +102,25 @@ const FieldShell = ({
   return (
     <div className={wrapperClass}>
       {isTextarea ? (
-        <textarea id={id} value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder=" " rows={4} />
+        <textarea
+          id={id}
+          value={value || ''}
+          onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
+          placeholder=" "
+          rows={4}
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
       ) : (
-        <input id={id} value={value || ''} onChange={(e) => onChange(e.target.value)} type={type} placeholder=" " />
+        <input
+          id={id}
+          value={value || ''}
+          onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
+          type={type}
+          placeholder=" "
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
       )}
       <label htmlFor={id}>{label}</label>
       {helper && <small>{helper}</small>}
@@ -139,7 +160,7 @@ const SignatureStatusChip = ({ state }) => {
   )
 }
 
-const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys, signatureState }) => (
+const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys, signatureState, readOnly }) => (
   <section className={`signature-card ${signatureState ? signatureStatusMeta(signatureState.state).className : ''}`}>
     <div className="signature-card-head">
       <h4>
@@ -156,6 +177,7 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
       value={fields[designationKey]}
       onChange={(value) => onFieldChange(designationKey, value)}
       editedByUser={editedFieldKeys.has(designationKey)}
+      readOnly={readOnly}
     />
     <FieldShell
       id={nameKey}
@@ -163,11 +185,15 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
       value={fields[nameKey]}
       onChange={(value) => onFieldChange(nameKey, value)}
       editedByUser={editedFieldKeys.has(nameKey)}
+      readOnly={readOnly}
     />
   </section>
 )
 
-const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
+// Reused by the BAC/admin PR review screen (App.jsx) so signature-presence
+// review does not need a second implementation - it only depends on the
+// validation result shape, not this wizard's own field state.
+export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
   const summary = validation?.summary
   const signatories = validation?.signatories || {}
   const order = ['requested_by', 'funds_available', 'approved_by', 'twg']
@@ -694,7 +720,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const documentAccepted = Boolean(fields.sourceFilename)
   const sigSummary = signatureValidation?.summary
   const systemChecks = [
-    { key: 'info', label: 'Required information completed', ok: requiredInfoComplete },
+    // The End User can no longer correct extracted fields, so an incomplete
+    // OCR result must never block submission - it's the BAC Secretariat's job
+    // to complete the structured record during review. This check only gates
+    // submission in a (currently unused) fully-editable, non-reviewOnly mode.
+    ...(reviewOnly ? [] : [{ key: 'info', label: 'Required information completed', ok: requiredInfoComplete }]),
     { key: 'file', label: 'Supported document accepted', ok: documentAccepted },
     {
       key: 'sig',
@@ -956,6 +986,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             </h3>
           </header>
 
+          {reviewOnly && hasExtractedData && (
+            <p className="helper-text pr-readonly-note">
+              These fields were extracted from your uploaded document for your review only. They
+              cannot be edited here - if anything looks incorrect, submit the document as-is; the
+              BAC Secretariat corrects the record during review.
+            </p>
+          )}
+
           <div className="floating-grid">
             <FieldShell
               id="entityName"
@@ -964,6 +1002,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('entityName', value)}
               full
               editedByUser={editedFieldKeys.has('entityName')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -972,6 +1011,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.fundCluster}
               onChange={(value) => onFieldChange('fundCluster', value)}
               editedByUser={editedFieldKeys.has('fundCluster')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -980,6 +1020,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.officeSection}
               onChange={(value) => onFieldChange('officeSection', value)}
               editedByUser={editedFieldKeys.has('officeSection')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -989,6 +1030,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('date', value)}
               type="date"
               editedByUser={editedFieldKeys.has('date')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -998,6 +1040,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('responsibilityCenterCode', value)}
               full
               editedByUser={editedFieldKeys.has('responsibilityCenterCode')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -1008,6 +1051,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               full
               isTextarea
               editedByUser={editedFieldKeys.has('purpose')}
+              readOnly={reviewOnly}
             />
           </div>
 
@@ -1020,6 +1064,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('requested_by_name')}
+              readOnly={reviewOnly}
             />
             <SignatureBlock
               title="Funds Available"
@@ -1029,6 +1074,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('funds_available_name')}
+              readOnly={reviewOnly}
             />
             <SignatureBlock
               title="Approved By"
@@ -1038,6 +1084,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('approved_by_name')}
+              readOnly={reviewOnly}
             />
             <SignatureBlock
               title="Technical Working Group"
@@ -1047,6 +1094,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('twg_name')}
+              readOnly={reviewOnly}
             />
           </div>
 
@@ -1064,27 +1112,29 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               <h4>Requested Items</h4>
               <div className="items-header-actions">
                 {hasUnsavedChanges && <span className="helper-pill unsaved-pill">Unsaved changes</span>}
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
-                    setLineItems([
-                      ...current,
-                      {
-                        stockPropertyNumber: '',
-                        unit: '',
-                        description: '',
-                        quantity: '',
-                        unitCost: '',
-                        totalCost: '',
-                      },
-                    ])
-                  }}
-                >
-                  <Plus size={16} />
-                  Add Item
-                </button>
+                {!reviewOnly && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
+                      setLineItems([
+                        ...current,
+                        {
+                          stockPropertyNumber: '',
+                          unit: '',
+                          description: '',
+                          quantity: '',
+                          unitCost: '',
+                          totalCost: '',
+                        },
+                      ])
+                    }}
+                  >
+                    <Plus size={16} />
+                    Add Item
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1099,7 +1149,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                     <th style={{ width: '90px' }}>Qty</th>
                     <th style={{ width: '140px' }}>Unit Cost</th>
                     <th style={{ width: '140px' }}>Total</th>
-                    <th style={{ width: '60px' }}>Actions</th>
+                    {!reviewOnly && <th style={{ width: '60px' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1110,47 +1160,55 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                         <td>
                           <input
                             value={item.stockPropertyNumber || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], stockPropertyNumber: e.target.value }
                               setLineItems(updated)
                             }}
                             aria-label={`Stock number for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
                         <td className="requested-item-unit-cell">
                           <input
                             value={item.unit || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], unit: e.target.value }
                               setLineItems(updated)
                             }}
                             aria-label={`Unit for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
                         <td className="requested-item-description-cell">
                           <AutoGrowTextarea
                             value={item.description || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], description: e.target.value }
                               setLineItems(updated)
                             }}
                             className="requested-item-description"
                             aria-label={`Description for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
                         <td>
                           <input
                             type="number"
                             value={item.quantity || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], quantity: e.target.value }
                               setLineItems(updated)
                             }}
                             aria-label={`Quantity for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
                         <td>
@@ -1158,12 +1216,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                             type="number"
                             step="0.01"
                             value={item.unitCost || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], unitCost: e.target.value }
                               setLineItems(updated)
                             }}
                             aria-label={`Unit cost for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
                         <td>
@@ -1171,54 +1231,64 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                             type="number"
                             step="0.01"
                             value={item.totalCost || ''}
-                            onChange={(e) => {
+                            onChange={reviewOnly ? undefined : (e) => {
                               const updated = [...(fields.lineItems || [])]
                               updated[idx] = { ...updated[idx], totalCost: e.target.value }
                               setLineItems(updated)
                             }}
                             aria-label={`Total cost for item ${idx + 1}`}
+                            readOnly={reviewOnly}
+                            tabIndex={reviewOnly ? -1 : undefined}
                           />
                         </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="icon-action-btn delete-icon-btn"
-                            onClick={() => openDeleteModal(idx)}
-                            title="Delete Item"
-                            aria-label={`Delete item ${idx + 1}`}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
+                        {!reviewOnly && (
+                          <td>
+                            <button
+                              type="button"
+                              className="icon-action-btn delete-icon-btn"
+                              onClick={() => openDeleteModal(idx)}
+                              title="Delete Item"
+                              aria-label={`Delete item ${idx + 1}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={reviewOnly ? 7 : 8}>
                         <div className="table-empty-state">
-                          <p>No purchase request items available.</p>
-                          <span>Upload another Purchase Request or manually add items.</span>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => {
-                              const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
-                              setLineItems([
-                                ...current,
-                                {
-                                  stockPropertyNumber: '',
-                                  unit: '',
-                                  description: '',
-                                  quantity: '',
-                                  unitCost: '',
-                                  totalCost: '',
-                                },
-                              ])
-                            }}
-                          >
-                            <Plus size={16} />
-                            Add Item
-                          </button>
+                          <p>No purchase request items were detected in this document.</p>
+                          <span>
+                            {reviewOnly
+                              ? 'You can still submit the original document - the BAC Secretariat reviews and completes the item list during processing.'
+                              : 'Upload another Purchase Request or manually add items.'}
+                          </span>
+                          {!reviewOnly && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => {
+                                const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
+                                setLineItems([
+                                  ...current,
+                                  {
+                                    stockPropertyNumber: '',
+                                    unit: '',
+                                    description: '',
+                                    quantity: '',
+                                    unitCost: '',
+                                    totalCost: '',
+                                  },
+                                ])
+                              }}
+                            >
+                              <Plus size={16} />
+                              Add Item
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -39,11 +39,13 @@ import {
   Settings,
   Building2,
   HelpCircle,
+  Plus,
 } from 'lucide-react'
 import logo from './assets/logo.webp'
-import DragDropUpload from './components/DragDropUpload'
+import DragDropUpload, { SignatureValidationPanel, FieldShell, AutoGrowTextarea } from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import Sidebar from './components/Sidebar'
+import ThemeToggle from './components/ThemeToggle'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -1078,7 +1080,7 @@ const Login = () => {
         if (user.role === 'admin') {
           navigate('/admin')
         } else if (user.role === 'buyer') {
-          navigate('/buyer')
+          navigate('/enduser')
         } else if (user.role === 'supplier') {
           navigate('/supplier')
         } else {
@@ -1475,6 +1477,364 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
             {unassignedCount} item{unassignedCount !== 1 ? 's' : ''} unassigned
           </span>
         )}
+      </div>
+    </div>
+  )
+}
+
+// BAC/admin PR review - full-page equivalent of the End User's PR Upload
+// Workspace (DragDropUpload with reviewOnly), but editable: the original
+// document on the left, OCR-extracted structured fields editable on the
+// right. Self-contained like AssignCategories above - it fetches and owns
+// its own form state rather than living in the giant Admin component.
+const AdminPrReview = ({ prId, apiBase, onBack, onSaved, onContinueToCategories }) => {
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [form, setForm] = React.useState(null)
+  const [sourceUrl, setSourceUrl] = React.useState('')
+  const [sourceFilename, setSourceFilename] = React.useState('')
+  const [numberMode, setNumberMode] = React.useState('automatic')
+  const [customNumber, setCustomNumber] = React.useState('')
+  const [signatureValidation, setSignatureValidation] = React.useState(null)
+  const [rechecking, setRechecking] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    apiFetch(`${apiBase}/api/pr/${prId}/details/`)
+      .then((res) => { if (!res.ok) throw new Error('Failed to load Purchase Request details'); return res.json() })
+      .then((details) => {
+        if (cancelled) return
+        setForm({
+          pr_no: details.pr_no || '',
+          entity_name: details.entity_name || '',
+          category: details.category || '',
+          fund_cluster: details.fund_cluster || '',
+          office_section: details.office_section || '',
+          responsibility_center_code: details.responsibility_center_code || '',
+          date: details.date || '',
+          purpose: details.purpose || '',
+          requested_by: details.requested_by || '',
+          funds_available_by: details.funds_available_by || '',
+          approved_by: details.approved_by || '',
+          twg_verified_by: details.twg_verified_by || '',
+          items: (details.items || []).map((item) => ({
+            stock_property_no: item.stock_property_no || '',
+            unit: item.unit || '',
+            item_description: item.item_description || '',
+            quantity: item.quantity ?? 0,
+            unit_cost: item.unit_cost ?? 0,
+            category: item.category || '',
+          })),
+        })
+        setNumberMode(details.pr_no ? 'existing' : 'automatic')
+        setCustomNumber(details.pr_no || '')
+        setSourceUrl(details.source_file_url || '')
+        setSourceFilename(details.source_filename || '')
+        // Signature results belong to this specific PR - never carried over
+        // from whichever PR was reviewed before.
+        setSignatureValidation(null)
+      })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load Purchase Request details') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [prId, apiBase])
+
+  const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }))
+  const updateItem = (index, key, value) => setForm((prev) => ({
+    ...prev, items: prev.items.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+  }))
+  const addItem = () => setForm((prev) => ({
+    ...prev,
+    items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }],
+  }))
+  const removeItem = (index) => setForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))
+
+  const recheckSignatures = async () => {
+    if (!sourceFilename || !form) return
+    setRechecking(true)
+    setError('')
+    try {
+      const res = await apiFetch(`${apiBase}/api/pr/recheck-signatures/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: sourceFilename,
+          fields: {
+            requested_by_name: form.requested_by,
+            funds_available_name: form.funds_available_by,
+            approved_by_name: form.approved_by,
+            twg_name: form.twg_verified_by,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.signature_validation) {
+        setSignatureValidation(data.signature_validation)
+      } else {
+        setError(data?.message || 'Signature recheck failed')
+      }
+    } catch {
+      setError('Network error while rechecking signatures')
+    } finally {
+      setRechecking(false)
+    }
+  }
+
+  const save = async (finalizeReview) => {
+    if (!form) return false
+    setSaving(true)
+    setError('')
+    try {
+      const res = await apiFetch(`${apiBase}/api/pr/${prId}/edit/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          finalize_review: finalizeReview,
+          pr_number_mode: numberMode === 'custom' ? 'custom' : 'automatic',
+          custom_pr_number: customNumber,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.message || 'Failed to update Purchase Request')
+      if (payload?.pr_no) setForm((prev) => ({ ...prev, pr_no: payload.pr_no }))
+      return true
+    } catch (err) {
+      setError(err?.message || 'Failed to update Purchase Request')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveCorrections = async () => {
+    if (await save(false)) { onSaved(); onBack() }
+  }
+
+  const handleContinue = async () => {
+    if (await save(true)) onContinueToCategories(prId)
+  }
+
+  if (loading || !form) {
+    return (
+      <div className="supplier-section">
+        <div className="supplier-header">
+          <h1>PR Review</h1>
+          <p>Loading Purchase Request #{prId}…</p>
+        </div>
+        {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
+        <div className="skeleton-stack" style={{ marginTop: 24 }}>
+          <SkeletonRows count={4} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="supplier-section">
+      <div className="supplier-header">
+        <h1>PR Review — {form.pr_no || `#${prId}`}</h1>
+        <p>Review the original document against the OCR-extracted fields, correct anything OCR got wrong, then continue.</p>
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
+
+      <div className="pr-review-split">
+        <aside className="pr-review-preview-pane card">
+          <header className="panel-header">
+            <h3>Original PR Document</h3>
+            {sourceUrl && <a className="btn-sm btn-secondary" href={sourceUrl} target="_blank" rel="noreferrer">Open document</a>}
+          </header>
+          {sourceUrl ? (
+            <iframe src={sourceUrl} title="Original Purchase Request document" />
+          ) : (
+            <div className="empty-state pr-review-preview-empty">
+              <p>No document on file.</p>
+            </div>
+          )}
+        </aside>
+
+        <div className="pr-upload-grid">
+          {!form.pr_no && (
+            <section className="card form-panel pr-numbering-section">
+              <header className="panel-header"><h3>PR Numbering</h3></header>
+              <div className="numbering-options">
+                <label>
+                  <input type="radio" name="admin-pr-numbering-mode" checked={numberMode === 'automatic'} onChange={() => setNumberMode('automatic')} />
+                  Automatic
+                </label>
+                <label>
+                  <input type="radio" name="admin-pr-numbering-mode" checked={numberMode === 'custom'} onChange={() => setNumberMode('custom')} />
+                  Custom
+                </label>
+              </div>
+              {numberMode === 'automatic' ? (
+                <div className="number-preview" aria-live="polite">
+                  <span>Assigned automatically</span>
+                  <small>The next available number is assigned when you save.</small>
+                </div>
+              ) : (
+                <div className="custom-number-field">
+                  <label htmlFor="admin-custom-pr-number">PR Number</label>
+                  <input
+                    id="admin-custom-pr-number"
+                    value={customNumber}
+                    onChange={(event) => setCustomNumber(event.target.value)}
+                    placeholder="e.g. 2026-09-001"
+                  />
+                  <small>Must match the PR number format configured in PR Numbering settings.</small>
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="card form-panel">
+            <header className="panel-header">
+              <h3><Search size={18} /> Purchase Request Details</h3>
+            </header>
+
+            <div className="floating-grid">
+              {form.pr_no && (
+                <FieldShell id="admin-pr-no" label="Assigned PR Number" value={form.pr_no} onChange={() => {}} full readOnly />
+              )}
+              <FieldShell id="admin-entity-name" label="Entity Name" value={form.entity_name} onChange={(v) => updateField('entity_name', v)} full />
+              <FieldShell id="admin-fund-cluster" label="Fund Cluster" value={form.fund_cluster} onChange={(v) => updateField('fund_cluster', v)} />
+              <FieldShell id="admin-office-section" label="Office / Section" value={form.office_section} onChange={(v) => updateField('office_section', v)} />
+              <FieldShell id="admin-date" label="Date" type="date" value={form.date} onChange={(v) => updateField('date', v)} />
+              <FieldShell id="admin-rc-code" label="Responsibility Center Code" value={form.responsibility_center_code} onChange={(v) => updateField('responsibility_center_code', v)} full />
+              <FieldShell id="admin-purpose" label="Purpose" value={form.purpose} onChange={(v) => updateField('purpose', v)} full isTextarea />
+            </div>
+
+            <div className="floating-grid" style={{ marginTop: 8 }}>
+              <FieldShell id="admin-requested-by" label="Requested By" value={form.requested_by} onChange={(v) => updateField('requested_by', v)} />
+              <FieldShell id="admin-funds-available-by" label="Funds Available By" value={form.funds_available_by} onChange={(v) => updateField('funds_available_by', v)} />
+              <FieldShell id="admin-approved-by" label="Approved By" value={form.approved_by} onChange={(v) => updateField('approved_by', v)} />
+              <FieldShell id="admin-twg-verified-by" label="TWG Verified By" value={form.twg_verified_by} onChange={(v) => updateField('twg_verified_by', v)} />
+            </div>
+
+            <SignatureValidationPanel
+              validation={signatureValidation}
+              onRecheck={recheckSignatures}
+              rechecking={rechecking}
+              hasDocument={Boolean(sourceFilename)}
+            />
+
+            <div className="requested-items-block">
+              <div className="items-header">
+                <h4>Requested Items</h4>
+                <div className="items-header-actions">
+                  <button type="button" className="btn btn-secondary" onClick={addItem}>
+                    <Plus size={16} />
+                    Add Item
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-shell">
+                <table className="enterprise-table items-table requested-items-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '56px' }}>Item No.</th>
+                      <th style={{ width: '140px' }}>Stock/Property No.</th>
+                      <th className="requested-item-unit-cell" style={{ width: '120px' }}>Unit</th>
+                      <th className="requested-item-description-cell">Description</th>
+                      <th style={{ width: '90px' }}>Qty</th>
+                      <th style={{ width: '140px' }}>Unit Cost</th>
+                      <th style={{ width: '140px' }}>Category</th>
+                      <th style={{ width: '60px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.items.length > 0 ? (
+                      form.items.map((item, idx) => (
+                        <tr key={`admin-pr-item-${idx}`}>
+                          <td>{idx + 1}</td>
+                          <td>
+                            <input
+                              value={item.stock_property_no}
+                              onChange={(e) => updateItem(idx, 'stock_property_no', e.target.value)}
+                              aria-label={`Stock number for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td className="requested-item-unit-cell">
+                            <input
+                              value={item.unit}
+                              onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                              aria-label={`Unit for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td className="requested-item-description-cell">
+                            <AutoGrowTextarea
+                              value={item.item_description}
+                              onChange={(e) => updateItem(idx, 'item_description', e.target.value)}
+                              className="requested-item-description"
+                              aria-label={`Description for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number" min="0" step="0.01"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                              aria-label={`Quantity for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number" min="0" step="0.01"
+                              value={item.unit_cost}
+                              onChange={(e) => updateItem(idx, 'unit_cost', e.target.value)}
+                              aria-label={`Unit cost for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.category}
+                              onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                              aria-label={`Category for item ${idx + 1}`}
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="icon-action-btn delete-icon-btn"
+                              onClick={() => removeItem(idx)}
+                              title="Delete Item"
+                              aria-label={`Delete item ${idx + 1}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8}>
+                          <div className="table-empty-state">
+                            <p>No items on this Purchase Request yet.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="form-actions" style={{ marginTop: 16 }}>
+              <button type="button" className="btn-secondary" onClick={onBack} disabled={saving}>← Back to PR Monitoring</button>
+              <button type="button" className="btn-secondary" onClick={handleSaveCorrections} disabled={saving || !form.entity_name.trim()}>
+                {saving ? 'Saving…' : 'Save Corrections'}
+              </button>
+              <button type="button" className="btn-primary" onClick={handleContinue} disabled={saving || !form.entity_name.trim()}>
+                {saving ? 'Continuing…' : 'Continue to Category Selection'}
+              </button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   )
@@ -2794,13 +3154,6 @@ const Admin = () => {
   const [prSavingId, setPrSavingId] = React.useState(null)
   const [prDeletingId, setPrDeletingId] = React.useState(null)
   const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
-  const [editingPr, setEditingPr] = React.useState(null)
-  const [editPrForm, setEditPrForm] = React.useState(null)
-  const [editPrLoading, setEditPrLoading] = React.useState(false)
-  const [editPrSaving, setEditPrSaving] = React.useState(false)
-  const [editPrNumberMode, setEditPrNumberMode] = React.useState('automatic')
-  const [editPrCustomNumber, setEditPrCustomNumber] = React.useState('')
-  const [editPrSourceUrl, setEditPrSourceUrl] = React.useState('')
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
@@ -3497,91 +3850,6 @@ const Admin = () => {
 
   const handleViewPr = (pr) => {
     window.alert(`PR #${pr.pr_no || pr.id}\nEntity: ${pr.entity_name || 'N/A'}\nStatus: ${getPrStatusMeta(pr.status).label}`)
-  }
-
-  const handleEditPr = async (pr) => {
-    setEditingPr(pr)
-    setEditPrForm(null)
-    setEditPrLoading(true)
-    setPrError('')
-    try {
-      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${pr.id}/details/`)
-      if (!res.ok) throw new Error('Failed to load Purchase Request details')
-      const details = await res.json()
-      setEditPrForm({
-        pr_no: details.pr_no || '',
-        entity_name: details.entity_name || '',
-        category: details.category || '',
-        fund_cluster: details.fund_cluster || '',
-        office_section: details.office_section || '',
-        responsibility_center_code: details.responsibility_center_code || '',
-        date: details.date || '',
-        purpose: details.purpose || '',
-        requested_by: details.requested_by || '',
-        funds_available_by: details.funds_available_by || '',
-        approved_by: details.approved_by || '',
-        twg_verified_by: details.twg_verified_by || '',
-        items: (details.items || []).map((item) => ({
-          stock_property_no: item.stock_property_no || '',
-          unit: item.unit || '',
-          item_description: item.item_description || '',
-          quantity: item.quantity ?? 0,
-          unit_cost: item.unit_cost ?? 0,
-          category: item.category || '',
-        })),
-      })
-      setEditPrNumberMode(details.pr_no ? 'existing' : 'automatic')
-      setEditPrCustomNumber(details.pr_no || '')
-      setEditPrSourceUrl(details.source_file_url || '')
-    } catch (error) {
-      setPrError(error?.message || 'Failed to load Purchase Request details')
-      setEditingPr(null)
-    } finally {
-      setEditPrLoading(false)
-    }
-  }
-
-  const closeEditPr = () => {
-    if (editPrSaving) return
-    setEditingPr(null)
-    setEditPrForm(null)
-  }
-
-  const handleSavePrEdit = async (finalizeReview = false) => {
-    if (!editPrForm || !editingPr) return
-    setEditPrSaving(true)
-    setPrError('')
-    try {
-      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${editingPr.id}/edit/`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...editPrForm,
-          finalize_review: finalizeReview,
-          pr_number_mode: editPrNumberMode === 'custom' ? 'custom' : 'automatic',
-          custom_pr_number: editPrCustomNumber,
-        }),
-      })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.message || 'Failed to update Purchase Request')
-      setPrRecords((prev) => prev.map((row) => row.id === editingPr.id ? {
-        ...row,
-        entity_name: editPrForm.entity_name,
-        office_section: editPrForm.office_section,
-        purpose: editPrForm.purpose,
-        grand_total: payload.grand_total,
-        items_count: editPrForm.items.length,
-        pr_no: payload.pr_no || row.pr_no,
-        status: payload.status || row.status,
-      } : row))
-      closeEditPr()
-      return true
-    } catch (error) {
-      setPrError(error?.message || 'Failed to update Purchase Request')
-      return false
-    } finally {
-      setEditPrSaving(false)
-    }
   }
 
   const matchedSupplierCards = prRecords.flatMap((pr) => {
@@ -4400,6 +4668,16 @@ const Admin = () => {
           </div>
         )}
 
+        {currentTab === 'pr-review' && workflowPrId && (
+          <AdminPrReview
+            prId={workflowPrId}
+            apiBase={apiBaseUrl}
+            onBack={() => { loadPrRecords(); setCurrentTab('pr-monitoring') }}
+            onSaved={loadPrRecords}
+            onContinueToCategories={(id) => { setWorkflowPrId(id); setCurrentTab('assign-categories') }}
+          />
+        )}
+
         {currentTab === 'assign-categories' && workflowPrId && (
           <AssignCategories
             prId={workflowPrId}
@@ -4477,7 +4755,7 @@ const Admin = () => {
                       <button
                         type="button"
                         className="btn-sm pr-review-action-btn pr-review-btn"
-                        onClick={() => handleEditPr(pr)}
+                        onClick={() => { setWorkflowPrId(pr.id); setCurrentTab('pr-review') }}
                       >
                         <Pencil size={14} />
                         Review PR
@@ -4595,7 +4873,7 @@ const Admin = () => {
                             title="Edit Purchase Request"
                             aria-label="Edit Purchase Request"
                             disabled={prSavingId === pr.id || prDeletingId === pr.id}
-                            onClick={() => handleEditPr(pr)}
+                            onClick={() => { setWorkflowPrId(pr.id); setCurrentTab('pr-review') }}
                           >
                             <Pencil size={14} />
                           </button>
@@ -4651,116 +4929,6 @@ const Admin = () => {
                 })}
               </div>
             </div>
-
-            {editingPr && (
-              <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-pr-title" onClick={closeEditPr}>
-                <div className="modal-content pr-edit-modal" onClick={(event) => event.stopPropagation()}>
-                  <div className="modal-header">
-                    <h2 id="edit-pr-title">Edit Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
-                    <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close edit Purchase Request">×</button>
-                  </div>
-                  {editPrLoading || !editPrForm ? (
-                    <div className="modal-body"><SkeletonRows count={4} /></div>
-                  ) : (
-                    <>
-                      {editPrSourceUrl && (
-                        <div className="pr-review-document-pane">
-                          <div className="pr-review-document-header">
-                            <h3>Original PR Document</h3>
-                            <a className="btn-sm btn-secondary" href={editPrSourceUrl} target="_blank" rel="noreferrer">Open document</a>
-                          </div>
-                          <iframe src={editPrSourceUrl} title="Original Purchase Request document" />
-                        </div>
-                      )}
-                      <div className="modal-body pr-edit-body">
-                        {editPrForm.pr_no ? (
-                          <label className="form-field">
-                            <span>Assigned PR Number</span>
-                            <input value={editPrForm.pr_no} readOnly />
-                          </label>
-                        ) : (
-                          <div className="pr-review-numbering">
-                            <span className="form-field-label">Assign Final PR Number</span>
-                            <div className="numbering-options">
-                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'automatic'} onChange={() => setEditPrNumberMode('automatic')} /> Automatic</label>
-                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'custom'} onChange={() => setEditPrNumberMode('custom')} /> Custom</label>
-                            </div>
-                            {editPrNumberMode === 'automatic' ? (
-                              <div className="pr-review-number-preview">
-                                <span>Next available number</span>
-                                <small>Will be assigned when you continue to Category Selection.</small>
-                              </div>
-                            ) : (
-                              <div className="pr-review-custom-number">
-                                <label htmlFor="review-custom-pr-number">Custom PR Number</label>
-                                <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="e.g. 2026-09-001" />
-                                <small>Must match the PR number format configured in PR Numbering settings.</small>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <label className="form-field">
-                          <span>Entity Name *</span>
-                          <input value={editPrForm.entity_name} onChange={(event) => setEditPrForm((prev) => ({ ...prev, entity_name: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Fund Cluster</span>
-                          <input value={editPrForm.fund_cluster} onChange={(event) => setEditPrForm((prev) => ({ ...prev, fund_cluster: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Office / Section</span>
-                          <input value={editPrForm.office_section} onChange={(event) => setEditPrForm((prev) => ({ ...prev, office_section: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Responsibility Center Code</span>
-                          <input value={editPrForm.responsibility_center_code} onChange={(event) => setEditPrForm((prev) => ({ ...prev, responsibility_center_code: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Date</span>
-                          <input type="date" value={editPrForm.date} onChange={(event) => setEditPrForm((prev) => ({ ...prev, date: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Purpose</span>
-                          <textarea rows="3" value={editPrForm.purpose} onChange={(event) => setEditPrForm((prev) => ({ ...prev, purpose: event.target.value }))} />
-                        </label>
-                        <div className="pr-edit-signatories">
-                          {[
-                            ['requested_by', 'Requested By'],
-                            ['funds_available_by', 'Funds Available By'],
-                            ['approved_by', 'Approved By'],
-                            ['twg_verified_by', 'TWG Verified By'],
-                          ].map(([field, label]) => (
-                            <label className="form-field" key={field}>
-                              <span>{label}</span>
-                              <input value={editPrForm[field]} onChange={(event) => setEditPrForm((prev) => ({ ...prev, [field]: event.target.value }))} />
-                            </label>
-                          ))}
-                        </div>
-                        <div className="pr-edit-items">
-                          <div className="pr-edit-items-header"><h3>Line Items</h3><button type="button" className="btn-sm btn-secondary" onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}>Add Item</button></div>
-                          {editPrForm.items.map((item, index) => (
-                            <div className="pr-edit-item" key={`${editingPr.id}-item-${index}`}>
-                              <input aria-label={`Item ${index + 1} stock number`} placeholder="Stock / Property No." value={item.stock_property_no} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, stock_property_no: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} description`} placeholder="Description" value={item.item_description} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, item_description: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} unit`} placeholder="Unit" value={item.unit} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" placeholder="Qty" value={item.quantity} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" placeholder="Unit cost" value={item.unit_cost} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit_cost: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} category`} placeholder="Category" value={item.category} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, category: event.target.value } : current) }))} />
-                              <button type="button" className="icon-action-btn delete" aria-label={`Remove item ${index + 1}`} onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={14} /></button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="modal-actions">
-                        <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
-                        <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
-                        <button type="button" className="btn btn-primary" onClick={async () => { const saved = await handleSavePrEdit(true); if (saved) { setWorkflowPrId(editingPr.id); setCurrentTab('assign-categories') } }} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Continuing...' : 'Continue to Category Selection'}</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
 
             <div className="admin-checklist">
               <h3>Monitoring Notes</h3>
@@ -5514,6 +5682,22 @@ const BuyerPRStatusCard = ({ record }) => {
               <p>{record.purpose}</p>
             </div>
           )}
+          <div>
+            <span className="buyer-status-current-kicker">Original Document</span>
+            {record.source_file_url
+              ? (
+                <p>
+                  <a className="btn-sm btn-secondary" href={record.source_file_url} target="_blank" rel="noreferrer">
+                    View Uploaded Document
+                  </a>
+                </p>
+              )
+              : <p className="helper-text">No document on file.</p>}
+          </div>
+          <p className="supplier-subtext" style={{ margin: 0 }}>
+            This is the exact file you submitted. It cannot be edited or replaced after submission -
+            corrections to the Purchase Request details are made by the BAC Secretariat during review.
+          </p>
           <p className="supplier-subtext" style={{ margin: 0 }}>
             Supplier selection and evaluation are handled by the BAC Secretariat and are not shown here.
           </p>
@@ -6913,8 +7097,8 @@ const AppLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [user, setUser] = React.useState(getStoredUser())
-  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/buyer'
-  const homeLink = user?.role === 'buyer' ? '/buyer' : '/'
+  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/enduser'
+  const homeLink = user?.role === 'buyer' ? '/enduser' : '/'
 
   React.useEffect(() => {
     setUser(getStoredUser())
@@ -6945,6 +7129,7 @@ const AppLayout = () => {
           </div>
 
           <div className="navbar-right">
+            <ThemeToggle className="navbar-theme-toggle" />
             {user ? (
               <button
                 type="button"
@@ -6973,7 +7158,7 @@ const AppLayout = () => {
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/buyer" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />
+          <Route path="/enduser" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />
           <Route path="/supplier" element={<ProtectedRoute requiredRole="supplier" element={<Supplier />} />} />
           <Route path="/supplier/register" element={<SupplierRegistration />} />
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin" element={<Admin />} />} />

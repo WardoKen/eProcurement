@@ -73,10 +73,9 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
         'rfq_no': rfq.rfq_no or 'RFQ',
         'pr_no': pr.pr_no or f'PR-{pr.id}',
         'pr_date': (pr.date.isoformat() if pr.date else ''),
-        # The RFQ number doubles as the Quotation No. on the printed form - a
-        # single RFQ-YYYY-NNNN sequence shared by registered and manual RFQs. A
+        # <PR NO>:NN, scoped per PR (see _quotation_number in api.views). A
         # draft preview has no number yet.
-        'quotation_no': rfq.rfq_no or 'To be assigned',
+        'quotation_no': rfq.quotation_no or 'To be assigned',
         # Admin-selected value; never defaulted here so a blank never slips into
         # a generated document. The RFQ API enforces a valid selection before
         # a PDF is produced.
