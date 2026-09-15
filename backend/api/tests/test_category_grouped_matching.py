@@ -218,7 +218,7 @@ class CategoryScopedRFQTests(TestCase):
             'send': True, 'generate_pdf': True,
         })
         self.assertEqual(issued.status_code, 200, issued.content)
-        self.assertRegex(issued.json()['quotation_no'], r'^RFQ-\d{4}-\d{4}$')
+        self.assertEqual(issued.json()['quotation_no'], '2026-09-002:01')
 
     # TEST 17 - duplicate item records are never created
     def test_grouping_does_not_duplicate_items(self):
@@ -243,4 +243,189 @@ class CategoryScopedRFQTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(res.status_code, 403)
+
+
+class PRSubmissionAndReviewSeparationTests(TestCase):
+    """End User submission vs. BAC Secretariat review/edit split.
+
+    The End User submits the original PR document and, once saved, may only
+    view it and its status - all field corrections happen on the BAC/admin
+    review side (``pr_update`` / ``/edit/``), never through the submission
+    path again and never through any endpoint reachable by a buyer session.
+    """
+
+    def setUp(self):
+        self.buyer = _login_as(self.client, 'buyer')
+
+    def _submit_as_buyer(self, entity='CTU-Tuburan Campus', source_filename='original-pr.pdf', items=None):
+        fields = {
+            'entityName': entity,
+            'reviewOnly': True,
+            'sourceFilename': source_filename,
+            'submittedBy': self.buyer.username,
+            'requested_items': items if items is not None else [
+                {'description': 'Bond Paper', 'quantity': 10, 'unit_cost': 100, 'unit': 'ream'},
+            ],
+            'declaration_acknowledged': True,
+        }
+        return self.client.post(
+            '/api/pr/', data=json.dumps({'fields': fields}), content_type='application/json',
+        )
+
+    # 1. End User uploads a valid PR - submission succeeds and the original
+    # document is visible to the End User afterward.
+    def test_end_user_submission_succeeds_and_document_is_viewable(self):
+        response = self._submit_as_buyer()
+        self.assertEqual(response.status_code, 201, response.content)
+        pr_id = response.json()['id']
+
+        listing = self.client.get(
+            f'/api/pr/list/?submitted_by={self.buyer.username}'
+        ).json()
+        record = next(r for r in listing if r['id'] == pr_id)
+        self.assertTrue(record['source_file_url'].endswith('/uploads/original-pr.pdf'))
+        self.assertEqual(record['status'], PurchaseRequest.STATUS_UPLOADED)
+
+    # 2. End User attempts to call the PR edit/update API directly - rejected,
+    # no data changes.
+    def test_end_user_cannot_edit_submitted_pr(self):
+        pr_id = self._submit_as_buyer().json()['id']
+        pr_before = PurchaseRequest.objects.get(id=pr_id)
+
+        response = self.client.patch(
+            f'/api/pr/{pr_id}/edit/',
+            data=json.dumps({'entity_name': 'Tampered Entity', 'items': []}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        pr_after = PurchaseRequest.objects.get(id=pr_id)
+        self.assertEqual(pr_after.entity_name, pr_before.entity_name)
+        self.assertEqual(PurchaseRequestItem.objects.filter(purchase_request_id=pr_id).count(), 1)
+
+    def test_end_user_cannot_change_status_or_delete_submitted_pr(self):
+        pr_id = self._submit_as_buyer().json()['id']
+
+        status_response = self.client.patch(
+            f'/api/pr/{pr_id}/status/',
+            data=json.dumps({'status': PurchaseRequest.STATUS_APPROVED}),
+            content_type='application/json',
+        )
+        delete_response = self.client.delete(f'/api/pr/{pr_id}/')
+
+        self.assertEqual(status_response.status_code, 403)
+        self.assertEqual(delete_response.status_code, 403)
+        self.assertTrue(PurchaseRequest.objects.filter(id=pr_id).exists())
+        self.assertEqual(
+            PurchaseRequest.objects.get(id=pr_id).status, PurchaseRequest.STATUS_UPLOADED,
+        )
+
+    # 3 & 4. BAC opens the PR: original document is visible, OCR/structured
+    # fields are editable, and a correction changes the structured item only.
+    def test_bac_can_review_and_correct_ocr_extracted_fields(self):
+        pr_id = self._submit_as_buyer().json()['id']
+        _login_as(self.client, 'admin')
+
+        details = self.client.get(f'/api/pr/{pr_id}/details/').json()
+        self.assertTrue(details['source_file_url'].endswith('/uploads/original-pr.pdf'))
+        self.assertEqual(details['items'][0]['item_description'], 'Bond Paper')
+
+        response = self.client.patch(
+            f'/api/pr/{pr_id}/edit/',
+            data=json.dumps({
+                'entity_name': 'CTU-Tuburan Campus (Corrected)',
+                'items': [{
+                    'stock_property_no': '', 'unit': 'ream', 'category': '',
+                    'item_description': 'Bond Paper (Corrected by BAC)',
+                    'quantity': 10, 'unit_cost': 100,
+                }],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        pr = PurchaseRequest.objects.get(id=pr_id)
+        self.assertEqual(pr.entity_name, 'CTU-Tuburan Campus (Corrected)')
+        item = pr.line_items.get()
+        self.assertEqual(item.item_description, 'Bond Paper (Corrected by BAC)')
+        # The original uploaded document is untouched by the correction.
+        self.assertEqual(pr.source_filename, 'original-pr.pdf')
+
+    # Original document immutability - even an explicit attempt to change it
+    # via the BAC edit payload is ignored.
+    def test_bac_edit_cannot_change_the_original_document_reference(self):
+        pr_id = self._submit_as_buyer().json()['id']
+        _login_as(self.client, 'admin')
+
+        response = self.client.patch(
+            f'/api/pr/{pr_id}/edit/',
+            data=json.dumps({
+                'entity_name': 'CTU-Tuburan Campus',
+                'source_filename': 'swapped-malicious.pdf',
+                'items': [],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(PurchaseRequest.objects.get(id=pr_id).source_filename, 'original-pr.pdf')
+
+    # 5. RFQ generation after BAC correction uses the corrected structured
+    # data, and the original PR document remains untouched.
+    def test_rfq_generation_uses_bac_corrected_item_data(self):
+        category = Category.objects.create(name='Office Supplies')
+        pr_id = self._submit_as_buyer(items=[
+            {'description': 'Bond Paper', 'quantity': 10, 'unit_cost': 100, 'unit': 'ream'},
+        ]).json()['id']
+        supplier = make_eligible_supplier('Metro Supply', category)
+
+        _login_as(self.client, 'admin')
+        pr = PurchaseRequest.objects.get(id=pr_id)
+        item = pr.line_items.get()
+        self.client.patch(
+            f'/api/pr/{pr_id}/edit/',
+            data=json.dumps({
+                'entity_name': pr.entity_name,
+                'items': [{
+                    'stock_property_no': '', 'unit': 'ream', 'category': category.name,
+                    'item_description': 'Bond Paper, Long (Corrected by BAC)',
+                    'quantity': 10, 'unit_cost': 100,
+                }],
+            }),
+            content_type='application/json',
+        )
+
+        rfq_response = self.client.post(
+            f'/api/pr/{pr_id}/rfq/',
+            data=json.dumps({'supplier_id': supplier.id, 'category': category.name}),
+            content_type='application/json',
+        )
+        self.assertEqual(rfq_response.status_code, 201, rfq_response.content)
+        rfq_items = rfq_response.json()['purchase_request']['items']
+        self.assertEqual(rfq_items[0]['item_description'], 'Bond Paper, Long (Corrected by BAC)')
+
+        pr.refresh_from_db()
+        self.assertEqual(pr.source_filename, 'original-pr.pdf')
+
+    # 9. Buyer vs Admin authorization across every PR mutation endpoint.
+    def test_only_admin_can_reach_pr_mutation_endpoints(self):
+        pr_id = self._submit_as_buyer().json()['id']
+        endpoints = [
+            ('patch', f'/api/pr/{pr_id}/edit/', {'entity_name': 'X', 'items': []}),
+            ('patch', f'/api/pr/{pr_id}/status/', {'status': PurchaseRequest.STATUS_IN_REVIEW}),
+            ('delete', f'/api/pr/{pr_id}/', None),
+        ]
+        for method, url, body in endpoints:
+            kwargs = {'content_type': 'application/json'}
+            if body is not None:
+                kwargs['data'] = json.dumps(body)
+            response = getattr(self.client, method)(url, **kwargs)
+            self.assertEqual(response.status_code, 403, f'{method.upper()} {url} as buyer should be 403')
+
+        _login_as(self.client, 'admin')
+        for method, url, body in endpoints:
+            kwargs = {'content_type': 'application/json'}
+            if body is not None:
+                kwargs['data'] = json.dumps(body)
+            response = getattr(self.client, method)(url, **kwargs)
+            self.assertIn(response.status_code, (200, 204), f'{method.upper()} {url} as admin should succeed')
         self.assertEqual(RFQ.objects.count(), 0)

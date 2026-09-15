@@ -602,12 +602,15 @@ def upload_file(request):
 
 @csrf_exempt
 @require_POST
-@require_auth(role='buyer')
+@require_auth(role=('buyer', 'admin'))
 def pr_recheck_signatures(request):
     """Re-run signature-presence validation for an already-uploaded PR document.
 
     Backs the "Recheck Signatures" action - no re-upload and no re-OCR (the
-    signature regions derived at upload time are reused).
+    signature regions derived at upload time are reused). Available to the
+    submitting buyer (pre-submission review) and to admin/BAC Secretariat
+    (post-submission review), matching the rest of the PR review split -
+    this endpoint only re-reads the stored document, never edits the PR.
     """
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -1002,6 +1005,7 @@ def pr_list(request):
             'items_count',
             'has_quotation',
             'assigned_category_exists',
+            'source_filename',
         )
     records = list(prs)
 
@@ -1026,6 +1030,13 @@ def pr_list(request):
     for record in records:
         if record.pop('assigned_category_exists') is False and record['status'] == PurchaseRequest.STATUS_MATCHED:
             record['status'] = PurchaseRequest.STATUS_IN_REVIEW
+
+        # The End User's original uploaded document - read-only, for the
+        # buyer's own status view and BAC's review screen alike.
+        source_filename = record.pop('source_filename')
+        record['source_file_url'] = (
+            request.build_absolute_uri(f'/uploads/{source_filename}') if source_filename else ''
+        )
 
         rollup = rfq_rollup.get(record['id'], {})
         sent = rollup.get('sent') or 0
@@ -1224,6 +1235,15 @@ def pr_update_status(request, pr_id: int):
 @require_http_methods(["PATCH"])
 @require_auth(role='admin')
 def pr_update(request, pr_id: int):
+    """BAC Secretariat review/correction of the structured PR record.
+
+    Admin-only (see ``@require_auth`` above) - this is the one place OCR
+    output gets corrected, and the End User who submitted the PR must never
+    be able to reach it; a buyer session gets a 403 here. Only the structured
+    ``PurchaseRequest`` / line-item fields are writable - the original
+    uploaded document (``source_filename``) is never accepted from this
+    payload, so BAC corrections can't alter which file is the source of truth.
+    """
     try:
         payload = json.loads(request.body.decode('utf-8'))
     except Exception:
@@ -1261,7 +1281,11 @@ def pr_update(request, pr_id: int):
             if finalize_review:
                 pr.status = PurchaseRequest.STATUS_IN_REVIEW
             pr.entity_name = entity_name
-            pr.source_filename = str(payload.get('source_filename') or pr.source_filename or '').strip()
+            # source_filename (the End User's original uploaded document) is
+            # deliberately never taken from this payload - it is immutable once
+            # set at submission. BAC edits only ever touch the structured fields
+            # below; the original file reference can't be swapped through this
+            # endpoint even by an admin.
             pr.category = str(payload.get('category') or '').strip() or None
             pr.fund_cluster = str(payload.get('fund_cluster') or '').strip()
             pr.office_section = str(payload.get('office_section') or '').strip()
@@ -1276,7 +1300,7 @@ def pr_update(request, pr_id: int):
                 Decimal(str(item.get('quantity') or 0)) * Decimal(str(item.get('unit_cost') or 0))
                 for item in items
             )
-            update_fields = ['entity_name', 'source_filename', 'category', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose', 'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'grand_total']
+            update_fields = ['entity_name', 'category', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose', 'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'grand_total']
             if finalize_review:
                 update_fields.extend(['pr_no', 'status'])
             pr.save(update_fields=update_fields)
@@ -2362,9 +2386,20 @@ def supplier_mark_notification_read(request, notification_id):
 
 
 @require_http_methods(['GET', 'PATCH'])
-@require_auth(role='supplier', owner_param='supplier_id')
+@require_auth(role=('supplier', 'admin'))
 def supplier_profile(request, supplier_id):
-    """Get or update supplier profile."""
+    """Get or update supplier profile.
+
+    GET is shared: the owning supplier views their own profile, and an admin
+    may view any supplier's profile (BAC Secretariat's "View Details"). PATCH
+    stays supplier-only - a supplier editing their own profile; admin edits go
+    through the dedicated status/category endpoints instead.
+    """
+    if request.auth_role == 'supplier' and request.auth_supplier_id != supplier_id:
+        return JsonResponse({'error': 'You do not have permission to access this supplier.'}, status=403)
+    if request.method == 'PATCH' and request.auth_role != 'supplier':
+        return JsonResponse({'error': 'Only the supplier can update their own profile.'}, status=403)
+
     try:
         supplier = Supplier.objects.get(id=supplier_id)
     except Supplier.DoesNotExist:
@@ -2878,10 +2913,9 @@ def _rfq_payload(rfq, request):
         'subject': rfq.subject,
         'message': rfq.message,
         'abc': abc_value,
-        # The RFQ number is the quotation number - one shared RFQ-YYYY-NNNN
-        # sequence across registered and manual RFQs (see _rfq_number). Blank
-        # until the RFQ is issued.
-        'quotation_no': rfq.rfq_no or '',
+        # <PR NO>:NN, scoped per PR (see _quotation_number). Blank until the RFQ
+        # is issued - a preview or a saved draft never consumes a number.
+        'quotation_no': rfq.quotation_no or '',
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
         'quotation_basis': rfq.quotation_basis or RFQ.QUOTATION_BASIS_LOT,
         'additional_notes': rfq.additional_notes,
@@ -2952,6 +2986,33 @@ def _rfq_number(today=None, lock=False):
         if match and match.group(1) == year:
             highest = max(highest, int(match.group(2)))
     return f'RFQ-{year}-{highest + 1:04d}'
+
+
+def _quotation_number(pr, lock=False):
+    """Next ``<PR NO>:NN`` quotation number for ``pr`` - printed on the RFQ as
+    the Quotation No.
+
+    Built directly from the PR's own number (``pr.pr_no``, used verbatim - never
+    reformatted and never prefixed with "PR-"), followed by a 2-digit sequence
+    scoped to that PR alone. The first quotation issued for any PR is always
+    ``:01``, regardless of how many quotations exist for other PRs - there is no
+    global counter. The next value follows the highest sequence already used for
+    this PR (scan of its RFQs' ``quotation_no`` values), so a deleted draft never
+    causes a collision.
+    """
+    if lock:
+        # Lock this PR's row so concurrent issuance for the same PR serialises,
+        # mirroring the advisory-lock pattern used by next_pr_number/_rfq_number.
+        PurchaseRequest.objects.select_for_update().filter(id=pr.id).first()
+
+    pr_no = (pr.pr_no or str(pr.id)).strip()
+    prefix = f'{pr_no}:'
+    highest = 0
+    for value in RFQ.objects.filter(purchase_request_id=pr.id).values_list('quotation_no', flat=True):
+        suffix = (value or '').strip()[len(prefix):] if (value or '').strip().startswith(prefix) else None
+        if suffix and suffix.isdigit():
+            highest = max(highest, int(suffix))
+    return f'{prefix}{highest + 1:02d}'
 
 
 @require_GET
@@ -3213,7 +3274,8 @@ def admin_rfq(request, pr_id):
     # preview or a saved draft never consumes a number (task 12/18).
     if should_send and not rfq.rfq_no:
         rfq.rfq_no = _rfq_number(lock=True)
-        rfq.save(update_fields=['rfq_no', 'updated_at'])
+        rfq.quotation_no = _quotation_number(pr, lock=True)
+        rfq.save(update_fields=['rfq_no', 'quotation_no', 'updated_at'])
 
     if generate_pdf:
         try:
@@ -3353,6 +3415,7 @@ def manual_rfq_create(request, pr_id):
         with transaction.atomic():
             rfq = RFQ.objects.create(
                 rfq_no=_rfq_number(lock=True),
+                quotation_no=_quotation_number(pr, lock=True),
                 purchase_request=pr,
                 supplier=None,
                 category=group_category,

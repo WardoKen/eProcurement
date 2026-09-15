@@ -1,4 +1,5 @@
 import { Menu, ChevronLeft, LogOut } from 'lucide-react'
+import ThemeToggle from './ThemeToggle'
 
 // Shared sidebar shell for the Admin, Buyer (End User) and Supplier portals.
 // Each caller supplies its own real nav items grouped into sections; this
@@ -67,6 +68,7 @@ const Sidebar = ({
           <div className="admin-user">{userPrimary}</div>
           <div className="admin-user-email">{userSecondary}</div>
         </div>
+        <ThemeToggle className="admin-theme-toggle" />
         <button className="admin-nav-logout" onClick={onLogout} title="Log Out">
           <LogOut size={14} />
           <span className="admin-nav-label">Log Out</span>
