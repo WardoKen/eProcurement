@@ -6,6 +6,7 @@ import {
   Eye,
   BriefcaseBusiness,
   Pencil,
+  Plus,
   CircleHelp,
   ClipboardList,
   House,
@@ -41,7 +42,12 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import logo from './assets/logo.webp'
-import DragDropUpload from './components/DragDropUpload'
+import DragDropUpload, {
+  SignatureValidationPanel,
+  FieldShell,
+  SignatureBlock,
+  AutoGrowTextarea,
+} from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import Sidebar from './components/Sidebar'
 import { apiFetch } from './lib/apiClient'
@@ -53,6 +59,17 @@ import './index.css'
 // while reloads and in-tab navigation keep the session. Any legacy copy left in
 // localStorage by an older build is removed once on load so it can't resurface.
 const AUTH_STORAGE_KEYS = ['eProcureUser', 'supplier_id', 'supplier_status']
+
+// Maps the BAC review form's flat signatory field names to the signature
+// detector's keys (see SIGNATURE_KEY_BY_BLOCK in DragDropUpload.jsx, which
+// uses the Buyer upload wizard's split designation/name field names instead -
+// the structured PurchaseRequest record only stores one name per signatory).
+const ADMIN_SIGNATORY_DETECTOR_KEY = {
+  requested_by: 'requested_by',
+  funds_available_by: 'funds_available',
+  approved_by: 'approved_by',
+  twg_verified_by: 'twg',
+}
 
 try {
   AUTH_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key))
@@ -2801,6 +2818,9 @@ const Admin = () => {
   const [editPrNumberMode, setEditPrNumberMode] = React.useState('automatic')
   const [editPrCustomNumber, setEditPrCustomNumber] = React.useState('')
   const [editPrSourceUrl, setEditPrSourceUrl] = React.useState('')
+  const [editPrSourceFilename, setEditPrSourceFilename] = React.useState('')
+  const [editPrSignatureValidation, setEditPrSignatureValidation] = React.useState(null)
+  const [editPrSignatureChecking, setEditPrSignatureChecking] = React.useState(false)
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
@@ -3533,6 +3553,16 @@ const Admin = () => {
       setEditPrNumberMode(details.pr_no ? 'existing' : 'automatic')
       setEditPrCustomNumber(details.pr_no || '')
       setEditPrSourceUrl(details.source_file_url || '')
+      setEditPrSourceFilename(details.source_filename || '')
+      setEditPrSignatureValidation(null)
+      if (details.source_filename) {
+        checkEditPrSignatures(details.source_filename, {
+          requested_by_name: details.requested_by || '',
+          funds_available_name: details.funds_available_by || '',
+          approved_by_name: details.approved_by || '',
+          twg_name: details.twg_verified_by || '',
+        })
+      }
     } catch (error) {
       setPrError(error?.message || 'Failed to load Purchase Request details')
       setEditingPr(null)
@@ -3541,10 +3571,43 @@ const Admin = () => {
     }
   }
 
+  const checkEditPrSignatures = async (filename, signatoryFields) => {
+    if (!filename) return
+    setEditPrSignatureChecking(true)
+    try {
+      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/recheck-signatures/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, fields: signatoryFields }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.signature_validation) {
+        setEditPrSignatureValidation(data.signature_validation)
+      }
+    } catch {
+      // Non-fatal - the BAC reviewer can still edit the PR without the
+      // signature panel; they can retry via the "Recheck Signatures" button.
+    } finally {
+      setEditPrSignatureChecking(false)
+    }
+  }
+
+  const handleRecheckEditPrSignatures = () => {
+    if (!editPrForm || !editPrSourceFilename) return
+    checkEditPrSignatures(editPrSourceFilename, {
+      requested_by_name: editPrForm.requested_by || '',
+      funds_available_name: editPrForm.funds_available_by || '',
+      approved_by_name: editPrForm.approved_by || '',
+      twg_name: editPrForm.twg_verified_by || '',
+    })
+  }
+
   const closeEditPr = () => {
     if (editPrSaving) return
     setEditingPr(null)
     setEditPrForm(null)
+    setEditPrSignatureValidation(null)
+    setEditPrSourceFilename('')
   }
 
   const handleSavePrEdit = async (finalizeReview = false) => {
@@ -4663,98 +4726,227 @@ const Admin = () => {
                     <div className="modal-body"><SkeletonRows count={4} /></div>
                   ) : (
                     <>
-                      {editPrSourceUrl && (
-                        <div className="pr-review-document-pane">
-                          <div className="pr-review-document-header">
-                            <h3>Original PR Document</h3>
-                            <a className="btn-sm btn-secondary" href={editPrSourceUrl} target="_blank" rel="noreferrer">Open document</a>
-                          </div>
-                          <iframe src={editPrSourceUrl} title="Original Purchase Request document" />
-                        </div>
-                      )}
                       <div className="modal-body pr-edit-body">
-                        {editPrForm.pr_no ? (
-                          <label className="form-field">
-                            <span>Assigned PR Number</span>
-                            <input value={editPrForm.pr_no} readOnly />
-                          </label>
-                        ) : (
-                          <div className="pr-review-numbering">
-                            <span className="form-field-label">Assign Final PR Number</span>
-                            <div className="numbering-options">
-                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'automatic'} onChange={() => setEditPrNumberMode('automatic')} /> Automatic</label>
-                              <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'custom'} onChange={() => setEditPrNumberMode('custom')} /> Custom</label>
-                            </div>
-                            {editPrNumberMode === 'automatic' ? (
-                              <div className="pr-review-number-preview">
-                                <span>Next available number</span>
-                                <small>Will be assigned when you continue to Category Selection.</small>
-                              </div>
+                        <div className="pr-review-split">
+                          <aside className="pr-review-preview-pane card">
+                            <header className="panel-header">
+                              <h3>Original PR Document</h3>
+                              {editPrSourceUrl && (
+                                <a className="btn-sm btn-secondary" href={editPrSourceUrl} target="_blank" rel="noreferrer">Open document</a>
+                              )}
+                            </header>
+                            {editPrSourceUrl ? (
+                              <iframe src={editPrSourceUrl} title="Original Purchase Request document" />
                             ) : (
-                              <div className="pr-review-custom-number">
-                                <label htmlFor="review-custom-pr-number">Custom PR Number</label>
-                                <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="e.g. 2026-09-001" />
-                                <small>Must match the PR number format configured in PR Numbering settings.</small>
+                              <div className="empty-state pr-review-preview-empty">
+                                <p>No original document on file.</p>
                               </div>
                             )}
+                          </aside>
+
+                          <div className="pr-upload-grid">
+                            <section className="card form-panel">
+                              <header className="panel-header">
+                                <h3><Search size={18} /> Purchase Request Details</h3>
+                              </header>
+
+                              {!editPrForm.pr_no && (
+                                <div className="pr-review-numbering">
+                                  <span className="form-field-label">Assign Final PR Number</span>
+                                  <div className="numbering-options">
+                                    <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'automatic'} onChange={() => setEditPrNumberMode('automatic')} /> Automatic</label>
+                                    <label><input type="radio" name="review-pr-numbering" checked={editPrNumberMode === 'custom'} onChange={() => setEditPrNumberMode('custom')} /> Custom</label>
+                                  </div>
+                                  {editPrNumberMode === 'automatic' ? (
+                                    <div className="pr-review-number-preview">
+                                      <span>Next available number</span>
+                                      <small>Will be assigned when you click "Assign PR Number" below.</small>
+                                    </div>
+                                  ) : (
+                                    <div className="pr-review-custom-number">
+                                      <label htmlFor="review-custom-pr-number">Custom PR Number</label>
+                                      <input id="review-custom-pr-number" value={editPrCustomNumber} onChange={(event) => setEditPrCustomNumber(event.target.value)} placeholder="e.g. 2026-09-001" />
+                                      <small>Must match the PR number format configured in PR Numbering settings.</small>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="floating-grid">
+                                {editPrForm.pr_no && (
+                                  <FieldShell id="edit-pr-no" label="Assigned PR Number" value={editPrForm.pr_no} readOnly full />
+                                )}
+                                <FieldShell
+                                  id="edit-entity-name"
+                                  label="Entity Name *"
+                                  value={editPrForm.entity_name}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, entity_name: value }))}
+                                  full
+                                />
+                                <FieldShell
+                                  id="edit-fund-cluster"
+                                  label="Fund Cluster"
+                                  value={editPrForm.fund_cluster}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, fund_cluster: value }))}
+                                />
+                                <FieldShell
+                                  id="edit-office-section"
+                                  label="Office / Section"
+                                  value={editPrForm.office_section}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, office_section: value }))}
+                                />
+                                <FieldShell
+                                  id="edit-rc-code"
+                                  label="Responsibility Center Code"
+                                  value={editPrForm.responsibility_center_code}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, responsibility_center_code: value }))}
+                                  full
+                                />
+                                <FieldShell
+                                  id="edit-date"
+                                  label="Date"
+                                  type="date"
+                                  value={editPrForm.date}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, date: value }))}
+                                />
+                                <FieldShell
+                                  id="edit-purpose"
+                                  label="Purpose"
+                                  value={editPrForm.purpose}
+                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, purpose: value }))}
+                                  full
+                                  isTextarea
+                                />
+                              </div>
+
+                              <div className="signature-grid">
+                                {[
+                                  ['requested_by', 'Requested By'],
+                                  ['funds_available_by', 'Funds Available'],
+                                  ['approved_by', 'Approved By'],
+                                  ['twg_verified_by', 'Technical Working Group'],
+                                ].map(([field, title]) => (
+                                  <SignatureBlock
+                                    key={field}
+                                    title={title}
+                                    nameKey={field}
+                                    fields={editPrForm}
+                                    onFieldChange={(key, value) => setEditPrForm((prev) => ({ ...prev, [key]: value }))}
+                                    signatureState={editPrSignatureValidation?.signatories?.[ADMIN_SIGNATORY_DETECTOR_KEY[field]] || null}
+                                  />
+                                ))}
+                              </div>
+
+                              <SignatureValidationPanel
+                                validation={editPrSignatureValidation}
+                                onRecheck={handleRecheckEditPrSignatures}
+                                rechecking={editPrSignatureChecking}
+                                hasDocument={Boolean(editPrSourceFilename)}
+                              />
+
+                              <div className="requested-items-block">
+                                <div className="items-header">
+                                  <h4>Requested Items</h4>
+                                  <div className="items-header-actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}
+                                    >
+                                      <Plus size={16} />
+                                      Add Item
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="table-shell">
+                                  <table className="enterprise-table items-table requested-items-table">
+                                    <thead>
+                                      <tr>
+                                        <th style={{ width: '48px' }}>Item No.</th>
+                                        <th style={{ width: '130px' }}>Stock/Property No.</th>
+                                        <th className="requested-item-unit-cell" style={{ width: '100px' }}>Unit</th>
+                                        <th className="requested-item-description-cell">Description</th>
+                                        <th style={{ width: '80px' }}>Qty</th>
+                                        <th style={{ width: '120px' }}>Unit Cost</th>
+                                        <th style={{ width: '120px' }}>Total</th>
+                                        <th style={{ width: '160px' }}>Category</th>
+                                        <th style={{ width: '56px' }}>Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {editPrForm.items.length > 0 ? editPrForm.items.map((item, index) => {
+                                        const qty = parseFloat(item.quantity) || 0
+                                        const unitCost = parseFloat(item.unit_cost) || 0
+                                        const total = (qty * unitCost).toFixed(2)
+                                        const updateItem = (patch) => setEditPrForm((prev) => ({
+                                          ...prev,
+                                          items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, ...patch } : current),
+                                        }))
+                                        return (
+                                          <tr key={`${editingPr.id}-item-${index}`}>
+                                            <td>{index + 1}</td>
+                                            <td>
+                                              <input aria-label={`Item ${index + 1} stock number`} value={item.stock_property_no} onChange={(event) => updateItem({ stock_property_no: event.target.value })} />
+                                            </td>
+                                            <td className="requested-item-unit-cell">
+                                              <input aria-label={`Item ${index + 1} unit`} value={item.unit} onChange={(event) => updateItem({ unit: event.target.value })} />
+                                            </td>
+                                            <td className="requested-item-description-cell">
+                                              <AutoGrowTextarea
+                                                value={item.item_description}
+                                                onChange={(event) => updateItem({ item_description: event.target.value })}
+                                                className="requested-item-description"
+                                                aria-label={`Item ${index + 1} description`}
+                                              />
+                                            </td>
+                                            <td>
+                                              <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateItem({ quantity: event.target.value })} />
+                                            </td>
+                                            <td>
+                                              <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" value={item.unit_cost} onChange={(event) => updateItem({ unit_cost: event.target.value })} />
+                                            </td>
+                                            <td>{total}</td>
+                                            <td>
+                                              <input aria-label={`Item ${index + 1} category`} value={item.category} onChange={(event) => updateItem({ category: event.target.value })} />
+                                            </td>
+                                            <td>
+                                              <button
+                                                type="button"
+                                                className="icon-action-btn delete-icon-btn"
+                                                aria-label={`Remove item ${index + 1}`}
+                                                onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}
+                                              >
+                                                <Trash2 size={15} />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        )
+                                      }) : (
+                                        <tr>
+                                          <td colSpan={9}>
+                                            <div className="table-empty-state">
+                                              <p>No line items yet.</p>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </section>
                           </div>
-                        )}
-                        <label className="form-field">
-                          <span>Entity Name *</span>
-                          <input value={editPrForm.entity_name} onChange={(event) => setEditPrForm((prev) => ({ ...prev, entity_name: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Fund Cluster</span>
-                          <input value={editPrForm.fund_cluster} onChange={(event) => setEditPrForm((prev) => ({ ...prev, fund_cluster: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Office / Section</span>
-                          <input value={editPrForm.office_section} onChange={(event) => setEditPrForm((prev) => ({ ...prev, office_section: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Responsibility Center Code</span>
-                          <input value={editPrForm.responsibility_center_code} onChange={(event) => setEditPrForm((prev) => ({ ...prev, responsibility_center_code: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Date</span>
-                          <input type="date" value={editPrForm.date} onChange={(event) => setEditPrForm((prev) => ({ ...prev, date: event.target.value }))} />
-                        </label>
-                        <label className="form-field">
-                          <span>Purpose</span>
-                          <textarea rows="3" value={editPrForm.purpose} onChange={(event) => setEditPrForm((prev) => ({ ...prev, purpose: event.target.value }))} />
-                        </label>
-                        <div className="pr-edit-signatories">
-                          {[
-                            ['requested_by', 'Requested By'],
-                            ['funds_available_by', 'Funds Available By'],
-                            ['approved_by', 'Approved By'],
-                            ['twg_verified_by', 'TWG Verified By'],
-                          ].map(([field, label]) => (
-                            <label className="form-field" key={field}>
-                              <span>{label}</span>
-                              <input value={editPrForm[field]} onChange={(event) => setEditPrForm((prev) => ({ ...prev, [field]: event.target.value }))} />
-                            </label>
-                          ))}
-                        </div>
-                        <div className="pr-edit-items">
-                          <div className="pr-edit-items-header"><h3>Line Items</h3><button type="button" className="btn-sm btn-secondary" onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}>Add Item</button></div>
-                          {editPrForm.items.map((item, index) => (
-                            <div className="pr-edit-item" key={`${editingPr.id}-item-${index}`}>
-                              <input aria-label={`Item ${index + 1} stock number`} placeholder="Stock / Property No." value={item.stock_property_no} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, stock_property_no: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} description`} placeholder="Description" value={item.item_description} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, item_description: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} unit`} placeholder="Unit" value={item.unit} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" placeholder="Qty" value={item.quantity} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, quantity: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" placeholder="Unit cost" value={item.unit_cost} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, unit_cost: event.target.value } : current) }))} />
-                              <input aria-label={`Item ${index + 1} category`} placeholder="Category" value={item.category} onChange={(event) => setEditPrForm((prev) => ({ ...prev, items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, category: event.target.value } : current) }))} />
-                              <button type="button" className="icon-action-btn delete" aria-label={`Remove item ${index + 1}`} onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}><Trash2 size={14} /></button>
-                            </div>
-                          ))}
                         </div>
                       </div>
                       <div className="modal-actions">
                         <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
                         <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
-                        <button type="button" className="btn btn-primary" onClick={async () => { const saved = await handleSavePrEdit(true); if (saved) { setWorkflowPrId(editingPr.id); setCurrentTab('assign-categories') } }} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Continuing...' : 'Continue to Category Selection'}</button>
+                        {!editPrForm.pr_no && (
+                          <button type="button" className="btn btn-primary" onClick={() => handleSavePrEdit(true)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>
+                            {editPrSaving ? 'Assigning...' : 'Assign PR Number'}
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -5482,6 +5674,14 @@ const BuyerPRStatusCard = ({ record }) => {
         {record.date && <div><dt>PR Date</dt><dd>{buyerLongDate(record.date)}</dd></div>}
         <div><dt>Submitted</dt><dd>{buyerLongDate(record.created_at) || '—'}</dd></div>
         <div><dt>Total</dt><dd>{buyerPeso(record.grand_total)}</dd></div>
+        <div>
+          <dt>Original Document</dt>
+          <dd>
+            {record.source_file_url
+              ? <a href={record.source_file_url} target="_blank" rel="noreferrer">View submitted document</a>
+              : '—'}
+          </dd>
+        </div>
       </dl>
 
       <div className="buyer-status-current">

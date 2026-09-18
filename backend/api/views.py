@@ -602,12 +602,14 @@ def upload_file(request):
 
 @csrf_exempt
 @require_POST
-@require_auth(role='buyer')
+@require_auth(role=('buyer', 'admin'))
 def pr_recheck_signatures(request):
     """Re-run signature-presence validation for an already-uploaded PR document.
 
     Backs the "Recheck Signatures" action - no re-upload and no re-OCR (the
-    signature regions derived at upload time are reused).
+    signature regions derived at upload time are reused). Available to the
+    submitting Buyer (pre-submission review) and to the BAC Secretariat
+    (reviewing signature-presence results against the original document).
     """
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -1002,6 +1004,7 @@ def pr_list(request):
             'items_count',
             'has_quotation',
             'assigned_category_exists',
+            'source_filename',
         )
     records = list(prs)
 
@@ -1026,6 +1029,11 @@ def pr_list(request):
     for record in records:
         if record.pop('assigned_category_exists') is False and record['status'] == PurchaseRequest.STATUS_MATCHED:
             record['status'] = PurchaseRequest.STATUS_IN_REVIEW
+
+        source_filename = record.pop('source_filename', '') or ''
+        record['source_file_url'] = (
+            request.build_absolute_uri(f'/uploads/{source_filename}') if source_filename else ''
+        )
 
         rollup = rfq_rollup.get(record['id'], {})
         sent = rollup.get('sent') or 0

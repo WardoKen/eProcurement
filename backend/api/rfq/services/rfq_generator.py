@@ -47,17 +47,13 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
     # PurchaseRequestItem rows saved by the PR workflow. Each database item maps
     # to exactly one RFQ row - the raw OCR / PR text is never used here.
     #
-    # A category-group RFQ lists ONLY its own items (recorded in ``rfq_items``).
-    # Legacy RFQs created before category grouping have no ``rfq_items`` rows and
-    # fall back to every item on the PR.
-    linked = list(
-        rfq.rfq_items.select_related('purchase_request_item')
-        .order_by('purchase_request_item_id')
-    )
-    source_items = (
-        [li.purchase_request_item for li in linked] if linked
-        else list(pr.line_items.all())
-    )
+    # The printed RFQ always lists every item on the PR, even for a
+    # category-group RFQ whose ``rfq_items`` link only covers that supplier's
+    # own category - the supplier can see the full request and simply leaves
+    # unit price blank (or writes "N/A") for lines outside what they supply.
+    # ``rfq.rfq_items`` still records the category subset for internal
+    # matching/tracking; it just no longer limits what appears on the document.
+    source_items = list(pr.line_items.all())
     items = []
     for idx, item in enumerate(source_items, start=1):
         items.append({

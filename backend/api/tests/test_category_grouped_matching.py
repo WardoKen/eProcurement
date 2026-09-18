@@ -55,8 +55,8 @@ class CategoryGroupingTests(TestCase):
         admin_role = Role.objects.get_or_create(name='admin')[0]
         admin_user = User.objects.create(username='bac', password_hash='x', role=admin_role)
         _login_as(self.client, 'admin', user=admin_user)
-        self.aircon = Category.objects.create(name='Airconditioning and Airconditioning Systems')
-        self.office_eq = Category.objects.create(name='Office Equipment')
+        self.aircon = Category.objects.get_or_create(name='Airconditioning and Airconditioning Systems')[0]
+        self.office_eq = Category.objects.get_or_create(name='Office Equipment')[0]
         self.office_sup = Category.objects.create(name='Office Supplies')
         self.pr = PurchaseRequest.objects.create(
             entity_name='CTU-Tuburan Campus', pr_no='2026-09-001',
@@ -128,7 +128,7 @@ class CategoryScopedRFQTests(TestCase):
         admin_role = Role.objects.get_or_create(name='admin')[0]
         admin_user = User.objects.create(username='bac', password_hash='x', role=admin_role)
         _login_as(self.client, 'admin', user=admin_user)
-        self.aircon = Category.objects.create(name='Airconditioning and Airconditioning Systems')
+        self.aircon = Category.objects.get_or_create(name='Airconditioning and Airconditioning Systems')[0]
         self.office = Category.objects.create(name='Office Supplies')
         self.pr = PurchaseRequest.objects.create(
             entity_name='CTU-Tuburan Campus', pr_no='2026-09-002',

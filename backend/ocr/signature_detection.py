@@ -99,6 +99,12 @@ class TextLine:
     y0: float
     x1: float
     y1: float
+    # Per-character (glyph, x0, x1) boxes in the same normalized space, in
+    # left-to-right order. Populated only by the pdfminer path, where exact
+    # glyph geometry is available cheaply - used to find precisely where a
+    # printed label like "Signature :" ends (see ``_char_label_extent``)
+    # instead of guessing a fraction of the line's overall measured width.
+    char_boxes: Optional[List[Tuple[str, float, float]]] = None
 
     @property
     def norm(self) -> str:
@@ -202,7 +208,7 @@ def collect_words(textract_blocks: Optional[List[Dict[str, Any]]]) -> List[TextL
 def _lines_from_pdf_layout(path: Path) -> List[TextLine]:
     try:
         from pdfminer.high_level import extract_pages
-        from pdfminer.layout import LTTextContainer, LTTextLine
+        from pdfminer.layout import LTChar, LTTextContainer, LTTextLine
     except Exception:  # pragma: no cover - pdfminer always installed here
         return []
 
@@ -222,6 +228,11 @@ def _lines_from_pdf_layout(path: Path) -> List[TextLine]:
                     if not text:
                         continue
                     x0, y0, x1, y1 = line.bbox
+                    char_boxes = [
+                        (obj.get_text(), max(0.0, obj.x0 / page_w), min(1.0, obj.x1 / page_w))
+                        for obj in line
+                        if isinstance(obj, LTChar)
+                    ]
                     lines.append(
                         TextLine(
                             text=text,
@@ -231,6 +242,7 @@ def _lines_from_pdf_layout(path: Path) -> List[TextLine]:
                             y0=max(0.0, 1.0 - (y1 / page_h)),
                             x1=min(1.0, x1 / page_w),
                             y1=min(1.0, 1.0 - (y0 / page_h)),
+                            char_boxes=char_boxes or None,
                         )
                     )
     except Exception:
@@ -262,7 +274,67 @@ def _is_rule_line(text: str) -> bool:
     return bool(stripped) and bool(re.fullmatch(r"[_\-—–.]+", stripped))
 
 
-def _text_masks(lines: List[TextLine], page: int, band_top: float, band_bottom: float) -> List[Tuple[float, float, float, float]]:
+def _char_label_extent(line: TextLine) -> Optional[float]:
+    """Right edge (normalized x) of the printed "Signature" label within
+    ``line``, from exact glyph positions (the pdfminer path only). Extends
+    past a directly-following colon/punctuation - e.g. "Signature :" - so the
+    whole printed label is covered, not just the bare word. Returns ``None``
+    when ``line`` has no character-level geometry, or the word isn't found.
+    """
+    if not line.char_boxes:
+        return None
+    joined = "".join(ch for ch, _, _ in line.char_boxes).lower()
+    idx = joined.find("signature")
+    if idx < 0:
+        return None
+    end_idx = idx + len("signature") - 1
+    lookahead = joined[end_idx + 1:end_idx + 4]
+    colon_offset = lookahead.find(":")
+    if colon_offset != -1:
+        end_idx += 1 + colon_offset
+    end_idx = min(end_idx, len(line.char_boxes) - 1)
+    return line.char_boxes[end_idx][2]
+
+
+def _word_label_extent(words: Optional[List[TextLine]], line: TextLine) -> Optional[float]:
+    """Right edge (normalized x) of the printed "Signature" label within
+    ``line``'s row, from Textract WORD boxes - the recognizer's own word
+    segmentation, and the most reliable source when available. Returns
+    ``None`` when no matching WORD box is found in that row."""
+    if not words:
+        return None
+    hits = [
+        w for w in words
+        if w.page == line.page and "signature" in w.norm
+        and (line.y0 - 0.01) <= w.y0 <= (line.y1 + 0.01)
+    ]
+    if not hits:
+        return None
+    hit = min(hits, key=lambda w: w.x0)
+    end_x1 = hit.x1
+    # A colon recognised as its own WORD immediately to the right is still
+    # part of the printed label, not something a signer would write over.
+    colon = next(
+        (
+            w for w in words
+            if w.page == line.page and w.text.strip().startswith(":")
+            and (line.y0 - 0.01) <= w.y0 <= (line.y1 + 0.01)
+            and 0 <= (w.x0 - end_x1) <= 0.02
+        ),
+        None,
+    )
+    if colon is not None:
+        end_x1 = colon.x1
+    return end_x1
+
+
+def _text_masks(
+    lines: List[TextLine],
+    page: int,
+    band_top: float,
+    band_bottom: float,
+    words: Optional[List[TextLine]] = None,
+) -> List[Tuple[float, float, float, float]]:
     """Boxes of recognised *text* inside a band - printed names, headings, the
     "Signature :" label - to blank before measuring ink. The ruled blank line is
     deliberately not masked (a signature drawn across it must survive; the
@@ -276,8 +348,25 @@ def _text_masks(lines: List[TextLine], page: int, band_top: float, band_bottom: 
         if _is_rule_line(line.text):
             continue
         if "signature" in line.norm and "printed name" not in line.norm:
-            width = max(line.x1 - line.x0, 1e-6)
-            masks.append((line.x0, line.y0, line.x0 + min(0.11, 0.30 * width), line.y1))
+            # Mask exactly where the printed label ends, from real glyph/word
+            # geometry - never a fixed fraction of the *line's* measured
+            # width, which has no relationship to how wide the label itself
+            # was actually rendered (a line combining the label with a long
+            # ruled blank, or a line that is just the label on its own,
+            # produce very different width ratios for the same label).
+            label_x1 = _word_label_extent(words, line)
+            if label_x1 is None:
+                label_x1 = _char_label_extent(line)
+            if label_x1 is None:
+                # Defensive fallback only - pdfminer always yields char boxes
+                # and Textract always yields WORD blocks alongside LINEs, so
+                # this should not normally trigger. Estimate the label's
+                # share of the line from its text length instead of an
+                # arbitrary pixel-width fraction.
+                ratio = min(0.9, len("signature :") / max(len(line.text), 1))
+                label_x1 = line.x0 + ratio * max(line.x1 - line.x0, 1e-6)
+            label_x1 = max(line.x0, min(label_x1, line.x1))
+            masks.append((line.x0, line.y0, label_x1, line.y1))
             continue
         masks.append((line.x0, line.y0, line.x1, line.y1))
     return masks
@@ -391,7 +480,7 @@ def compute_regions(lines: List[TextLine], words: Optional[List[TextLine]] = Non
             (span_left + i * col_w, span_left + (i + 1) * col_w) for i in range(3)
         ]
 
-    masks = _text_masks(lines, page, band_top, band_bottom)
+    masks = _text_masks(lines, page, band_top, band_bottom, words)
 
     for key, (x0, x1) in zip((REQUESTED_BY, FUNDS_AVAILABLE, APPROVED_BY), bounds):
         regions[key] = Region(
@@ -450,7 +539,7 @@ def compute_regions(lines: List[TextLine], words: Optional[List[TextLine]] = Non
 
         regions[TWG] = Region(
             page=twg_page, x0=t_left, y0=t_top, x1=t_right, y1=t_bottom,
-            masks=_text_masks(lines, twg_page, t_top, t_bottom), source="anchors",
+            masks=_text_masks(lines, twg_page, t_top, t_bottom, words), source="anchors",
         )
 
     return regions

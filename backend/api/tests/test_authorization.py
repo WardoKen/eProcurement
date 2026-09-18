@@ -449,3 +449,119 @@ class LoginSessionTests(TestCase):
 
         response = self.client.get('/api/pr/next-number/')
         self.assertEqual(response.status_code, 401)
+
+
+class PurchaseRequestImmutabilityAuthTests(TestCase):
+    """Once an End User (Buyer) submits a Purchase Request, only the BAC
+    Secretariat (admin) may edit it, change its status, or delete it. These
+    endpoints must reject a buyer even on a direct, hand-crafted request -
+    the React UI hiding the controls is not the enforcement boundary."""
+
+    def setUp(self):
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU', pr_no='2026-09-050', source_filename='original.pdf',
+        )
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Bond Paper', quantity=10, unit_cost=5, total_cost=50,
+        )
+
+    def test_buyer_cannot_edit_a_submitted_pr(self):
+        _login_as(self.client, 'buyer')
+        response = self.client.patch(
+            f'/api/pr/{self.pr.id}/edit/',
+            data=json.dumps({'entity_name': 'Hacked Entity', 'items': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.entity_name, 'CTU')
+        self.assertEqual(self.pr.source_filename, 'original.pdf')
+        self.assertEqual(self.pr.line_items.count(), 1)
+
+    def test_unauthenticated_cannot_edit_a_submitted_pr(self):
+        response = self.client.patch(
+            f'/api/pr/{self.pr.id}/edit/',
+            data=json.dumps({'entity_name': 'Hacked Entity', 'items': []}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_buyer_cannot_change_pr_status(self):
+        _login_as(self.client, 'buyer')
+        response = self.client.patch(
+            f'/api/pr/{self.pr.id}/status/',
+            data=json.dumps({'status': 'approved'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.status, PurchaseRequest.STATUS_UPLOADED)
+
+    def test_buyer_cannot_delete_a_submitted_pr(self):
+        _login_as(self.client, 'buyer')
+        response = self.client.delete(f'/api/pr/{self.pr.id}/')
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(PurchaseRequest.objects.filter(id=self.pr.id).exists())
+
+    def test_admin_can_edit_the_submitted_pr_without_touching_the_original_document(self):
+        _login_as(self.client, 'admin')
+        response = self.client.patch(
+            f'/api/pr/{self.pr.id}/edit/',
+            data=json.dumps({
+                'entity_name': 'Corrected Entity',
+                'items': [{'item_description': 'Corrected item', 'quantity': 5, 'unit_cost': 10}],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.pr.refresh_from_db()
+        self.assertEqual(self.pr.entity_name, 'Corrected Entity')
+        self.assertEqual(self.pr.line_items.get().item_description, 'Corrected item')
+        # The original uploaded document reference is untouched by the edit.
+        self.assertEqual(self.pr.source_filename, 'original.pdf')
+
+
+class PrRecheckSignaturesAuthTests(TestCase):
+    """pr_recheck_signatures: available to the submitting Buyer and to the
+    BAC Secretariat (admin) reviewing signature-presence results during PR
+    review; no other role."""
+
+    def test_unauthenticated_is_rejected(self):
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': 'x.pdf'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_supplier_is_rejected(self):
+        _login_as(self.client, 'supplier')
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': 'x.pdf'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_is_allowed_to_reach_the_view(self):
+        _login_as(self.client, 'admin')
+        response = self.client.post(
+            '/api/pr/recheck-signatures/',
+            data=json.dumps({'filename': 'does-not-exist.pdf'}),
+            content_type='application/json',
+        )
+        # Rejected for a missing document (404), not for role (403) - this
+        # proves the admin passed the auth check.
+        self.assertEqual(response.status_code, 404)
+
+
+class PrListSourceDocumentTests(TestCase):
+    """pr_list must surface the original document reference so the End User
+    can view what they submitted (their PR view is otherwise read-only)."""
+
+    def test_pr_list_includes_source_file_url(self):
+        PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-09-060', source_filename='mypr.pdf')
+        _login_as(self.client, 'admin')
+        response = self.client.get('/api/pr/list/')
+        record = response.json()[0]
+        self.assertTrue(record['source_file_url'].endswith('/uploads/mypr.pdf'))

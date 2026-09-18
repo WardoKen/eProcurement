@@ -20,7 +20,7 @@ const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '
 // Textarea that grows with its content so the visible box always matches what
 // has been typed. Modern browsers get this natively via `field-sizing: content`
 // (see index.css); this keeps the rest in sync and caps the height at `maxRows`.
-function AutoGrowTextarea({ value, maxRows = 12, className, ...rest }) {
+export function AutoGrowTextarea({ value, maxRows = 12, className, ...rest }) {
   const ref = useRef(null)
 
   const resize = () => {
@@ -75,7 +75,7 @@ function normalizeOcrDate(value, rawText = '') {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-const FieldShell = ({
+export const FieldShell = ({
   id,
   label,
   value,
@@ -85,11 +85,13 @@ const FieldShell = ({
   full,
   isTextarea,
   editedByUser,
+  readOnly,
 }) => {
   const wrapperClass = [
     'floating-field',
     full ? 'full' : '',
     editedByUser ? 'manual-edited' : '',
+    readOnly ? 'field-readonly' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -97,9 +99,25 @@ const FieldShell = ({
   return (
     <div className={wrapperClass}>
       {isTextarea ? (
-        <textarea id={id} value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder=" " rows={4} />
+        <textarea
+          id={id}
+          value={value || ''}
+          onChange={(e) => onChange?.(e.target.value)}
+          placeholder=" "
+          rows={4}
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
       ) : (
-        <input id={id} value={value || ''} onChange={(e) => onChange(e.target.value)} type={type} placeholder=" " />
+        <input
+          id={id}
+          value={value || ''}
+          onChange={(e) => onChange?.(e.target.value)}
+          type={type}
+          placeholder=" "
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
       )}
       <label htmlFor={id}>{label}</label>
       {helper && <small>{helper}</small>}
@@ -139,7 +157,9 @@ const SignatureStatusChip = ({ state }) => {
   )
 }
 
-const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys, signatureState }) => (
+const EMPTY_EDITED_KEYS = new Set()
+
+export const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange, editedFieldKeys = EMPTY_EDITED_KEYS, signatureState, readOnly }) => (
   <section className={`signature-card ${signatureState ? signatureStatusMeta(signatureState.state).className : ''}`}>
     <div className="signature-card-head">
       <h4>
@@ -150,24 +170,28 @@ const SignatureBlock = ({ title, designationKey, nameKey, fields, onFieldChange,
         ? <SignatureStatusChip state={signatureState.state} />
         : <span className="sig-status-chip sig-status-pending">Not checked</span>}
     </div>
-    <FieldShell
-      id={designationKey}
-      label="Designation"
-      value={fields[designationKey]}
-      onChange={(value) => onFieldChange(designationKey, value)}
-      editedByUser={editedFieldKeys.has(designationKey)}
-    />
+    {designationKey && (
+      <FieldShell
+        id={designationKey}
+        label="Designation"
+        value={fields[designationKey]}
+        onChange={(value) => onFieldChange(designationKey, value)}
+        editedByUser={editedFieldKeys.has(designationKey)}
+        readOnly={readOnly}
+      />
+    )}
     <FieldShell
       id={nameKey}
       label="Name"
       value={fields[nameKey]}
       onChange={(value) => onFieldChange(nameKey, value)}
       editedByUser={editedFieldKeys.has(nameKey)}
+      readOnly={readOnly}
     />
   </section>
 )
 
-const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
+export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
   const summary = validation?.summary
   const signatories = validation?.signatories || {}
   const order = ['requested_by', 'funds_available', 'approved_by', 'twg']
@@ -720,7 +744,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             <Upload size={20} />
             Purchase Request Upload Workspace
           </h2>
-          <p>Upload a PR file, review OCR output, and save validated details without leaving the page.</p>
+          <p>
+            {reviewOnly
+              ? 'Upload your signed PR document. The extracted details are shown for your reference; the BAC Secretariat reviews and finalizes the record after submission.'
+              : 'Upload a PR file, review OCR output, and save validated details without leaving the page.'}
+          </p>
         </div>
 
         <div className="dropzone card"
@@ -863,8 +891,12 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             <div className="modal-actions">
               <button type="button" className="btn btn-success" onClick={() => {
                 setSaveSuccessModalOpen(false)
-                if (typeof onSaved === 'function') onSaved(savedPr?.id)
-                else removeFile()
+                const submittedId = savedPr?.id
+                // Reset the form after a successful submission so the already-submitted
+                // document/fields can't linger in the (read-only) workspace and be
+                // mistaken for something still editable or re-submittable.
+                removeFile()
+                if (typeof onSaved === 'function') onSaved(submittedId)
               }}>Continue</button>
             </div>
           </div>
@@ -956,6 +988,13 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             </h3>
           </header>
 
+          {reviewOnly && (
+            <p className="helper-text pr-review-only-note">
+              These details were extracted automatically from your document. The BAC Secretariat will
+              verify and, if needed, correct them during review - they cannot be edited here.
+            </p>
+          )}
+
           <div className="floating-grid">
             <FieldShell
               id="entityName"
@@ -964,6 +1003,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('entityName', value)}
               full
               editedByUser={editedFieldKeys.has('entityName')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -972,6 +1012,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.fundCluster}
               onChange={(value) => onFieldChange('fundCluster', value)}
               editedByUser={editedFieldKeys.has('fundCluster')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -980,6 +1021,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               value={fields.officeSection}
               onChange={(value) => onFieldChange('officeSection', value)}
               editedByUser={editedFieldKeys.has('officeSection')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -989,6 +1031,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('date', value)}
               type="date"
               editedByUser={editedFieldKeys.has('date')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -998,6 +1041,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChange={(value) => onFieldChange('responsibilityCenterCode', value)}
               full
               editedByUser={editedFieldKeys.has('responsibilityCenterCode')}
+              readOnly={reviewOnly}
             />
 
             <FieldShell
@@ -1008,6 +1052,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               full
               isTextarea
               editedByUser={editedFieldKeys.has('purpose')}
+              readOnly={reviewOnly}
             />
           </div>
 
@@ -1020,6 +1065,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('requested_by_name')}
+              readOnly={reviewOnly}
             />
             <SignatureBlock
               title="Funds Available"
@@ -1029,6 +1075,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('funds_available_name')}
+              readOnly={reviewOnly}
             />
             <SignatureBlock
               title="Approved By"
@@ -1037,6 +1084,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               fields={fields}
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
+              readOnly={reviewOnly}
               signatureState={signatureBlockState('approved_by_name')}
             />
             <SignatureBlock
@@ -1047,6 +1095,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onFieldChange={onFieldChange}
               editedFieldKeys={editedFieldKeys}
               signatureState={signatureBlockState('twg_name')}
+              readOnly={reviewOnly}
             />
           </div>
 
@@ -1063,28 +1112,30 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             <div className="items-header">
               <h4>Requested Items</h4>
               <div className="items-header-actions">
-                {hasUnsavedChanges && <span className="helper-pill unsaved-pill">Unsaved changes</span>}
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
-                    setLineItems([
-                      ...current,
-                      {
-                        stockPropertyNumber: '',
-                        unit: '',
-                        description: '',
-                        quantity: '',
-                        unitCost: '',
-                        totalCost: '',
-                      },
-                    ])
-                  }}
-                >
-                  <Plus size={16} />
-                  Add Item
-                </button>
+                {!reviewOnly && hasUnsavedChanges && <span className="helper-pill unsaved-pill">Unsaved changes</span>}
+                {!reviewOnly && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
+                      setLineItems([
+                        ...current,
+                        {
+                          stockPropertyNumber: '',
+                          unit: '',
+                          description: '',
+                          quantity: '',
+                          unitCost: '',
+                          totalCost: '',
+                        },
+                      ])
+                    }}
+                  >
+                    <Plus size={16} />
+                    Add Item
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1099,12 +1150,23 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                     <th style={{ width: '90px' }}>Qty</th>
                     <th style={{ width: '140px' }}>Unit Cost</th>
                     <th style={{ width: '140px' }}>Total</th>
-                    <th style={{ width: '60px' }}>Actions</th>
+                    {!reviewOnly && <th style={{ width: '60px' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {(fields.lineItems && fields.lineItems.length > 0) ? (
                     fields.lineItems.map((item, idx) => (
+                      reviewOnly ? (
+                        <tr key={`item-${idx}`}>
+                          <td>{idx + 1}</td>
+                          <td>{item.stockPropertyNumber || '—'}</td>
+                          <td className="requested-item-unit-cell">{item.unit || '—'}</td>
+                          <td className="requested-item-description-cell">{item.description || '—'}</td>
+                          <td>{item.quantity || '0'}</td>
+                          <td>{normalizeNumberInput(item.unitCost || '0')}</td>
+                          <td>{normalizeNumberInput(item.totalCost || '0')}</td>
+                        </tr>
+                      ) : (
                       <tr key={`item-${idx}`} className={removingRowIndex === idx ? 'item-row-removing' : ''}>
                         <td>{idx + 1}</td>
                         <td>
@@ -1191,34 +1253,41 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                           </button>
                         </td>
                       </tr>
+                      )
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={reviewOnly ? 7 : 8}>
                         <div className="table-empty-state">
                           <p>No purchase request items available.</p>
-                          <span>Upload another Purchase Request or manually add items.</span>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => {
-                              const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
-                              setLineItems([
-                                ...current,
-                                {
-                                  stockPropertyNumber: '',
-                                  unit: '',
-                                  description: '',
-                                  quantity: '',
-                                  unitCost: '',
-                                  totalCost: '',
-                                },
-                              ])
-                            }}
-                          >
-                            <Plus size={16} />
-                            Add Item
-                          </button>
+                          {reviewOnly ? (
+                            <span>No items were detected in this document.</span>
+                          ) : (
+                            <>
+                              <span>Upload another Purchase Request or manually add items.</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                  const current = Array.isArray(fields.lineItems) ? fields.lineItems : []
+                                  setLineItems([
+                                    ...current,
+                                    {
+                                      stockPropertyNumber: '',
+                                      unit: '',
+                                      description: '',
+                                      quantity: '',
+                                      unitCost: '',
+                                      totalCost: '',
+                                    },
+                                  ])
+                                }}
+                              >
+                                <Plus size={16} />
+                                Add Item
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

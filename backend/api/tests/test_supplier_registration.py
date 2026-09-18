@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
-from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, Role, Supplier, SupplierCategory, SupplierDocument, User
+from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, RFQItem, Role, Supplier, SupplierCategory, SupplierDocument, User
 from api.supplier_registration import get_required_business_document_key, validate_supplier_payload
 from api.views import hash_password
 
@@ -625,7 +625,7 @@ class ManualBACSupplierSelectionTests(TestCase):
     """Manual BAC override: search + select a supplier outside the PR category."""
 
     def setUp(self):
-        self.pr_category = Category.objects.create(name='Airconditioning and Airconditioning Systems')
+        self.pr_category = Category.objects.get_or_create(name='Airconditioning and Airconditioning Systems')[0]
         self.other_category = Category.objects.create(name='HVAC Services')
         self.pr = PurchaseRequest.objects.create(
             entity_name='CTU Tuburan Campus',
@@ -1285,7 +1285,7 @@ class SupplierMatchingTests(TestCase):
         self.assertEqual([item['id'] for item in response.json()], [unmatched.id])
 
     def test_supplier_matching_uses_supplier_category_relationship(self):
-        category = Category.objects.create(name='Airconditioning and Airconditioning Systems')
+        category = Category.objects.get_or_create(name='Airconditioning and Airconditioning Systems')[0]
         pr = PurchaseRequest.objects.create(entity_name='Aircon Entity', pr_no='2026-08-003')
         PurchaseRequestItem.objects.create(
             purchase_request=pr,
@@ -2076,6 +2076,29 @@ class RFQItemTableRenderingTests(TestCase):
         # PR unit / total cost must never be pre-filled as a quotation value.
         self.assertNotIn('45000', text.replace(',', ''))
         self.assertNotIn('45,000', text)
+
+    def test_generated_pdf_includes_every_pr_item_even_outside_the_rfq_category(self):
+        # A mixed-category PR: this RFQ is linked (via RFQItem) to only the
+        # aircon item, but the generated document must still list the
+        # janitorial item too - the supplier can see the whole PR and just
+        # leaves the unit price blank for anything outside their category.
+        aircon_item = PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Split-type aircon unit',
+            quantity=1, unit='unit', category='Airconditioning and Airconditioning Systems',
+        )
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Industrial floor mop',
+            quantity=5, unit='pc', category='Janitorial Supplies',
+        )
+        rfq = self._rfq()
+        RFQItem.objects.create(rfq=rfq, purchase_request_item=aircon_item)
+
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(rfq)
+        text = '\n'.join(t for t, _ in self._pdf_lines(path))
+
+        self.assertIn('Split-type aircon unit', text)
+        self.assertIn('Industrial floor mop', text)
 
     def test_supplier_identity_fields_are_blank_on_generated_rfq(self):
         # The supplier writes Company Name / Address / TIN by hand on the printed
