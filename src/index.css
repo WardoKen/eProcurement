@@ -1262,11 +1262,21 @@ summary:focus-visible {
   max-height: 560px;
 }
 
+/* Single source of truth for this grid's columns: 10 tracks for the 10
+   header/row cells (ID, PR Number, Entity, Office, Items, Grand Total,
+   Status, Created, Next Step, Actions). min-width must be >= the sum of
+   the column tracks (using each minmax()'s lower bound) + 9 gaps + the
+   rule's own horizontal padding, or the last column(s) render past the
+   element's own box - and therefore past its background - which is what
+   caused the Actions header to appear unstyled. Header color/background
+   come from the shared "Tables" rule further down (search
+   ".pr-monitor-table-head" for the var(--teal-tint) block) - that is the
+   one still-live definition; do not add another one here. */
 .pr-monitor-table-head,
 .pr-monitor-table-row {
-  min-width: 1080px;
+  min-width: 1428px;
   display: grid;
-  grid-template-columns: 70px 160px minmax(180px, 1.1fr) minmax(130px, 0.9fr) 70px 140px 130px 160px 148px;
+  grid-template-columns: 70px 160px minmax(180px, 1.1fr) minmax(130px, 0.9fr) 70px 140px 130px 160px 160px 132px;
   gap: 8px;
   align-items: center;
   padding: 10px 12px;
@@ -1276,12 +1286,6 @@ summary:focus-visible {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: linear-gradient(95deg, #1f2937 0%, #312e81 65%, #4338ca 100%);
-  color: #e2e8f0;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .pr-monitor-table-row {
@@ -1293,10 +1297,6 @@ summary:focus-visible {
 
 .pr-monitor-table-row:nth-child(even) {
   background: #fbfcff;
-}
-
-.pr-monitor-table-row:hover {
-  background: #f3f4ff;
 }
 
 .pr-number-link {
@@ -3484,14 +3484,6 @@ summary:focus-visible {
 
   .supplier-match-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .pr-monitor-table-head,
-  .pr-monitor-table-row {
-    min-width: 980px;
-    grid-template-columns: 64px 150px minmax(170px, 1fr) 120px 64px 130px 120px 150px 132px;
-    gap: 6px;
-    padding: 9px 10px;
   }
 
   .pr-row-actions {
@@ -6836,25 +6828,8 @@ textarea:focus {
   border-radius: 10px;
 }
 
-.admin-table th,
-.table-header,
-.pr-monitor-table-head {
-  background: #e9f1f1;
-  color: #315064;
-}
-
 .admin-table th {
   border-bottom: 2px solid #c7d5d8;
-}
-
-.admin-table td,
-.pr-monitor-table-row {
-  border-bottom-color: #e5edef;
-}
-
-.admin-table tbody tr:hover,
-.pr-monitor-table-row:hover {
-  background: #f1faf9;
 }
 
 .supplier-preview-overlay,
@@ -7519,28 +7494,10 @@ textarea {
   overflow-x: auto;
 }
 
-.pr-monitor-table-head,
-.admin-table th,
-.table-header,
-.items-table th {
-  background: #e5edef;
-  color: #29485c;
-  border-bottom-color: #bccbd1;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .pr-monitor-table-row,
 .admin-table td,
 .items-table td {
   min-height: 54px;
-  border-bottom-color: #e2e9ec;
-}
-
-.pr-monitor-table-row:hover,
-.admin-table tbody tr:hover {
-  background: #f0f8f7;
 }
 
 .status-badge,
@@ -7831,18 +7788,6 @@ textarea:focus-visible {
   }
 }
 
-/* Keep matching progression separate from record-management controls. */
-.pr-monitor-table-head,
-.pr-monitor-table-row {
-  min-width: 1230px;
-  grid-template-columns: 70px 160px minmax(180px, 1.1fr) minmax(130px, .9fr) 70px 140px 130px 160px 160px 132px;
-}
-
-.pr-monitor-table-head {
-  background: #e5edef;
-  color: #29485c;
-}
-
 .pr-monitor-table-head > span {
   display: flex;
   align-items: center;
@@ -7853,10 +7798,14 @@ textarea:focus-visible {
 .pr-matching-action .btn-sm { width: 150px; justify-content: center; white-space: nowrap; }
 .pr-row-actions { justify-content: flex-start; }
 
+/* Narrower column widths at <=1200px; min-width is still the sum of the
+   10 tracks (using each minmax()'s lower bound) + 9 gaps + the base rule's
+   horizontal padding - see the note on the base .pr-monitor-table-head /
+   .pr-monitor-table-row rule near the top of this file. */
 @media (max-width: 1200px) {
   .pr-monitor-table-head,
   .pr-monitor-table-row {
-    min-width: 1170px;
+    min-width: 1334px;
     grid-template-columns: 64px 150px minmax(170px, 1fr) 120px 64px 130px 120px 150px 154px 116px;
   }
 }
@@ -8498,4 +8447,186 @@ textarea:focus-visible,
   display: block;
   padding: 0 0 var(--space-2);
   color: var(--text-muted);
+}
+
+/* Institutional public surface: document-led rather than marketing-led. */
+.institutional-home {
+  display: grid;
+  gap: 48px;
+  max-width: 1240px;
+  padding-top: 48px;
+  padding-bottom: 64px;
+}
+
+.procurement-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.95fr);
+  gap: 48px;
+  align-items: center;
+  padding: 12px 0 42px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.hero-kicker,
+.section-kicker {
+  margin: 0 0 10px;
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.procurement-hero h1 {
+  max-width: 650px;
+  margin: 0;
+  color: var(--navy);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(38px, 5vw, 64px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+
+.hero-lede {
+  max-width: 600px;
+  margin: 22px 0 0 !important;
+  color: var(--text-secondary) !important;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-top: 28px; }
+.hero-actions .btn-primary { min-height: 44px; padding-inline: 20px; }
+.hero-text-link { display: inline-flex; align-items: center; gap: 4px; color: var(--navy); font-size: 14px; font-weight: 700; text-decoration: none; }
+.hero-text-link:hover { color: var(--teal); text-decoration: underline; text-underline-offset: 4px; }
+
+.procurement-activity-panel {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy);
+  color: #edf3f1;
+  border: 1px solid #071a25;
+  border-radius: 3px;
+  box-shadow: 12px 12px 0 rgba(183, 144, 63, 0.22);
+}
+
+.activity-panel-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid rgba(237, 243, 241, 0.18); }
+.document-tab, .activity-panel-state { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.document-tab { color: #e2bf72; }
+.activity-panel-state { color: #afc5c7; text-align: right; }
+.activity-document { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 18px; padding: 18px; background: rgba(255,255,255,0.06); border-left: 3px solid var(--gold); }
+.activity-document svg { color: #e2bf72; flex: 0 0 auto; }
+.activity-label { display: block; margin-bottom: 4px; color: #afc5c7; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.activity-document strong { display: block; font-size: 15px; line-height: 1.35; }
+.activity-timeline { list-style: none; margin: 0; padding: 0 18px 18px; }
+.activity-timeline li { position: relative; display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 10px 0; }
+.activity-timeline li:not(:last-child)::before { content: ''; position: absolute; left: 14px; top: 39px; bottom: -7px; border-left: 1px solid rgba(237,243,241,.22); }
+.activity-timeline li > span { display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid rgba(237,243,241,.35); color: #afc5c7; border-radius: 50%; font-family: 'IBM Plex Mono', monospace; font-size: 9px; z-index: 1; }
+.activity-timeline .is-complete > span { background: var(--teal); border-color: var(--teal); color: #fff; }
+.activity-timeline .is-current > span { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
+.activity-timeline strong { display: block; color: #fff; font-size: 13px; }
+.activity-timeline small { display: block; margin-top: 2px; color: #afc5c7; font-size: 12px; line-height: 1.4; }
+
+.home-role-strip { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 3px solid var(--navy); border-bottom: 1px solid var(--border-strong); }
+.home-role-strip article { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 24px 20px; border-right: 1px solid var(--border-strong); }
+.home-role-strip article:last-child { border-right: 0; }
+.role-index { color: var(--gold-hover); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; }
+.home-role-strip h2 { margin: 0 0 7px; color: var(--navy); font-size: 15px; }
+.home-role-strip p { color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+
+.home-editorial-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 48px; align-items: start; }
+.home-process-editorial { padding: 0; background: transparent; border: 0; box-shadow: none; }
+.home-process-editorial > h2 { max-width: 440px; margin: 0 0 24px; color: var(--navy); font-family: Georgia, 'Times New Roman', serif; font-size: 31px; letter-spacing: -.025em; line-height: 1.1; }
+.home-process-editorial .process-steps { border-top: 1px solid var(--border-strong); }
+.home-process-editorial .process-step { display: grid; grid-template-columns: 38px 1fr; gap: 14px; padding: 17px 0; background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.home-process-editorial .process-step:hover { box-shadow: none; transform: none; }
+.home-process-editorial .process-step > span { color: var(--teal); font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; }
+.home-process-editorial .process-step h3 { margin: 0 0 3px; color: var(--navy); font-size: 15px; }
+.home-process-editorial .process-step p { color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+
+.official-bulletin { padding: 0; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 2px; box-shadow: none; }
+.bulletin-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 22px 22px 18px; border-bottom: 3px solid var(--gold); }
+.bulletin-head .section-kicker { margin-bottom: 6px; }
+.bulletin-head h2 { margin: 0; color: var(--navy); font-size: 19px; }
+.bulletin-head > span { color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: .08em; text-align: right; }
+.official-bulletin ul { list-style: none; margin: 0; padding: 0; }
+.official-bulletin li { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+.official-bulletin li > span { display: block; margin-bottom: 4px; color: var(--teal); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.official-bulletin li p { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.official-bulletin .hero-text-link { margin: 18px 22px 22px; }
+
+/* A restrained public header and a role-aware sign-in page. */
+.navbar { min-height: 74px; color: var(--navy); background: rgba(245,243,238,.96); border-bottom: 1px solid var(--border-strong); box-shadow: none; backdrop-filter: blur(12px); }
+.navbar-logo { height: 46px; filter: none; }
+.navbar-logo-link { display: flex; align-items: center; }
+.public-wordmark { display: grid; gap: 1px; color: var(--navy); line-height: 1; text-decoration: none; }
+.public-wordmark strong { font-size: 17px; letter-spacing: -.03em; }
+.public-wordmark span { color: var(--text-secondary); font-size: 9px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+.nav-item { color: var(--text-secondary); border-radius: 2px; }
+.nav-item:hover, .nav-item.active { color: var(--navy); background: var(--teal-tint); transform: none; }
+.login-link { border: 1px solid var(--navy); border-radius: 2px; color: #fff; background: var(--navy); font-weight: 700; }
+.login-link:hover { background: var(--teal); }
+
+.login-page { min-height: calc(100vh - 74px); padding: 48px 28px; background: transparent; }
+.login-container { width: min(980px, 100%); grid-template-columns: minmax(320px, .9fr) minmax(360px, 1fr); border: 1px solid var(--border-strong); border-radius: 3px; box-shadow: 12px 12px 0 rgba(183,144,63,.16); overflow: hidden; }
+.login-context { display: flex; flex-direction: column; padding: 38px; color: #edf3f1; background: var(--navy); }
+.login-context-logo { width: 176px; height: auto; margin: 0 0 54px; }
+.login-context .hero-kicker { color: #e2bf72; }
+.login-context h1 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 31px; letter-spacing: -.025em; line-height: 1.12; }
+.login-context > p:not(.hero-kicker) { margin: 16px 0 0; color: #b8cbcd; font-size: 14px; line-height: 1.6; }
+.login-context-list { display: grid; gap: 0; margin-top: auto; padding-top: 38px; }
+.login-context-list span { display: grid; gap: 3px; padding: 12px 0; border-top: 1px solid rgba(237,243,241,.18); color: #fff; font-size: 13px; font-weight: 700; }
+.login-context-list small { color: #b8cbcd; font-size: 11px; font-weight: 400; }
+.login-form-container { min-height: 520px; padding: 52px; }
+.login-form-container h2 { margin: 0; color: var(--navy); font-size: 28px; letter-spacing: -.025em; }
+.login-form-intro { margin: 10px 0 28px !important; color: var(--text-secondary) !important; font-size: 14px; line-height: 1.5; }
+.login-actions { justify-content: flex-end; margin-top: 4px; }
+.login-actions .btn-login { order: 3; }
+
+/* Portal chrome: strong hierarchy, without the rounded-button dashboard look. */
+.admin-navbar { background: var(--navy); border-right-color: rgba(226,191,114,.55); }
+.admin-nav-item { min-height: 40px; padding: 10px 10px; border: 0; border-left: 3px solid transparent; border-radius: 0; background: transparent; color: #c7d7d9; }
+.admin-nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+.admin-nav-item.active { border-color: var(--gold); background: rgba(183,144,63,.16); color: #fff; }
+.admin-nav-section-label { margin-top: 12px; padding: 8px 10px 5px; color: #8eaaac; }
+.admin-brand-mark { border-radius: 2px; }
+.admin-user-card { border-radius: 2px; background: rgba(255,255,255,.06); }
+.admin-nav-logout { border-radius: 2px; }
+.admin-dashboard-panel, .admin-card { border-radius: 3px; box-shadow: none; }
+.admin-dashboard-panel { border-top: 3px solid var(--navy); }
+.admin-card { border-left-color: var(--gold); }
+
+/* Procurement records benefit from square, high-density boundaries. */
+.table-shell, .admin-table-wrapper, .pr-monitor-table-wrapper, .opportunity-table-wrapper { border-radius: 3px; box-shadow: none; background: var(--surface); }
+.enterprise-table thead th, .opportunity-table thead th, .admin-table th, .items-table th { background: #e7ece7; color: var(--navy); }
+.enterprise-table tbody tr:nth-child(even), .opportunity-table tbody tr:nth-child(even) { background: #fafaf7; }
+.enterprise-table tbody tr:hover, .opportunity-table tbody tr:hover { background: var(--teal-tint); }
+.status-badge, .status-pill { border-radius: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+.pr-review-preview-pane { background: #e9e7e0; border: 1px solid var(--border-strong); border-radius: 3px; box-shadow: none; }
+.pr-review-preview-pane iframe, .pr-review-preview-pane img { border-radius: 1px; box-shadow: 0 3px 10px rgba(16,47,67,.14); }
+.field-readonly input, .field-readonly textarea, input[readonly], textarea[readonly] { background: #eef0ec !important; color: #53636c; border-style: dashed !important; }
+
+@media (max-width: 900px) {
+  .procurement-hero, .home-editorial-grid { grid-template-columns: 1fr; gap: 32px; }
+  .procurement-hero { padding-top: 0; }
+  .procurement-activity-panel { max-width: 620px; }
+  .login-container { grid-template-columns: 1fr; max-width: 620px; }
+  .login-context { padding: 28px; }
+  .login-context-logo { margin-bottom: 26px; }
+  .login-context-list { display: none; }
+}
+
+@media (max-width: 640px) {
+  .institutional-home { gap: 32px; padding: 28px 18px 42px; }
+  .procurement-hero h1 { font-size: 39px; }
+  .hero-lede { font-size: 15px; }
+  .home-role-strip { grid-template-columns: 1fr; }
+  .home-role-strip article { border-right: 0; border-bottom: 1px solid var(--border-strong); }
+  .home-role-strip article:last-child { border-bottom: 0; }
+  .login-page { padding: 24px 16px; }
+  .login-form-container { min-height: auto; padding: 30px 24px; }
+  .login-actions { justify-content: stretch; }
+  .login-actions .btn { width: 100%; }
+  .public-wordmark { display: none; }
 }

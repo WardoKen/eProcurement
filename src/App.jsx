@@ -283,145 +283,63 @@ const RecaptchaWidget = ({ onChange, error }) => {
   )
 }
 
-const bacNewsSlides = [
-  {
-    title: 'Register and manage supplier documents',
-    description: 'Upload permits, BIR, and PhilGEPS requirements while keeping your supplier profile current.',
-    buttonLabel: 'Register as Supplier',
-    buttonTo: '/supplier/register',
-    image: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=80',
-  },
-  {
-    title: 'Track procurement progress and BAC updates',
-    description: 'Stay informed with submission deadlines, review progress, and committee announcements.',
-    buttonLabel: 'Go to Tracking',
-    buttonTo: '/tracking',
-    image: 'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1200&q=80',
-  },
-]
-
-const BACNewsSlider = () => {
-  const [activeIndex, setActiveIndex] = React.useState(0)
-
-  React.useEffect(() => {
-    const interval = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % bacNewsSlides.length)
-    }, 5000)
-
-    return () => window.clearInterval(interval)
-  }, [])
-
-  const showNextSlide = () => {
-    setActiveIndex((current) => (current + 1) % bacNewsSlides.length)
-  }
-
-  const showPreviousSlide = () => {
-    setActiveIndex((current) => (current - 1 + bacNewsSlides.length) % bacNewsSlides.length)
-  }
-
-  return (
-    <section className="bac-news-slider-section">
-      <div className="bac-news-slider-header">
-        <div>
-          <p className="eyebrow">Main features</p>
-          <h2>Everything you need for BAC procurement</h2>
-        </div>
-        <div className="bac-news-nav" aria-label="News slider controls">
-          <button type="button" className="bac-news-nav-button" onClick={showPreviousSlide} aria-label="Show previous news item">
-            ←
-          </button>
-          <button type="button" className="bac-news-nav-button" onClick={showNextSlide} aria-label="Show next news item">
-            →
-          </button>
+const Home = () => (
+  <div className="page-content institutional-home">
+    <section className="procurement-hero">
+      <div className="procurement-hero-copy">
+        <p className="hero-kicker">eProcure / Procurement operations</p>
+        <h1>From Purchase Request to Supplier Quotation.</h1>
+        <p className="hero-lede">A document-led workspace for End Users, BAC Secretariat, and suppliers to move university procurement forward with a clear record at every stage.</p>
+        <div className="hero-actions">
+          <Link to="/login" className="btn-primary">Access eProcure</Link>
+          <Link to="/faq" className="hero-text-link">View the process <ChevronRight size={16} /></Link>
         </div>
       </div>
 
-      <div className="bac-news-slider">
-        {bacNewsSlides.map((slide, index) => (
-          <div
-            key={slide.title}
-            className={`bac-news-slide ${index === activeIndex ? 'active' : ''}`}
-            style={{ backgroundImage: `linear-gradient(90deg, rgba(15,23,42,0.9) 0%, rgba(15,23,42,0.4) 60%, rgba(15,23,42,0.2) 100%), url(${slide.image})` }}
-          >
-            <div className="bac-news-slide-content">
-              <h3>{slide.title}</h3>
-              <p>{slide.description}</p>
-              <Link to={slide.buttonTo} className="btn-primary">{slide.buttonLabel}</Link>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="bac-news-dots" aria-label="Select news slide">
-        {bacNewsSlides.map((slide, index) => (
-          <button
-            key={slide.title}
-            type="button"
-            className={`bac-news-dot ${index === activeIndex ? 'active' : ''}`}
-            onClick={() => setActiveIndex(index)}
-            aria-label={`Show slide ${index + 1}`}
-          />
-        ))}
+      <div className="procurement-activity-panel" aria-label="eProcure workflow overview">
+        <div className="activity-panel-head">
+          <span className="document-tab">DOCUMENT TRAIL</span>
+          <span className="activity-panel-state">Procurement workflow</span>
+        </div>
+        <div className="activity-document">
+          <div><span className="activity-label">Purchase Request</span><strong>Original document &amp; extracted record</strong></div>
+          <FileText size={24} aria-hidden="true" />
+        </div>
+        <ol className="activity-timeline">
+          <li className="is-complete"><span>01</span><div><strong>Upload &amp; extraction</strong><small>Source document is retained with its OCR record.</small></div></li>
+          <li className="is-current"><span>02</span><div><strong>BAC review</strong><small>Validate details, signatures, and PR information.</small></div></li>
+          <li><span>03</span><div><strong>Supplier matching</strong><small>Group line items by procurement category.</small></div></li>
+          <li><span>04</span><div><strong>RFQ &amp; quotation</strong><small>Issue supplier requests and receive responses.</small></div></li>
+        </ol>
       </div>
     </section>
-  )
-}
 
-const Home = () => (
-  <div className="page-content home-page">
-    <BACNewsSlider />
+    <section className="home-role-strip" aria-label="eProcure workspaces">
+      <article><span className="role-index">01</span><div><h2>BAC Secretariat</h2><p>Review documents, manage request queues, verify supplier compliance, and prepare RFQs.</p></div></article>
+      <article><span className="role-index">02</span><div><h2>End User</h2><p>Upload an original signed Purchase Request and follow the progress of the submitted record.</p></div></article>
+      <article><span className="role-index">03</span><div><h2>Supplier</h2><p>Maintain compliance documents, receive RFQs, and submit quotation documents.</p></div></article>
+    </section>
 
-    <div className="home-main-grid">
-      <div className="home-announcements">
-        <section className="home-cards">
-          <div className="info-card">
-            <h2>What BAC members can do</h2>
-            <ul>
-              <li>Review supplier documents and compliance records</li>
-              <li>Monitor active procurement processes</li>
-              <li>Approve or reject supplier credentials</li>
-            </ul>
-          </div>
-          <div className="info-card">
-            <h2>What suppliers can do</h2>
-            <ul>
-              <li>Register for university supplier status</li>
-              <li>Upload official permits, BIR, and PhilGEPS documents</li>
-              <li>Track bid invitations and submission deadlines</li>
-            </ul>
-          </div>
-        </section>
-
-        <section className="home-notices">
-          <h2>Recent BAC updates</h2>
-          <ul>
-            <li>New supplier registration deadline for FY 2026 procurement cycle.</li>
-            <li>Reminder: all service providers must upload updated BIR and PhilGEPS certificates.</li>
-            <li>Upcoming BAC meeting to review campus renovation bids on July 3.</li>
-          </ul>
-        </section>
-      </div>
-
-      <section className="home-process">
-        <h2>State University BAC Process</h2>
+    <div className="home-editorial-grid">
+      <section className="home-process home-process-editorial">
+        <p className="section-kicker">The operating record</p>
+        <h2>One request, a visible chain of work.</h2>
         <div className="process-steps">
-          <div className="process-step">
-            <h3>1. Post requirements</h3>
-            <p>Publish bid opportunities and clear documentation requirements for each project.</p>
-          </div>
-          <div className="process-step">
-            <h3>2. Register suppliers</h3>
-            <p>Collect supplier credentials and verify compliance with university procurement policies.</p>
-          </div>
-          <div className="process-step">
-            <h3>3. Evaluate submissions</h3>
-            <p>Compare supplier bids, check documents, and prepare recommendations for BAC approval.</p>
-          </div>
-          <div className="process-step">
-            <h3>4. Award contracts</h3>
-            <p>Finalize award notices, issue purchase orders, and track contract fulfillment.</p>
-          </div>
+          <div className="process-step"><span>01</span><div><h3>Original PR</h3><p>The source file remains connected to the structured request record.</p></div></div>
+          <div className="process-step"><span>02</span><div><h3>BAC validation</h3><p>Review extraction, signatures, and the official PR number in one workspace.</p></div></div>
+          <div className="process-step"><span>03</span><div><h3>Category groups</h3><p>A single PR can lead to multiple supplier RFQs without losing the relationship.</p></div></div>
+          <div className="process-step"><span>04</span><div><h3>Quotation record</h3><p>RFQ and quotation identifiers make supplier responses easy to trace.</p></div></div>
         </div>
+      </section>
+
+      <section className="home-notices official-bulletin">
+        <div className="bulletin-head"><div><p className="section-kicker">BAC bulletin</p><h2>Procurement notices</h2></div><span>OFFICIAL UPDATES</span></div>
+        <ul>
+          <li><span>Supplier registration</span><p>New supplier registration deadline for the FY 2026 procurement cycle.</p></li>
+          <li><span>Compliance reminder</span><p>Service providers must upload current BIR and PhilGEPS certificates.</p></li>
+          <li><span>BAC meeting</span><p>Upcoming BAC meeting to review campus renovation bids on July 3.</p></li>
+        </ul>
+        <Link to="/faq" className="hero-text-link">Need support? Read the FAQ <ChevronRight size={16} /></Link>
       </section>
     </div>
   </div>
@@ -444,8 +362,8 @@ const Footer = () => (
         <div className="footer-block">
           <h3>Contact Information</h3>
           <ul>
-            <li>📞 +63 994 842 5992</li>
-            <li>✉️ bereberhowardkenneth@gmail.com</li>
+            <li><Phone size={15} /> +63 912 345 6789</li>
+            <li><Mail size={15} /> 4loops@4a.com</li>
           </ul>
         </div>
 
@@ -923,7 +841,7 @@ const FAQ = () => (
 
           <details className="faq-item">
             <summary><strong>I forgot my password. What should I do?</strong></summary>
-            <p>Please contact the BAC office directly with your username or registered email. Our team will help you reset your password or provide account recovery assistance.</p>
+            <p>Click "Forgot Password" on the login page and enter your username or registered email. If an account is found, we'll email you a link to reset your password yourself - no need to contact the BAC office.</p>
           </details>
         </section>
 
@@ -1027,6 +945,7 @@ const Login = () => {
   const initialRole = searchParams.get('role') || 'buyer'
   const [role, setRole] = React.useState(initialRole)
   const [showPassword, setShowPassword] = React.useState(false)
+  const resetSucceeded = searchParams.get('reset') === 'success'
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -1114,8 +1033,26 @@ const Login = () => {
   return (
     <div className="login-page">
       <div className="login-container">
+        <aside className="login-context">
+          <img src={logo} alt="eProcure" className="login-context-logo" />
+          <p className="hero-kicker">Secure system access</p>
+          <h1>University procurement, in one operating record.</h1>
+          <p>Sign in to work within your role-specific eProcure workspace.</p>
+          <div className="login-context-list">
+            <span>End User <small>Submit and monitor Purchase Requests</small></span>
+            <span>BAC Secretariat <small>Review records and manage RFQs</small></span>
+            <span>Supplier <small>Respond to opportunities and quotations</small></span>
+          </div>
+        </aside>
         <div className="login-form-container">
-          <h2>LOG IN</h2>
+          <p className="section-kicker">eProcure access</p>
+          <h2>Sign in to your workspace</h2>
+          <p className="login-form-intro">Select your role, then enter the credentials issued for your account.</p>
+          {resetSucceeded && (
+            <div className="alert alert-success" role="status">
+              Your password has been reset. Please log in with your new password.
+            </div>
+          )}
           <form className="login-form" onSubmit={handleSubmit}>
             <div className="form-field">
               <select name="role" value={role} onChange={(e) => setRole(e.target.value)} className="form-select">
@@ -1162,8 +1099,181 @@ const Login = () => {
 
             <div className="form-actions login-actions">
               <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
-              <button type="button" className="btn-outline" onClick={() => alert('Forgot password flow not implemented yet.')}>Forgot Password</button>
+              <button type="button" className="btn-outline" onClick={() => navigate('/forgot-password')}>Forgot Password</button>
               <button type="submit" className="btn-login">Log In</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// A password-reset request must never let the caller tell "no such account"
+// apart from "email sent" - the confirmation below is shown unconditionally,
+// regardless of what the backend actually did (see api.views.forgot_password).
+const ForgotPassword = () => {
+  const navigate = useNavigate()
+  const [identifier, setIdentifier] = React.useState('')
+  const [submitting, setSubmitting] = React.useState(false)
+  const [submitted, setSubmitted] = React.useState(false)
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await apiFetch(`${apiBaseUrl}/api/forgot-password/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username_or_email: identifier.trim() }),
+      })
+    } catch (error) {
+      console.error(error)
+      // Network failures are not surfaced differently either - the same
+      // confirmation is shown either way, below.
+    } finally {
+      setSubmitting(false)
+      setSubmitted(true)
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-container">
+        <div className="login-form-container">
+          <h2>FORGOT PASSWORD</h2>
+          {submitted ? (
+            <>
+              <div className="alert alert-success" role="status">
+                If an account exists for that username or email, a password reset link has been sent. Please check your inbox.
+              </div>
+              <div className="form-actions login-actions">
+                <button type="button" className="btn-login" onClick={() => navigate('/login')}>Back to Log In</button>
+              </div>
+            </>
+          ) : (
+            <form className="login-form" onSubmit={handleSubmit}>
+              <p className="helper-text">Enter your username or the email address on your account and we'll send you a link to reset your password.</p>
+              <div className="form-field">
+                <input
+                  name="identifier"
+                  type="text"
+                  placeholder="Username or Email"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-actions login-actions">
+                <button type="button" className="btn-outline" onClick={() => navigate('/login')}>Cancel</button>
+                <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Sending...' : 'Send Reset Link'}</button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ResetPassword = () => {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const token = (searchParams.get('token') || '').trim()
+  const [password, setPassword] = React.useState('')
+  const [confirmPassword, setConfirmPassword] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [submitting, setSubmitting] = React.useState(false)
+  const [tokenRejected, setTokenRejected] = React.useState(false)
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await apiFetch(`${apiBaseUrl}/api/reset-password/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, new_password: password }),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        setTokenRejected(true)
+        setError(result?.message || 'This password reset link is invalid or has expired.')
+        return
+      }
+      navigate('/login?reset=success')
+    } catch (err) {
+      console.error(err)
+      setError('Unable to reach the server. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!token || tokenRejected) {
+    return (
+      <div className="login-page">
+        <div className="login-container">
+          <div className="login-form-container">
+            <h2>RESET PASSWORD</h2>
+            <div className="alert alert-error" role="alert">
+              {error || 'This password reset link is invalid or missing. Please request a new one.'}
+            </div>
+            <div className="form-actions login-actions">
+              <button type="button" className="btn-login" onClick={() => navigate('/forgot-password')}>Request a New Link</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-container">
+        <div className="login-form-container">
+          <h2>RESET PASSWORD</h2>
+          <form className="login-form" onSubmit={handleSubmit}>
+            <div className="form-field">
+              <input
+                type="password"
+                placeholder="New Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+            <div className="form-field">
+              <input
+                type="password"
+                placeholder="Confirm New Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+            {error && (
+              <div className="alert alert-error" role="alert">{error}</div>
+            )}
+            <div className="form-actions login-actions">
+              <button type="button" className="btn-outline" onClick={() => navigate('/login')}>Cancel</button>
+              <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Saving...' : 'Reset Password'}</button>
             </div>
           </form>
         </div>
@@ -7138,6 +7248,10 @@ const AppLayout = () => {
             <Link to="/" className="navbar-logo-link">
               <img src={logo} alt="eProcure logo" className="navbar-logo" />
             </Link>
+            <Link to="/" className="public-wordmark" aria-label="eProcure home">
+              <strong>eProcure</strong>
+              <span>Procurement Operations</span>
+            </Link>
             <div className="navbar-links">
               <Link to={homeLink} className={`nav-item ${location.pathname === homeLink || (homeLink === '/' && location.pathname === '/') ? 'active' : ''}`}><House size={15} /> Home</Link>
               <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`}><HelpCircle size={15} /> Help & FAQ</Link>
@@ -7172,6 +7286,8 @@ const AppLayout = () => {
           <Route path="/" element={<Home />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/register" element={<Register />} />
           <Route path="/buyer" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />
           <Route path="/supplier" element={<ProtectedRoute requiredRole="supplier" element={<Supplier />} />} />

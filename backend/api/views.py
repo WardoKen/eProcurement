@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover
     from backend.ocr.debug_utils import write_debug_json
     from backend.ocr import signature_detection
 
-from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory
+from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory, PasswordResetToken
 from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, PRNumberFormat, PRNotificationSettings, Quotation, Notification, RFQ, RFQItem
 from .auth import require_auth
 from .file_validation import UploadKind, FileValidationError, validate_upload
@@ -1467,6 +1467,126 @@ def login_view(request):
 def logout_view(request):
     request.session.flush()
     return JsonResponse({'success': True})
+
+
+# Password reset links expire quickly since they grant full account access to
+# whoever holds them (e.g. from an intercepted or shared inbox) - 30 minutes
+# is enough time for a real user to act on the email without leaving a
+# long-lived credential lying around.
+PASSWORD_RESET_TOKEN_TTL = timedelta(minutes=30)
+PASSWORD_RESET_GENERIC_MESSAGE = 'If an account exists for that username or email, a password reset link has been sent.'
+MIN_PASSWORD_LENGTH = 8
+
+
+def _password_reset_generic_response():
+    return JsonResponse({'success': True, 'message': PASSWORD_RESET_GENERIC_MESSAGE})
+
+
+@csrf_exempt
+@require_POST
+def forgot_password(request):
+    """Request a password-reset email.
+
+    Deliberately returns the exact same response whether or not a matching,
+    emailable account exists - the response (and the time it takes to
+    produce, since every path here is cheap - one indexed lookup and, at
+    most, one non-blocking-on-failure email send) must never let a caller
+    distinguish "no such account" from "account exists but has no email on
+    file" from "email sent". Confirming account existence this way is a real
+    enumeration vector, not a hypothetical one.
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    identifier = str(data.get('username_or_email') or '').strip()
+    if not identifier:
+        return _password_reset_generic_response()
+
+    user = User.objects.filter(
+        Q(username=identifier) | Q(email__iexact=identifier),
+        is_active=True,
+    ).first()
+
+    if user is None or not user.email:
+        return _password_reset_generic_response()
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+    with transaction.atomic():
+        # A fresh request supersedes any earlier one - only the newest link
+        # for this user should still work.
+        PasswordResetToken.objects.filter(user=user, used=False).update(used=True)
+        PasswordResetToken.objects.create(
+            user=user,
+            token_hash=token_hash,
+            expires_at=timezone.now() + PASSWORD_RESET_TOKEN_TTL,
+        )
+
+    reset_link = f"{settings.FRONTEND_ORIGIN}/reset-password?token={raw_token}"
+    email = EmailMessage(
+        subject='Reset your eProcure password',
+        body='\n'.join([
+            f'We received a request to reset the password for your eProcure account ({user.username}).',
+            '',
+            'Reset your password using the link below. This link expires in '
+            '30 minutes and can only be used once:',
+            reset_link,
+            '',
+            'If you did not request this, you can safely ignore this email - your password will not be changed.',
+            '',
+            'This is an automated notification from eProcure. Please do not reply to this email.',
+        ]),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    try:
+        email.send(fail_silently=True)
+    except Exception:
+        logger.exception("Failed to send password reset email for user %s", user.username)
+
+    return _password_reset_generic_response()
+
+
+@csrf_exempt
+@require_POST
+def reset_password(request):
+    """Complete a password reset from the link sent by ``forgot_password``."""
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return json_error('Invalid JSON payload', 400)
+
+    token = str(data.get('token') or '').strip()
+    new_password = str(data.get('new_password') or '')
+
+    if not token or not new_password:
+        return json_error('A reset token and new password are required.', 400)
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return json_error(f'Password must be at least {MIN_PASSWORD_LENGTH} characters long.', 400)
+
+    token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    reset_token = PasswordResetToken.objects.filter(token_hash=token_hash).select_related('user').first()
+
+    invalid_response = json_error(
+        'This password reset link is invalid or has expired. Please request a new one.', 400
+    )
+    if reset_token is None or reset_token.used or reset_token.expires_at < timezone.now():
+        return invalid_response
+
+    user = reset_token.user
+    if not user.is_active:
+        return invalid_response
+
+    with transaction.atomic():
+        user.password_hash = hash_password(new_password)
+        user.save(update_fields=['password_hash', 'updated_at'])
+        reset_token.used = True
+        reset_token.save(update_fields=['used'])
+
+    return JsonResponse({'success': True, 'message': 'Your password has been reset. You can now log in with your new password.'})
 
 
 @csrf_exempt

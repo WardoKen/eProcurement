@@ -26,6 +26,30 @@ class User(models.Model):
         return self.username
 
 
+class PasswordResetToken(models.Model):
+    """A one-time "forgot password" link.
+
+    ``token_hash`` stores a plain ``sha256`` digest of the raw token, not the
+    salted ``hash_password``/``verify_password`` scheme used for account
+    passwords - that scheme is deliberately slow (PBKDF2, 310k iterations) to
+    blunt brute-forcing a low-entropy, human-chosen password, and its random
+    per-call salt makes exact-match lookup by hash impossible. The raw token
+    here is instead 256 bits of ``secrets.token_urlsafe`` randomness - nothing
+    to brute-force - so a fast, deterministic digest is both the correct and
+    the standard way to store it while still supporting a direct DB lookup by
+    the token presented in the reset link.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"PasswordResetToken(user={self.user_id}, used={self.used})"
+
+
 class Category(models.Model):
     name = models.CharField(max_length=255, unique=True)
     description = models.CharField(max_length=500, blank=True)

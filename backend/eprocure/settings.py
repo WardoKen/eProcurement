@@ -103,6 +103,10 @@ CORS_ALLOWED_ORIGINS = [
     for origin in os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
     if origin.strip()
 ]
+# The frontend origin links (e.g. the password-reset email) are built against -
+# the first entry of the same FRONTEND_ORIGIN env var CORS reads above, so
+# there is exactly one source of truth for "where the frontend is hosted".
+FRONTEND_ORIGIN = CORS_ALLOWED_ORIGINS[0] if CORS_ALLOWED_ORIGINS else 'http://localhost:5173'
 # The frontend sends the session cookie via ``credentials: 'include'`` on every
 # request, so the browser must see it as an allowed, credentialed origin -
 # CORS_ALLOW_ALL_ORIGINS (the previous "*") cannot be combined with credentials.
