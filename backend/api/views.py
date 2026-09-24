@@ -23,6 +23,7 @@ from django.db.models import Avg, Case, Count, Exists, IntegerField, Min, OuterR
 from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.utils.text import slugify
+from botocore.exceptions import BotoCoreError, ClientError
 from xhtml2pdf import pisa
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -30,7 +31,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 try:
-    from ocr.ocr_service import TextractOCRService
+    from ocr.ocr_service import OCRUnavailableError, TextractOCRService, as_ocr_unavailable
     from ocr.layout_parser import DocumentLayoutParser
     from ocr.purchase_request_parser import parse_purchase_request
     from ocr.form_autofill import FormAutoFillService
@@ -38,7 +39,7 @@ try:
     from ocr.debug_utils import write_debug_json
     from ocr import signature_detection
 except ImportError:  # pragma: no cover
-    from backend.ocr.ocr_service import TextractOCRService
+    from backend.ocr.ocr_service import OCRUnavailableError, TextractOCRService, as_ocr_unavailable
     from backend.ocr.layout_parser import DocumentLayoutParser
     from backend.ocr.purchase_request_parser import parse_purchase_request
     from backend.ocr.form_autofill import FormAutoFillService
@@ -72,7 +73,23 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger(__name__)
 
 
-ocr_service = TextractOCRService(language='en')
+_ocr_service = None
+
+
+def get_ocr_service() -> TextractOCRService:
+    """Return the shared Textract client, building it on first use.
+
+    Constructed lazily (and cached) because boto3 raises NoRegionError during
+    client construction: at import time that took down every endpoint in the
+    app, not just PR upload. Left unset on failure so a corrected environment
+    is picked up on the next request.
+    """
+    global _ocr_service
+    if _ocr_service is None:
+        _ocr_service = TextractOCRService(language='en')
+    return _ocr_service
+
+
 layout_parser = DocumentLayoutParser()
 auto_fill_service = FormAutoFillService()
 validation_service = ValidationService()
@@ -214,7 +231,15 @@ def _signature_guard(filename: str, names: dict):
 def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
     lower_name = filename.lower()
     if lower_name.endswith('.pdf') or lower_name.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tiff', '.tif')):
-        document = ocr_service.process_file(path, filename)
+        # Client construction and the live Textract call are both AWS-facing.
+        # Any config/auth fault becomes OCRUnavailableError so callers have a
+        # single exception type to map onto an HTTP response.
+        try:
+            document = get_ocr_service().process_file(path, filename)
+        except OCRUnavailableError:
+            raise
+        except (BotoCoreError, ClientError) as exc:
+            raise (as_ocr_unavailable(exc) or OCRUnavailableError(str(exc), configured=True)) from exc
         layout = layout_parser.parse(document)
         return {
             "document": document.to_dict(),
@@ -223,6 +248,41 @@ def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
             "textract_response": document.textract_response,
         }, 'ocr'
     return {'document': {'pages': [], 'raw_text': '', 'source': 'none', 'filename': filename}, 'layout': {'blocks': [], 'text': '', 'line_count': 0}}, 'none'
+
+
+def ocr_unavailable_response(exc: OCRUnavailableError, *, filename: str = '', file_url: str | None = None):
+    """503 for an OCR outage, keeping the uploaded document addressable.
+
+    The real AWS error is logged server-side only - the client gets the
+    distinction it can act on (not configured vs. rejected) without any AWS
+    internals or credentials leaking into the response.
+    """
+    if exc.configured:
+        message = (
+            'The document scanning service rejected this request, so the Purchase Request '
+            'could not be read automatically. Your file was uploaded - please try again '
+            'shortly or contact your administrator.'
+        )
+        error_code = 'ocr_request_failed'
+    else:
+        message = (
+            'Document scanning is not configured on this server, so the Purchase Request '
+            'could not be read automatically. Your file was uploaded - enter the details '
+            'manually or contact your administrator.'
+        )
+        error_code = 'ocr_not_configured'
+
+    payload = {
+        'success': False,
+        'message': message,
+        'error_code': error_code,
+        'ocr_available': False,
+    }
+    if filename:
+        payload['filename'] = filename
+    if file_url:
+        payload['fileUrl'] = file_url
+    return JsonResponse(payload, status=503)
 
 
 def is_purchase_request_document(document: dict, parsed: dict) -> bool:
@@ -559,7 +619,19 @@ def upload_file(request):
         for chunk in file.chunks():
             dest.write(chunk)
 
-    payload, source = extract_text_from_upload(file_path, file.name)
+    # The saved file is deliberately kept on an OCR outage: the document is
+    # fine, the service is not. Returning its filename/URL lets the Buyer fall
+    # back to manual entry against the document they already uploaded.
+    try:
+        payload, source = extract_text_from_upload(file_path, file.name)
+    except OCRUnavailableError as exc:
+        logger.exception('Textract OCR unavailable while scanning upload %s', filename)
+        return ocr_unavailable_response(
+            exc,
+            filename=filename,
+            file_url=request.build_absolute_uri(f'/uploads/{filename}'),
+        )
+
     write_debug_json('textract_response.json', payload.get('textract_response') or {})
     document = payload.get('document', {})
     layout = payload.get('layout', {})
@@ -659,6 +731,15 @@ def pr_scan(request):
         parsed = parse_purchase_request(document.get('raw_text', ''), layout, payload.get('textract_blocks') or [])
 
         validation = parsed.get('validation', {})
+    except OCRUnavailableError as exc:
+        # Must precede the generic handler below, which would otherwise report
+        # an infrastructure outage as an unparseable document (422).
+        logger.exception('Textract OCR unavailable while scanning upload %s', filename)
+        return ocr_unavailable_response(
+            exc,
+            filename=filename,
+            file_url=request.build_absolute_uri(f'/uploads/{filename}'),
+        )
     except ValueError as ve:
         return JsonResponse({'success': False, 'message': str(ve)}, status=422)
     except Exception as exc:

@@ -7,6 +7,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
+from botocore.exceptions import (
+    ClientError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    NoRegionError,
+    PartialCredentialsError,
+)
 from PIL import Image as PILImage
 
 try:
@@ -18,6 +25,61 @@ try:
     from pdfminer.high_level import extract_text as extract_pdf_text
 except ImportError:  # pragma: no cover
     extract_pdf_text = None
+
+class OCRUnavailableError(RuntimeError):
+    """Textract could not be reached, or refused our credentials.
+
+    ``configured`` separates the two cases the caller must report differently:
+    False means AWS settings are missing outright (no region / no credentials),
+    True means credentials were supplied but AWS rejected them or the IAM role
+    lacks Textract permissions.
+    """
+
+    def __init__(self, message: str, *, configured: bool) -> None:
+        super().__init__(message)
+        self.configured = configured
+
+
+# AWS error codes meaning the credentials are rejected or lack Textract
+# permissions. These are server-configuration faults, so they must surface to
+# the caller instead of being retried as if the document were at fault.
+TEXTRACT_AUTH_ERROR_CODES = frozenset({
+    "AccessDenied",
+    "AccessDeniedException",
+    "AuthFailure",
+    "ExpiredToken",
+    "ExpiredTokenException",
+    "IncompleteSignature",
+    "InvalidAccessKeyId",
+    "InvalidClientTokenId",
+    "InvalidSignatureException",
+    "MissingAuthenticationToken",
+    "OptInRequired",
+    "SignatureDoesNotMatch",
+    "UnauthorizedException",
+    "UnrecognizedClientException",
+})
+
+_AWS_CONFIG_ERRORS = (NoRegionError, NoCredentialsError, PartialCredentialsError)
+
+
+def as_ocr_unavailable(exc: BaseException) -> Optional[OCRUnavailableError]:
+    """Translate an AWS config/auth failure into OCRUnavailableError.
+
+    Returns None for everything else - a per-document Textract rejection
+    (unsupported/corrupt file) is not a service outage and keeps its existing
+    fallback handling.
+    """
+    if isinstance(exc, _AWS_CONFIG_ERRORS):
+        return OCRUnavailableError(str(exc), configured=False)
+    if isinstance(exc, EndpointConnectionError):
+        return OCRUnavailableError(str(exc), configured=False)
+    if isinstance(exc, ClientError):
+        code = str((getattr(exc, "response", None) or {}).get("Error", {}).get("Code") or "")
+        if code in TEXTRACT_AUTH_ERROR_CODES:
+            return OCRUnavailableError(f"Textract rejected the request ({code})", configured=True)
+    return None
+
 
 @dataclass
 class OCRToken:
@@ -82,12 +144,15 @@ class OCRDocument:
 class TextractOCRService:
     def __init__(self, language: str = "en") -> None:
         self.language = language
-        self._client = boto3.client(
-            "textract",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.getenv("AWS_REGION") or None,
-        )
+        try:
+            self._client = boto3.client(
+                "textract",
+                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=os.getenv("AWS_REGION") or None,
+            )
+        except Exception as exc:
+            raise (as_ocr_unavailable(exc) or OCRUnavailableError(str(exc), configured=False)) from exc
 
     def process_file(self, path: Path, filename: str) -> OCRDocument:
         suffix = path.suffix.lower()
@@ -146,6 +211,8 @@ class TextractOCRService:
                 if response:
                     responses.append(self._add_page_number(response, page_index + 1))
                 page.close()
+        except OCRUnavailableError:
+            raise
         except Exception:
             return OCRDocument(pages=[], raw_text="", source="pdf", filename=filename)
         finally:
@@ -215,10 +282,16 @@ class TextractOCRService:
                 Document={"Bytes": payload},
                 FeatureTypes=["TABLES", "FORMS"],
             )
-        except Exception:
+        except Exception as exc:
+            unavailable = as_ocr_unavailable(exc)
+            if unavailable is not None:
+                raise unavailable from exc
             try:
                 return self._client.detect_document_text(Document={"Bytes": payload})
-            except Exception:
+            except Exception as fallback_exc:
+                unavailable = as_ocr_unavailable(fallback_exc)
+                if unavailable is not None:
+                    raise unavailable from fallback_exc
                 return None
 
     def _add_page_number(self, response: dict[str, Any], page_number: int) -> dict[str, Any]:

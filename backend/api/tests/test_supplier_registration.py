@@ -1380,7 +1380,8 @@ class FileValidationEndpointTests(TestCase):
 
     def test_pr_upload_rejects_docx_before_ocr(self):
         _login_as(self.client, 'buyer')
-        with patch('api.views.ocr_service.process_file') as mocked_ocr:
+        with patch('api.views.get_ocr_service') as mocked_service:
+            mocked_ocr = mocked_service.return_value.process_file
             response = self.client.post(
                 '/api/upload/',
                 {'file': SimpleUploadedFile('pr.docx', b'PK\x03\x04 zip', content_type='application/octet-stream')},
@@ -1393,7 +1394,9 @@ class FileValidationEndpointTests(TestCase):
         _login_as(self.client, 'buyer')
         from ocr.ocr_service import OCRDocument
         stub = OCRDocument(pages=[], raw_text='', source='pdf-text', filename='pr.pdf', textract_blocks=[])
-        with patch('api.views.ocr_service.process_file', return_value=stub) as mocked_ocr:
+        with patch('api.views.get_ocr_service') as mocked_service:
+            mocked_ocr = mocked_service.return_value.process_file
+            mocked_ocr.return_value = stub
             self.client.post('/api/upload/', {'file': SimpleUploadedFile('pr.pdf', _PDF_BYTES)})
         mocked_ocr.assert_called_once()
 
