@@ -41,7 +41,7 @@ import {
   Building2,
   HelpCircle,
 } from 'lucide-react'
-import logo from './assets/logo.webp'
+import logo from './assets/eprocure-logo.webp'
 import DragDropUpload, {
   SignatureValidationPanel,
   FieldShell,
@@ -349,7 +349,9 @@ const Footer = () => (
   <footer className="site-footer">
     <div className="site-footer-inner">
       <div className="footer-left">
-        <img src={logo} alt="logo" className="footer-logo" />
+        <span className="logo-surface footer-logo-surface">
+          <img src={logo} alt="eProcure logo" className="footer-logo" />
+        </span>
         <h3>Disclaimer</h3>
         <p>
           The BAC team is not responsible for any typographical errors or misinformation presented here. The system
@@ -810,7 +812,7 @@ const Tracking = () => {
 
         <div style={{marginTop: '32px', padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '8px', borderLeft: '4px solid #3b82f6'}}>
           <p style={{margin: 0, color: '#1e40af'}}>
-            <strong>Note:</strong> Data is pulled from the live eProcura database. If you have questions about your purchase request, contact the BAC office.
+            <strong>Note:</strong> Data is pulled from the live eProcure database. If you have questions about your purchase request, contact the BAC office.
           </p>
         </div>
       </div>
@@ -822,7 +824,7 @@ const FAQ = () => (
   <div className="page-content">
     <div className="faq-container">
       <h1>Frequently Asked Questions & Help</h1>
-      <p className="faq-intro">Find answers to common questions about eProcura and the procurement process.</p>
+      <p className="faq-intro">Find answers to common questions about eProcure and the procurement process.</p>
 
       <div className="faq-grid">
         {/* General Section */}
@@ -830,8 +832,8 @@ const FAQ = () => (
           <h2>General</h2>
           
           <details className="faq-item">
-            <summary><strong>What is eProcura?</strong></summary>
-            <p>eProcura is the BAC's digital procurement platform that streamlines the purchase request and supplier matching process. It enables efficient procurement by digitizing workflows and automating communications.</p>
+            <summary><strong>What is eProcure?</strong></summary>
+            <p>eProcure is the BAC's digital procurement platform that streamlines the purchase request and supplier matching process. It enables efficient procurement by digitizing workflows and automating communications.</p>
           </details>
 
           <details className="faq-item">
@@ -866,7 +868,7 @@ const FAQ = () => (
 
           <details className="faq-item">
             <summary><strong>Can I edit a Purchase Request after submission?</strong></summary>
-            <p>Once submitted to BAC, direct edits are not available through eProcura. If corrections are needed, contact BAC staff with details, and they can assist with amendments.</p>
+            <p>Once submitted to BAC, direct edits are not available through eProcure. If corrections are needed, contact BAC staff with details, and they can assist with amendments.</p>
           </details>
         </section>
 
@@ -905,8 +907,8 @@ const FAQ = () => (
           <h2>Technical & Account</h2>
           
           <details className="faq-item">
-            <summary><strong>Is there a mobile app for eProcura?</strong></summary>
-            <p>eProcura is accessible through web browsers on any device (desktop, tablet, mobile). A dedicated mobile app is not currently available, but the website is responsive and mobile-friendly.</p>
+            <summary><strong>Is there a mobile app for eProcure?</strong></summary>
+            <p>eProcure is accessible through web browsers on any device (desktop, tablet, mobile). A dedicated mobile app is not currently available, but the website is responsive and mobile-friendly.</p>
           </details>
 
           <details className="faq-item">
@@ -1034,7 +1036,9 @@ const Login = () => {
     <div className="login-page">
       <div className="login-container">
         <aside className="login-context">
-          <img src={logo} alt="eProcure" className="login-context-logo" />
+          <span className="logo-surface login-context-logo-surface">
+            <img src={logo} alt="eProcure logo" className="login-context-logo" />
+          </span>
           <p className="hero-kicker">Secure system access</p>
           <h1>University procurement, in one operating record.</h1>
           <p>Sign in to work within your role-specific eProcure workspace.</p>

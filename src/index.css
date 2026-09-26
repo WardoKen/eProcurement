@@ -8630,3 +8630,112 @@ textarea:focus-visible,
   .login-actions .btn { width: 100%; }
   .public-wordmark { display: none; }
 }
+
+/* eProcure logo. The asset (640x404, ~1.58:1) has a dark wordmark, so:
+     light background -> the logo is shown directly (public navbar);
+     dark background  -> the logo sits on .logo-surface, a small white plate
+                         (sidebar, login panel, footer).
+   The artwork itself is never recoloured or filtered, and width/height are
+   never both fixed, so the aspect ratio is always preserved. */
+.logo-surface {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  line-height: 0;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+
+.logo-surface img {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* Shared sidebar (Admin, Buyer, Supplier via components/Sidebar.jsx): the
+   logo sits above the portal label. */
+.admin-brand {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.admin-brand-logo-surface {
+  padding: 6px 9px;
+}
+
+.admin-brand-logo {
+  width: auto;
+  height: 54px;
+}
+
+/* Expanded desktop sidebar: centre the collapse toggle on the logo plate
+   (66px tall) rather than on the logo + label stack. */
+@media (min-width: 769px) {
+  .admin-layout:not(.collapsed-nav) .admin-sidebar-header {
+    align-items: flex-start;
+  }
+
+  .admin-layout:not(.collapsed-nav) .admin-nav-toggle {
+    margin-top: 16px;
+  }
+}
+
+.admin-layout.collapsed-nav .admin-brand {
+  align-items: center;
+}
+
+.admin-layout.collapsed-nav .admin-brand-logo-surface {
+  padding: 4px;
+}
+
+.admin-layout.collapsed-nav .admin-brand-logo {
+  width: 52px;
+  height: auto;
+}
+
+@media (max-width: 768px) {
+  .admin-brand {
+    align-items: center;
+  }
+
+  .admin-brand-logo-surface {
+    padding: 3px;
+  }
+
+  .admin-brand-logo {
+    width: 46px;
+    height: auto;
+  }
+}
+
+/* Login panel (navy). */
+.login-context-logo-surface {
+  align-self: flex-start;
+  margin: 0 0 54px;
+  padding: 10px 14px;
+}
+
+.login-context .login-context-logo {
+  width: 176px;
+  height: auto;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .login-context-logo-surface { margin-bottom: 26px; }
+}
+
+/* Footer (dark slate). */
+.footer-logo-surface {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+}
+
+.site-footer .footer-logo {
+  width: 96px;
+  height: auto;
+  margin: 0;
+}
