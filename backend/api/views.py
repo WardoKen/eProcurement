@@ -3072,7 +3072,7 @@ def _rfq_payload(rfq, request):
         # Stored as "<uuid hex>_<original name>" - show the supplier's own name.
         stored_name = Path(rfq.submitted_pdf).name
         submitted_filename = re.sub(r'^[0-9a-f]{32}_', '', stored_name) or stored_name
-    abc_value = rfq.abc or (f"₱{float(pr.grand_total or 0):,.2f}" if pr.grand_total else '₱0.00')
+    abc_value = _rfq_abc(rfq)
     return {
         'id': rfq.id,
         'rfq_no': rfq.rfq_no or '',
@@ -3176,6 +3176,27 @@ def procurement_modes_view(request):
 
 def _format_peso(amount) -> str:
     return f"₱{float(amount or 0):,.2f}"
+
+
+def _pr_abc(pr) -> str:
+    """The ABC every RFQ for this PR carries: the PR's full grand total.
+
+    Never a category / RFQItem / supplier subtotal - a category-group RFQ still
+    prints every PR item, and its ABC is the whole PR's approved budget.
+    """
+    return _format_peso(pr.grand_total)
+
+
+def _rfq_abc(rfq) -> str:
+    """ABC to show for an RFQ.
+
+    A draft always tracks the PR grand total (so a stale value saved before
+    this rule, or before a PR edit, never shows). An issued RFQ keeps the ABC
+    it was issued with; historical records are not rewritten.
+    """
+    if rfq.status == RFQ.STATUS_DRAFT:
+        return _pr_abc(rfq.purchase_request)
+    return rfq.abc or _pr_abc(rfq.purchase_request)
 
 
 def _resolve_rfq_group(pr, payload):
@@ -3376,11 +3397,12 @@ def admin_rfq(request, pr_id):
     if (generate_pdf or should_send) and not mode_of_procurement:
         return json_error('Please enter a mode of procurement.', 400)
 
-    group_abc_default = _format_peso(sum(float(i.total_cost or 0) for i in group_items)) or '₱0.00'
+    # The ABC is always the PR's full grand total - never the category group's
+    # subtotal, and never a client-supplied value (any payload 'abc' is ignored).
+    pr_abc = _pr_abc(pr)
 
     rfq_created = rfq is None
     if not rfq:
-        abc_value = str(payload.get('abc') or group_abc_default)
         with transaction.atomic():
             rfq = RFQ.objects.create(
                 rfq_no=None,  # assigned only when the RFQ is issued (see below)
@@ -3390,7 +3412,7 @@ def admin_rfq(request, pr_id):
                 created_by=request.auth_user,
                 subject=str(payload.get('subject') or default_subject).strip(),
                 message=str(payload.get('message') or default_message).strip(),
-                abc=abc_value.strip(),
+                abc=pr_abc,
                 additional_notes=str(payload.get('additional_notes') or '').strip(),
                 mode_of_procurement=mode_of_procurement,
                 quotation_basis=_resolve_quotation_basis(payload.get('quotation_basis'), RFQ.QUOTATION_BASIS_LOT),
@@ -3398,10 +3420,13 @@ def admin_rfq(request, pr_id):
             )
             _sync_rfq_items(rfq, group_items)
     else:
-        abc_value = str(payload.get('abc') or (rfq.abc or group_abc_default)).strip()
         rfq.subject = str(payload.get('subject') or rfq.subject).strip()
         rfq.message = str(payload.get('message') or rfq.message).strip()
-        rfq.abc = abc_value
+        # A draft re-syncs to the current PR grand total (this is also the value
+        # persisted when it is issued below). An already-issued RFQ keeps its
+        # historical ABC.
+        if rfq.status == RFQ.STATUS_DRAFT or not rfq.abc:
+            rfq.abc = pr_abc
         rfq.mode_of_procurement = mode_of_procurement
         rfq.quotation_basis = _resolve_quotation_basis(payload.get('quotation_basis'), rfq.quotation_basis or RFQ.QUOTATION_BASIS_LOT)
         rfq.additional_notes = str(payload.get('additional_notes') or rfq.additional_notes).strip()
@@ -3555,7 +3580,8 @@ def manual_rfq_create(request, pr_id):
         return json_error('Mode of procurement must be 200 characters or fewer.', 400)
 
     subject_default, message_default = _manual_rfq_defaults(pr, manual_name)
-    abc_value = str(payload.get('abc') or _format_peso(sum(float(i.total_cost or 0) for i in group_items))).strip()
+    # Same rule as registered-supplier RFQs: the PR's full grand total.
+    abc_value = _pr_abc(pr)
     issuer = request.auth_user
 
     try:

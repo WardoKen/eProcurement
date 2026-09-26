@@ -1644,10 +1644,12 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
     return groupCategory ? all.filter((it) => (it.category || '') === groupCategory) : all
   }, [supplier.groupItems, rfq?.purchase_request?.items, prDetails?.items, groupCategory])
 
+  // The ABC is always the PR's full grand total, never the category group's
+  // subtotal. The backend is authoritative; this is only the pre-save display.
   const computedAbc = React.useMemo(() => {
-    const total = groupItems.reduce((sum, it) => sum + Number(it.total_cost ?? (Number(it.quantity || 0) * Number(it.unit_cost || 0)) ?? 0), 0)
+    const total = Number(prDetails?.grand_total ?? 0)
     return Number.isFinite(total) ? `₱${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'
-  }, [groupItems])
+  }, [prDetails?.grand_total])
 
   React.useEffect(() => {
     const headers = { 'Content-Type': 'application/json' }
@@ -1737,7 +1739,6 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           rfq_id: rfq?.id,
           subject,
           message,
-          abc: computedAbc,
           quotation_basis: quotationBasis,
           mode_of_procurement: modeOfProcurement,
           additional_notes: additionalNotes,
