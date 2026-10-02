@@ -8618,6 +8618,14 @@ textarea:focus-visible,
   .login-context-mark { margin-bottom: 26px; }
 }
 
+/* Toolbar row above the PR Review & Monitoring list (Refresh, Export). */
+.admin-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 /* ── Mobile navigation ───────────────────────────────────────────────────
    At phone width both the public navbar and the portal sidebar collapse
    behind a menu button. The portal sidebar turns into a sticky top bar and
