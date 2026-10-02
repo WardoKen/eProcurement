@@ -1097,7 +1097,7 @@ const Login = () => {
               </div>
             </div>
 
-            <div className="form-actions login-actions">
+            <div className="form-actions login-actions login-main-actions">
               <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
               <button type="button" className="btn-outline" onClick={() => navigate('/forgot-password')}>Forgot Password</button>
               <button type="submit" className="btn-login">Log In</button>
