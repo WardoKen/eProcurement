@@ -5338,6 +5338,59 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   font-size: 14px;
 }
 
+/* RFQ Management layout guards: on narrow widths the group header wraps its
+   counts/badge onto a second line instead of drawing them over the title,
+   and the RFQ tables keep usable column widths (scrolling inside
+   .table-shell) instead of crushing quotation numbers and action buttons. */
+.rfq-mgmt-group-header {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.rfq-mgmt-group-title {
+  flex: 1 1 260px;
+}
+
+.rfq-mgmt-group-title strong,
+.rfq-mgmt-group-category {
+  overflow-wrap: anywhere;
+}
+
+.rfq-mgmt-group-header .status-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.rfq-mgmt-category .enterprise-table {
+  min-width: 860px;
+}
+
+.rfq-mgmt-category .enterprise-table td:nth-child(n+2):nth-child(-n+5) {
+  white-space: nowrap;
+}
+
+.rfq-mgmt-category .enterprise-table td:last-child {
+  min-width: 250px;
+}
+
+.rfq-mgmt-category .enterprise-table td:first-child {
+  min-width: 180px;
+}
+
+.rfq-mgmt-row-actions .btn-sm {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rfq-mgmt-response-card > div:first-child,
+.rfq-mgmt-doc-row > div:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Settings Styles */
 .settings-section {
   padding: 20px;
