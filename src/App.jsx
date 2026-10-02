@@ -41,6 +41,10 @@ import {
   Settings,
   Building2,
   HelpCircle,
+  Inbox,
+  FilePen,
+  Store,
+  UserCog,
 } from 'lucide-react'
 import DragDropUpload, {
   SignatureValidationPanel,
@@ -3794,12 +3798,12 @@ const Admin = () => {
           ] },
           { section: 'PROCUREMENT', items: [
             { id: 'pr-monitoring', label: 'PR Review & Monitoring', icon: ClipboardList },
-            { id: 'rfq-responses', label: 'RFQ Management', icon: FileText },
-            { id: 'manual-rfqs', label: 'Manual RFQs', icon: FileText },
+            { id: 'rfq-responses', label: 'RFQ Management', icon: Inbox },
+            { id: 'manual-rfqs', label: 'Manual RFQs', icon: FilePen },
           ] },
           { section: 'ACCOUNTS', items: [
-            { id: 'suppliers', label: 'Supplier Management', icon: Users },
-            { id: 'buyer-accounts', label: 'End User Accounts', icon: Users },
+            { id: 'suppliers', label: 'Supplier Management', icon: Store },
+            { id: 'buyer-accounts', label: 'End User Accounts', icon: UserCog },
           ] },
           { section: 'SETTINGS', items: [
             { id: 'pr-numbering-settings', label: 'PR Numbering', icon: Settings },
