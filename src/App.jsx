@@ -41,7 +41,6 @@ import {
   Building2,
   HelpCircle,
 } from 'lucide-react'
-import logo from './assets/eprocure-logo.webp'
 import DragDropUpload, {
   SignatureValidationPanel,
   FieldShell,
@@ -349,9 +348,7 @@ const Footer = () => (
   <footer className="site-footer">
     <div className="site-footer-inner">
       <div className="footer-left">
-        <span className="logo-surface footer-logo-surface">
-          <img src={logo} alt="eProcure logo" className="footer-logo" />
-        </span>
+        <span className="admin-brand-mark footer-mark" aria-label="eProcure">eP</span>
         <h3>Disclaimer</h3>
         <p>
           The BAC team is not responsible for any typographical errors or misinformation presented here. The system
@@ -1036,9 +1033,7 @@ const Login = () => {
     <div className="login-page">
       <div className="login-container">
         <aside className="login-context">
-          <span className="logo-surface login-context-logo-surface">
-            <img src={logo} alt="eProcure logo" className="login-context-logo" />
-          </span>
+          <span className="admin-brand-mark login-context-mark" aria-label="eProcure">eP</span>
           <p className="hero-kicker">Secure system access</p>
           <h1>University procurement, in one operating record.</h1>
           <p>Sign in to work within your role-specific eProcure workspace.</p>
@@ -7251,7 +7246,7 @@ const AppLayout = () => {
         <nav className="navbar">
           <div className="navbar-left navbar-brand-row">
             <Link to="/" className="navbar-logo-link">
-              <img src={logo} alt="eProcure logo" className="navbar-logo" />
+              <span className="admin-brand-mark" aria-label="eProcure">eP</span>
             </Link>
             <Link to="/" className="public-wordmark" aria-label="eProcure home">
               <strong>eProcure</strong>

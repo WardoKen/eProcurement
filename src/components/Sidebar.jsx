@@ -1,9 +1,8 @@
 import { Menu, ChevronLeft, LogOut } from 'lucide-react'
-import logo from '../assets/eprocure-logo.webp'
 
 // Shared sidebar shell for the Admin, Buyer (End User) and Supplier portals.
 // Each caller supplies its own real nav items grouped into sections; this
-// component only owns the shared chrome (brand logo, collapse toggle,
+// component only owns the shared chrome (brand mark, collapse toggle,
 // active-state highlighting, user card, logout) so the three portals stop
 // re-implementing the same markup with the same CSS classes.
 //
@@ -23,11 +22,9 @@ const Sidebar = ({
     <nav className="admin-navbar">
       <div className="admin-sidebar-header">
         <div className="admin-brand">
-          {/* Light surface keeps the logo's dark wordmark readable on the navy sidebar. */}
-          <span className="logo-surface admin-brand-logo-surface">
-            <img src={logo} alt="eProcure logo" className="admin-brand-logo" />
-          </span>
+          <span className="admin-brand-mark">eP</span>
           <span className="admin-brand-copy">
+            <span className="admin-brand-name">eProcure</span>
             <span className="admin-brand-portal">{portalLabel}</span>
           </span>
         </div>
