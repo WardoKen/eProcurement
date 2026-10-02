@@ -8376,43 +8376,6 @@ textarea:focus-visible,
   }
 }
 
-/* ── Sidebar on narrow screens: an earlier rule tried to stack the sidebar
-   full-width here (.admin-navbar { width: 100% }) but .admin-layout never
-   switched to a column flex direction to match, so the sidebar just stayed
-   a wide flex item squeezed beside the content. Collapsing it to the same
-   compact icon rail used for the desktop "collapsed" state keeps far more
-   width for actual content instead. ── */
-@media (max-width: 768px) {
-  .admin-navbar {
-    width: 72px;
-    min-width: 72px;
-    padding: 16px 10px;
-  }
-
-  .admin-sidebar-header {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .admin-brand-copy,
-  .admin-user-card,
-  .admin-nav-label,
-  .admin-nav-section-label {
-    display: none;
-  }
-
-  .admin-nav-item,
-  .admin-nav-logout {
-    justify-content: center;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .admin-content {
-    padding: 16px;
-  }
-}
-
 /* ── Supplier Registration wizard steps ── */
 .wizard-step {
   background: var(--surface);
@@ -8653,4 +8616,276 @@ textarea:focus-visible,
 
 @media (max-width: 900px) {
   .login-context-mark { margin-bottom: 26px; }
+}
+
+/* ── Mobile navigation ───────────────────────────────────────────────────
+   At phone width both the public navbar and the portal sidebar collapse
+   behind a menu button. The portal sidebar turns into a sticky top bar and
+   always shows full labels when opened, regardless of the desktop
+   collapsed/expanded state. Kept last so earlier responsive rules can't
+   override it. */
+.navbar-menu-toggle,
+.admin-mobile-toggle {
+  display: none;
+}
+
+.navbar-logo-link {
+  text-decoration: none;
+}
+
+/* Desktop: the wrapper is layout-neutral, so the sidebar flex column is
+   unchanged. */
+.admin-mobile-panel {
+  display: contents;
+}
+
+@media (max-width: 768px) {
+  /* Public navbar */
+  .navbar {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0 10px;
+    height: auto;
+    min-height: 60px;
+    padding: 10px 16px;
+  }
+
+  .navbar-left,
+  .navbar-brand-row {
+    display: contents;
+  }
+
+  .navbar-logo-link {
+    order: 1;
+    flex-shrink: 0;
+    padding-right: 0;
+  }
+
+  .public-wordmark {
+    order: 2;
+    flex: 1 1 0;
+    display: grid;
+    min-width: 0;
+  }
+
+  .public-wordmark strong,
+  .public-wordmark span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .navbar-right {
+    order: 3;
+    position: static;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .login-link {
+    padding: 9px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .navbar-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--navy);
+    cursor: pointer;
+  }
+
+  .navbar-links {
+    order: 4;
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin-top: 10px;
+    padding: 8px 0 2px;
+    border-top: 1px solid var(--border-strong);
+    overflow: visible;
+  }
+
+  .navbar.mobile-open .navbar-links {
+    display: flex;
+  }
+
+  .navbar-links .nav-item {
+    width: 100%;
+    padding: 12px 10px;
+    font-size: 14px;
+  }
+
+  /* Portal sidebar becomes a top bar */
+  .admin-layout,
+  .admin-layout.collapsed-nav {
+    flex-direction: column;
+  }
+
+  .admin-navbar,
+  .admin-layout.collapsed-nav .admin-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    padding: 10px 16px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid rgba(226, 191, 114, 0.55);
+  }
+
+  .admin-sidebar-header,
+  .admin-layout.collapsed-nav .admin-sidebar-header,
+  .admin-layout:not(.collapsed-nav) .admin-sidebar-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .admin-brand,
+  .admin-layout.collapsed-nav .admin-brand {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .admin-brand-copy,
+  .admin-layout.collapsed-nav .admin-brand-copy {
+    display: flex;
+    min-width: 0;
+  }
+
+  .admin-nav-toggle,
+  .admin-layout.collapsed-nav .admin-nav-toggle {
+    display: none;
+  }
+
+  .admin-mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 3px;
+    background: transparent;
+    color: #ffffff;
+    cursor: pointer;
+  }
+
+  .admin-mobile-panel {
+    display: none;
+  }
+
+  .admin-navbar.mobile-open .admin-mobile-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 61px);
+    overflow-y: auto;
+    padding: 6px 16px 16px;
+    background: var(--navy);
+    border-bottom: 1px solid rgba(226, 191, 114, 0.55);
+    box-shadow: 0 14px 28px rgba(16, 47, 67, 0.28);
+  }
+
+  .admin-nav-scroll,
+  .admin-layout.collapsed-nav .admin-nav-scroll {
+    flex: none;
+    margin-top: 0;
+    padding-right: 0;
+    overflow: visible;
+  }
+
+  .admin-layout.collapsed-nav .admin-nav-label,
+  .admin-nav-label {
+    display: inline;
+  }
+
+  .admin-layout.collapsed-nav .admin-nav-section-label,
+  .admin-nav-section-label {
+    display: block;
+  }
+
+  .admin-layout.collapsed-nav .admin-user-card,
+  .admin-user-card {
+    display: grid;
+  }
+
+  .admin-nav-item,
+  .admin-nav-logout,
+  .admin-layout.collapsed-nav .admin-nav-item,
+  .admin-layout.collapsed-nav .admin-nav-logout {
+    justify-content: flex-start;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .admin-navbar-right,
+  .admin-layout.collapsed-nav .admin-navbar-right {
+    justify-items: stretch;
+    margin-top: 10px;
+  }
+
+  .admin-content,
+  .admin-layout.collapsed-nav .admin-content {
+    padding: 18px 16px 32px;
+  }
+
+  /* Text: wrap long words and stack headers instead of clipping. */
+  .page-content h1,
+  .supplier-header h1,
+  .admin-header h1,
+  .dashboard-header h1,
+  .admin-section h2,
+  .admin-section p {
+    overflow-wrap: anywhere;
+  }
+
+  .admin-header,
+  .dashboard-header,
+  .page-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .table-shell,
+  .admin-table-wrapper,
+  .pr-monitor-table-wrapper,
+  .opportunity-table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 360px) {
+  .public-wordmark span { display: none; }
 }

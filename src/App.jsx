@@ -22,6 +22,7 @@ import {
   Trash2,
   Users,
   X,
+  Menu,
   Bell,
   Calendar,
   MapPin,
@@ -7225,9 +7226,11 @@ const AppLayout = () => {
   const [user, setUser] = React.useState(getStoredUser())
   const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/buyer'
   const homeLink = user?.role === 'buyer' ? '/buyer' : '/'
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
 
   React.useEffect(() => {
     setUser(getStoredUser())
+    setMobileNavOpen(false)
   }, [location.pathname])
 
   React.useEffect(() => {
@@ -7243,7 +7246,7 @@ const AppLayout = () => {
   return (
     <div className="app">
       {showMainNavbar && (
-        <nav className="navbar">
+        <nav className={`navbar ${mobileNavOpen ? 'mobile-open' : ''}`}>
           <div className="navbar-left navbar-brand-row">
             <Link to="/" className="navbar-logo-link">
               <span className="admin-brand-mark" aria-label="eProcure">eP</span>
@@ -7252,7 +7255,7 @@ const AppLayout = () => {
               <strong>eProcure</strong>
               <span>Procurement Operations</span>
             </Link>
-            <div className="navbar-links">
+            <div className="navbar-links" id="public-nav-links">
               <Link to={homeLink} className={`nav-item ${location.pathname === homeLink || (homeLink === '/' && location.pathname === '/') ? 'active' : ''}`}><House size={15} /> Home</Link>
               <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`}><HelpCircle size={15} /> Help & FAQ</Link>
             </div>
@@ -7277,6 +7280,16 @@ const AppLayout = () => {
             ) : (
               <Link to="/login" className="login-link"><LogIn size={15} /> Log In</Link>
             )}
+            <button
+              type="button"
+              className="navbar-menu-toggle"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-expanded={mobileNavOpen}
+              aria-controls="public-nav-links"
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
         </nav>
       )}

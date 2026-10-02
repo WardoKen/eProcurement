@@ -1,10 +1,14 @@
-import { Menu, ChevronLeft, LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { Menu, ChevronLeft, LogOut, X } from 'lucide-react'
 
 // Shared sidebar shell for the Admin, Buyer (End User) and Supplier portals.
 // Each caller supplies its own real nav items grouped into sections; this
 // component only owns the shared chrome (brand mark, collapse toggle,
 // active-state highlighting, user card, logout) so the three portals stop
 // re-implementing the same markup with the same CSS classes.
+//
+// On phones the sidebar becomes a top bar and the nav is hidden behind the
+// menu button; `mobileOpen` is local because it only matters at that width.
 //
 // `groups` shape: [{ section: 'MAIN' | undefined, items: [{ id, label, icon }] }]
 const Sidebar = ({
@@ -18,8 +22,10 @@ const Sidebar = ({
   userSecondary,
   onLogout,
 }) => {
+  const [mobileOpen, setMobileOpen] = useState(false)
+
   return (
-    <nav className="admin-navbar">
+    <nav className={`admin-navbar ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="admin-sidebar-header">
         <div className="admin-brand">
           <span className="admin-brand-mark">eP</span>
@@ -36,41 +42,55 @@ const Sidebar = ({
         >
           {navCollapsed ? <Menu size={16} /> : <ChevronLeft size={16} />}
         </button>
-      </div>
-
-      <div className="admin-nav-scroll">
-        {groups.map((group, groupIndex) => (
-          <div className="admin-nav-items" key={group.section || groupIndex}>
-            {group.section && (
-              <span className="admin-nav-section-label">{group.section}</span>
-            )}
-            {group.items.map((item) => {
-              const IconComponent = item.icon
-              return (
-                <button
-                  key={item.id}
-                  className={`admin-nav-item ${activeId === item.id ? 'active' : ''}`}
-                  onClick={() => onSelect(item.id)}
-                  title={item.label}
-                >
-                  <IconComponent size={14} />
-                  <span className="admin-nav-label">{item.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-
-      <div className="admin-navbar-right">
-        <div className="admin-user-card" aria-label="Logged in user">
-          <div className="admin-user">{userPrimary}</div>
-          <div className="admin-user-email">{userSecondary}</div>
-        </div>
-        <button className="admin-nav-logout" onClick={onLogout} title="Log Out">
-          <LogOut size={14} />
-          <span className="admin-nav-label">Log Out</span>
+        <button
+          className="admin-mobile-toggle"
+          onClick={() => setMobileOpen((open) => !open)}
+          aria-expanded={mobileOpen}
+          aria-controls="admin-mobile-panel"
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+        >
+          {mobileOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
+      </div>
+
+      <div className="admin-mobile-panel" id="admin-mobile-panel">
+        <div className="admin-nav-scroll">
+          {groups.map((group, groupIndex) => (
+            <div className="admin-nav-items" key={group.section || groupIndex}>
+              {group.section && (
+                <span className="admin-nav-section-label">{group.section}</span>
+              )}
+              {group.items.map((item) => {
+                const IconComponent = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    className={`admin-nav-item ${activeId === item.id ? 'active' : ''}`}
+                    onClick={() => {
+                      onSelect(item.id)
+                      setMobileOpen(false)
+                    }}
+                    title={item.label}
+                  >
+                    <IconComponent size={14} />
+                    <span className="admin-nav-label">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className="admin-navbar-right">
+          <div className="admin-user-card" aria-label="Logged in user">
+            <div className="admin-user">{userPrimary}</div>
+            <div className="admin-user-email">{userSecondary}</div>
+          </div>
+          <button className="admin-nav-logout" onClick={onLogout} title="Log Out">
+            <LogOut size={14} />
+            <span className="admin-nav-label">Log Out</span>
+          </button>
+        </div>
       </div>
     </nav>
   )
