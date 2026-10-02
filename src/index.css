@@ -8679,6 +8679,33 @@ textarea:focus-visible,
   gap: 10px;
 }
 
+/* Collapsed desktop sidebar (icon rail). Section labels are hidden: their
+   nowrap text otherwise widens each group's grid track past the rail, so
+   every group's icons sat at a different offset. A thin divider keeps the
+   grouping instead, and icons are centred in equal-width buttons. */
+.admin-layout.collapsed-nav .admin-nav-section-label {
+  display: none;
+}
+
+.admin-layout.collapsed-nav .admin-nav-items + .admin-nav-items {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.admin-layout.collapsed-nav .admin-nav-item,
+.admin-layout.collapsed-nav .admin-nav-logout {
+  justify-content: center;
+  width: 100%;
+  gap: 0;
+  padding: 10px 0;
+}
+
+/* The active item's 3px left border would push its icon off-centre. */
+.admin-layout.collapsed-nav .admin-nav-item {
+  border-right: 3px solid transparent;
+}
+
 /* ── Mobile navigation ───────────────────────────────────────────────────
    At phone width both the public navbar and the portal sidebar collapse
    behind a menu button. The portal sidebar turns into a sticky top bar and
@@ -8904,8 +8931,19 @@ textarea:focus-visible,
   .admin-layout.collapsed-nav .admin-nav-item,
   .admin-layout.collapsed-nav .admin-nav-logout {
     justify-content: flex-start;
+    gap: 8px;
     padding: 11px 12px;
     font-size: 14px;
+  }
+
+  .admin-layout.collapsed-nav .admin-nav-item {
+    border-right: 0;
+  }
+
+  .admin-layout.collapsed-nav .admin-nav-items + .admin-nav-items {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 
   .admin-navbar-right,
