@@ -111,6 +111,9 @@ const authStore = {
   },
 }
 
+// "1 PR", "0 PRs", "3 suppliers" for KPI units.
+const pluralUnit = (count, singular) => (Number(count || 0) === 1 ? singular : `${singular}s`)
+
 const SkeletonRows = ({ count = 4 }) => (
   <div className="skeleton-stack" aria-label="Loading content">
     {Array.from({ length: count }, (_, index) => (
@@ -1957,8 +1960,8 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         <label className="form-field"><span>Additional RFQ Notes</span><textarea rows="5" value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Optional terms, notes, or instructions for the supplier" disabled={isSent} /></label>
       </div>
       <div className="card rfq-review-card">
-        <h2>Requested Items</h2>
-        <div className="opportunity-table-wrapper">
+        <h2 id="rfq-prep-items-heading">Requested Items</h2>
+        <div className="opportunity-table-wrapper" tabIndex={0} role="region" aria-labelledby="rfq-prep-items-heading">
           <table className="opportunity-table">
             <thead><tr><th>#</th><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
             <tbody>{items.map((item, index) => (
@@ -2991,7 +2994,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                               {catGroup.rfq_count} RFQ{catGroup.rfq_count !== 1 ? 's' : ''} · {catGroup.response_count} Response{catGroup.response_count !== 1 ? 's' : ''}
                             </span>
                           </div>
-                          <div className="table-shell">
+                          <div className="table-shell" tabIndex={0} role="region" aria-label={`RFQs for ${catGroup.category}`}>
                             <table className="enterprise-table">
                               <thead>
                                 <tr><th>Supplier</th><th>Quotation No.</th><th>Sent</th><th>Received</th><th>Status</th><th>Actions</th></tr>
@@ -4068,11 +4071,11 @@ const Admin = () => {
               </ul>
             ) : (
               <ul className="kpi-grid" aria-label="Key figures">
-                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit="PRs" zeroHint="No Purchase Requests submitted yet." hint="All PRs on record" />
-                <KpiTile icon={FilePen} label="Awaiting PR number" value={unnumberedPrRecords.length} unit="PRs" tone={unnumberedPrRecords.length ? 'warning' : undefined} zeroHint="Review queue is clear." hint="Need BAC review in PR Review & Monitoring" />
-                <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit="suppliers" zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
-                <KpiTile icon={Users} label="Suppliers awaiting review" value={dashboardBreakdowns.suppliersAwaitingReview} unit="suppliers" tone={dashboardBreakdowns.suppliersAwaitingReview ? 'warning' : undefined} zeroHint="No registrations waiting." hint="Pending Review or For Compliance" />
-                <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit="RFQs" zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
+                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit={pluralUnit(dashboardStats?.total_purchase_requests, 'PR')} zeroHint="No Purchase Requests submitted yet." hint="All PRs on record" />
+                <KpiTile icon={FilePen} label="Awaiting PR number" value={unnumberedPrRecords.length} unit={pluralUnit(unnumberedPrRecords.length, 'PR')} tone={unnumberedPrRecords.length ? 'warning' : undefined} zeroHint="Review queue is clear." hint="Need BAC review in PR Review & Monitoring" />
+                <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit={pluralUnit(dashboardStats?.total_suppliers, 'supplier')} zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
+                <KpiTile icon={Users} label="Suppliers awaiting review" value={dashboardBreakdowns.suppliersAwaitingReview} unit={pluralUnit(dashboardBreakdowns.suppliersAwaitingReview, 'supplier')} tone={dashboardBreakdowns.suppliersAwaitingReview ? 'warning' : undefined} zeroHint="No registrations waiting." hint="Pending Review or For Compliance" />
+                <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit={pluralUnit(dashboardBreakdowns.rfq.total_sent, 'RFQ')} zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
                 <KpiTile icon={TrendingUp} label="RFQ response rate" value={`${dashboardBreakdowns.responseRate}`} unit="%" zeroHint={dashboardBreakdowns.rfq.total_sent ? 'No quotations received yet.' : 'Available once RFQs are sent.'} hint={`${dashboardBreakdowns.rfq.with_response} of ${dashboardBreakdowns.rfq.total_sent} RFQs answered`} />
               </ul>
             )}
@@ -5323,7 +5326,7 @@ const Admin = () => {
                                   </div>
                                 </div>
 
-                                <div className="table-shell">
+                                <div className="table-shell" tabIndex={0} role="region" aria-label="Requested items">
                                   <table className="enterprise-table items-table requested-items-table">
                                     <thead>
                                       <tr>
@@ -6581,8 +6584,8 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
       </div>
 
       <div className="card rfq-review-card">
-        <h3>Requested Items</h3>
-        <div className="opportunity-table-wrapper"><table className="opportunity-table">
+        <h3 id="supplier-rfq-items-heading">Requested Items</h3>
+        <div className="opportunity-table-wrapper" tabIndex={0} role="region" aria-labelledby="supplier-rfq-items-heading"><table className="opportunity-table">
           <thead><tr><th>Unit</th><th>Description</th><th>Quantity</th><th>Category</th></tr></thead>
           <tbody>{pr.items.map((item) => <tr key={item.id}><td>{item.unit || 'N/A'}</td><td>{item.item_description || 'N/A'}</td><td>{item.quantity}</td><td>{item.category || 'N/A'}</td></tr>)}</tbody>
         </table></div>
@@ -6799,8 +6802,8 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
       <ul className="kpi-grid" aria-label="Key figures">
         <KpiTile icon={BriefcaseBusiness} label="Matching Opportunities" value={summary?.open_opportunities} unit="open" zeroHint="No open PRs match your categories yet." />
         <KpiTile icon={FileText} label="Quotations Submitted" value={summary?.submitted_quotations} unit="total" zeroHint="You haven't submitted a quotation yet." />
-        <KpiTile icon={Clock} label="Under Review" value={summary?.pending_quotations} unit="quotations" zeroHint="Nothing awaiting BAC review." />
-        <KpiTile icon={AlertCircle} label="Not Selected" value={summary?.rejected_quotations} unit="quotations" zeroHint="None so far." />
+        <KpiTile icon={Clock} label="Under Review" value={summary?.pending_quotations} unit={pluralUnit(summary?.pending_quotations, 'quotation')} zeroHint="Nothing awaiting BAC review." />
+        <KpiTile icon={AlertCircle} label="Not Selected" value={summary?.rejected_quotations} unit={pluralUnit(summary?.rejected_quotations, 'quotation')} zeroHint="None so far." />
         <KpiTile icon={CheckCircle} label="Approval Status" value={summary?.verification_status || 'Pending'} hint="Your registration with the BAC" tone={summary?.verification_status === 'Approved' ? 'success' : 'warning'} />
       </ul>
 
@@ -7378,7 +7381,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
             </div>
 
             <div className="profile-action-row">
-              <button type="button" className="btn btn-primary profile-edit-btn" onClick={() => setEditMode(true)} aria-label="Edit supplier profile">
+              <button type="button" className="btn btn-primary profile-edit-btn" onClick={() => setEditMode(true)}>
                 <Edit2 size={16} /> Edit Profile
               </button>
               {profile.status === 'For Compliance' && (
@@ -7723,7 +7726,7 @@ const AppLayout = () => {
             <Link to="/" className="navbar-logo-link">
               <span className="admin-brand-mark" aria-label="eProcure">eP</span>
             </Link>
-            <Link to="/" className="public-wordmark" aria-label="eProcure home">
+            <Link to="/" className="public-wordmark">
               <strong>eProcure</strong>
               <span>Procurement Operations</span>
             </Link>

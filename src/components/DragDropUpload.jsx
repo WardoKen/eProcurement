@@ -769,9 +769,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onChooseClick()
             }
           }}
-          role="button"
-          tabIndex={0}
-          aria-label={file ? `Selected file ${file.name}` : 'Upload Purchase Request file: press Enter to browse, or drop a file here'}
+          role={file ? undefined : 'button'}
+          tabIndex={file ? undefined : 0}
           data-drag={dragOver ? 'true' : 'false'}
         >
           <input ref={fileInputRef} type="file" accept={acceptAttr(UPLOAD_KINDS.PR)} style={{ display: 'none' }} onChange={onFileInputChange} tabIndex={-1} aria-hidden="true" />
@@ -1140,7 +1139,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               </div>
             </div>
 
-            <div className="table-shell">
+            <div className="table-shell" tabIndex={0} role="region" aria-label="Requested items">
               <table className="enterprise-table items-table requested-items-table">
                 <thead>
                   <tr>

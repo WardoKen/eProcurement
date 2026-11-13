@@ -345,7 +345,7 @@ button.link-like {
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
   margin: 0 0 var(--space-5);
   padding: 0;
@@ -399,6 +399,11 @@ button.link-like {
 }
 
 .kpi-hint { margin: 0; color: var(--text-secondary); font-size: var(--font-size-xs); }
+
+@media (min-width: 1280px) {
+  /* Wide screens: one row (6 Admin tiles or 5 Supplier tiles). */
+  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}
 
 /* ── Data tables: toolbar, sorting, pagination, mobile cards ────────────── */
 
@@ -644,4 +649,23 @@ button.link-like {
     letter-spacing: 0.04em;
   }
   .pr-row-actions { justify-content: flex-start; }
+}
+
+/* ── Contrast fixes found by the axe walkthrough (legacy colors < 4.5:1) ── */
+
+.workflow-step.step-done .step-label,
+.workflow-step.step-done .step-icon { color: var(--success); }          /* was #16a34a, 3.14:1 */
+.supplier-review-modal .eyebrow { color: var(--teal); }                  /* was #8be1d7, 1.51:1 */
+.workflow-step:not(.step-done):not(.step-active) .step-label,
+.workflow-step:not(.step-done):not(.step-active) .step-icon { color: var(--text-muted); } /* was #94a3b8, 2.45:1 */
+.buyer-timeline-node.is-upcoming .buyer-timeline-label,
+.buyer-timeline-node.is-upcoming .buyer-timeline-time,
+.buyer-timeline-node.is-upcoming .buyer-timeline-marker { color: var(--text-muted); } /* was #94a3b8, 2.51:1 */
+.notifications-group-label { color: var(--text-secondary) !important; } /* was #8eaaac, 2.24:1 */
+
+/* Keyboard-scrollable table regions show focus like any control. */
+.table-shell[tabindex="0"]:focus-visible,
+.opportunity-table-wrapper[tabindex="0"]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }

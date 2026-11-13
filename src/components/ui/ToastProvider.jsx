@@ -30,7 +30,7 @@ export default function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="toast-region" aria-label="Notifications">
+      <div className="toast-region">
         {toasts.map((toast) => <Toast key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} />)}
       </div>
     </ToastContext.Provider>
