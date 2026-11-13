@@ -113,3 +113,56 @@ describe('supplier matching and RFQ distribution', () => {
     })
   })
 })
+
+describe('assign categories', () => {
+  it('assigns a category per item with the labelled combobox and saves the assignments', async () => {
+    signIn(adminUser)
+    const api = installApi({
+      ...routes,
+      'GET /api/pr/list/': { json: [{ ...numberedPr, category: '' }] },
+      'GET /api/categories/': { json: [{ id: 3, name: 'IT Equipment' }, { id: 4, name: 'Janitorial Services' }] },
+      'GET /api/pr/43/items/': { json: [
+        { id: 100, item_description: 'Laptop', quantity: 2, unit_cost: 1000, category: '' },
+        { id: 101, item_description: 'Mop', quantity: 5, unit_cost: 50, category: 'Janitorial Services' },
+      ] },
+      'POST /api/pr/43/items/categories/': { json: { ok: true } },
+    })
+    const { user } = renderAt('/admin')
+    await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+    await user.click(await screen.findByRole('button', { name: /category selection/i }))
+
+    const first = await screen.findByRole('combobox', { name: 'Category for item 1' })
+    await user.click(first)
+    await user.type(first, 'IT')
+    const listbox = screen.getByRole('listbox', { name: 'Category for item 1' })
+    expect(first).toHaveAttribute('aria-controls', listbox.id)
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('button', { name: /save categories & continue/i }))
+
+    await waitFor(() => expect(api.find('POST', '/api/pr/43/items/categories/')).toHaveLength(1))
+    expect(api.find('POST', '/api/pr/43/items/categories/')[0].body).toEqual({
+      assignments: [
+        { item_id: 100, category: 'IT Equipment' },
+        { item_id: 101, category: 'Janitorial Services' },
+      ],
+    })
+  })
+
+  it('does not save while an item has no category', async () => {
+    signIn(adminUser)
+    const api = installApi({
+      ...routes,
+      'GET /api/pr/list/': { json: [{ ...numberedPr, category: '' }] },
+      'GET /api/categories/': { json: [{ id: 3, name: 'IT Equipment' }] },
+      'GET /api/pr/43/items/': { json: [{ id: 100, item_description: 'Laptop', quantity: 2, unit_cost: 1000, category: '' }] },
+    })
+    const { user } = renderAt('/admin')
+    await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+    await user.click(await screen.findByRole('button', { name: /category selection/i }))
+    await user.click(await screen.findByRole('button', { name: /save categories & continue/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/1 item still need a category/i)
+    expect(screen.getByRole('combobox', { name: 'Category for item 1' })).toHaveAttribute('aria-invalid', 'true')
+    expect(api.mutations()).toHaveLength(0)
+  })
+})

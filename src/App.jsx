@@ -1405,7 +1405,8 @@ const WorkflowStepper = ({ current }) => {
 // The list is rendered in a body portal with fixed positioning so it floats
 // over the page - a scrolling parent never clips it and the table never grows.
 
-const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…', invalid = false, id }) => {
+const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…', invalid = false, id, ariaLabel }) => {
+  const listboxId = React.useId()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [activeIndex, setActiveIndex] = React.useState(0)
@@ -1491,8 +1492,12 @@ const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…',
         ref={inputRef}
         type="text"
         role="combobox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-activedescendant={open && filtered[activeIndex] ? `${listboxId}-opt-${activeIndex}` : undefined}
+        aria-invalid={invalid || undefined}
         className="searchable-select-input"
         value={open ? query : value}
         placeholder={value || placeholder}
@@ -1504,7 +1509,7 @@ const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…',
         <button
           type="button"
           className="searchable-select-clear"
-          aria-label="Clear category"
+          aria-label={ariaLabel ? `Clear ${ariaLabel}` : 'Clear category'}
           onClick={() => onChange('')}
         >
           ×
@@ -1513,8 +1518,10 @@ const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…',
       {open && menuRect && createPortal(
         <ul
           ref={listRef}
+          id={listboxId}
           className="searchable-select-list"
           role="listbox"
+          aria-label={ariaLabel || 'Options'}
           style={{
             position: 'fixed',
             left: menuRect.left,
@@ -1525,11 +1532,12 @@ const SearchableSelect = ({ value, onChange, options, placeholder = 'Select…',
           }}
         >
           {filtered.length === 0 ? (
-            <li className="searchable-select-empty">No matching category</li>
+            <li className="searchable-select-empty" role="option" aria-disabled="true" aria-selected="false">No matching category</li>
           ) : (
             filtered.map((option, index) => (
               <li
                 key={option}
+                id={`${listboxId}-opt-${index}`}
                 role="option"
                 aria-selected={option === value}
                 className={`searchable-select-option${index === activeIndex ? ' is-active' : ''}${option === value ? ' is-selected' : ''}`}
@@ -1629,13 +1637,14 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
 
       {error && <div className="alert alert-error" style={{ marginBottom: 14 }}>{error}</div>}
       {touched && !allAssigned && (
-        <div className="alert alert-warning" style={{ marginBottom: 14 }}>
+        <div className="alert alert-warning" role="alert" style={{ marginBottom: 14 }}>
           {unassignedCount} item{unassignedCount !== 1 ? 's' : ''} still need a category before you can continue.
         </div>
       )}
 
       <div className="card" style={{ overflow: 'auto', marginBottom: 18 }}>
         <table className="cat-assign-table">
+          <caption className="sr-only">Purchase Request items and their procurement categories</caption>
           <thead>
             <tr className="cat-assign-head">
               <th>#</th>
@@ -1658,6 +1667,7 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
                   <td>
                     <SearchableSelect
                       id={`cat-select-${item.id}`}
+                      ariaLabel={`Category for item ${idx + 1}`}
                       value={assigned}
                       onChange={(name) => setAssignments((prev) => ({ ...prev, [item.id]: name }))}
                       options={categoryNames}
@@ -1873,8 +1883,8 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         <span>Current status: <strong>{rfq?.status ? rfqStatusLabelText(rfq.status) : 'Not saved yet'}</strong></span>
       </p>
       <ProcurementStepper status={rfq?.status} label={`RFQ progress for ${supplier.company_name}`} />
-      {error && <div className="alert alert-error">{error}</div>}
-      {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`}>{notice}</div>}
+      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`} role="status">{notice}</div>}
       {isManualSelection && (
         <div className="alert alert-warning">
           <strong>Manual BAC Selection.</strong> You are proceeding with a supplier outside the PR's registered
@@ -1908,7 +1918,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         <h2>RFQ Information</h2>
         <div className="detail-grid">
           <label className="form-field">
-            <span>Mode of Procurement *</span>
+            <span>Mode of Procurement<RequiredMark /></span>
             <input
               type="text"
               list="procurement-mode-options"
@@ -1917,6 +1927,9 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
               disabled={isSent}
               placeholder="Select a suggestion or type a mode"
               maxLength={200}
+              required
+              aria-invalid={!isSent && !modeOfProcurement.trim() && error === 'Please enter a mode of procurement.' ? true : undefined}
+              aria-describedby="rfq-mode-hint"
             />
             <datalist id="procurement-mode-options">
               {procurementModes.map((mode) => <option key={mode} value={mode} />)}
@@ -1931,9 +1944,11 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
             </select>
           </label>
         </div>
-        {!modeOfProcurement.trim() && (
-          <p className="helper-text" style={{ marginTop: 4 }}>Choose a suggested procurement procedure or type your own. This is separate from the PR category.</p>
-        )}
+        <p className="helper-text" id="rfq-mode-hint" style={{ marginTop: 4 }}>
+          {!modeOfProcurement.trim()
+            ? 'Required to save or send. Choose a suggested procurement procedure or type your own. This is separate from the PR category.'
+            : 'Printed on the RFQ exactly as entered.'}
+        </p>
         <p className="helper-text" style={{ marginTop: 4 }}>
           {quotationBasis === 'LINE'
             ? 'The RFQ note will state the award is on a per line item basis; suppliers may quote for one or more items.'
@@ -2478,6 +2493,9 @@ const rfqResponseIndicator = (rfq) => {
   return { icon: '⏳', label: 'Awaiting Response', className: 'awaiting' }
 }
 
+// Decorative status glyph; the text beside it carries the meaning.
+const StatusGlyph = ({ children }) => <span aria-hidden="true">{children}</span>
+
 const rfqMgmtFormatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—')
 const rfqMgmtFormatDateTime = (value) => (value ? new Date(value).toLocaleString() : '—')
 
@@ -2515,8 +2533,8 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
       </div>
 
       <div className="rfq-mgmt-progress" style={{ marginBottom: 16 }}>
-        <span className="rfq-resp-indicator received">✓ {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
-        <span className="rfq-resp-indicator awaiting">⏳ {summary.awaiting_response} Awaiting Response</span>
+        <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
+        <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> {summary.awaiting_response} Awaiting Response</span>
       </div>
 
       {responded.length === 0 ? (
@@ -2528,7 +2546,7 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
               <div>
                 <h4>{rfq.supplier.company_name}</h4>
                 <p className="supplier-subtext">{rfq.rfq_no}</p>
-                <span className="rfq-resp-indicator received">✓ Response Received</span>
+                <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> Response Received</span>
                 {rfq.submitted_at && <p className="supplier-subtext">Submitted: {new Date(rfq.submitted_at).toLocaleString()}</p>}
               </div>
               <div className="rfq-mgmt-row-actions">
@@ -2550,7 +2568,7 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
                 <div>
                   <h4>{rfq.supplier.company_name}</h4>
                   <p className="supplier-subtext">{rfq.rfq_no}</p>
-                  <span className="rfq-resp-indicator awaiting">⏳ Awaiting Response</span>
+                  <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> Awaiting Response</span>
                 </div>
                 <div className="rfq-mgmt-row-actions">
                   {rfq.generated_pdf_url && (
@@ -2955,8 +2973,8 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                     <div className="rfq-mgmt-group-body">
                       <div className="rfq-mgmt-progress">
                         <span>{summary.sent} Sent</span>
-                        <span className="rfq-resp-indicator received">✓ {summary.responses_received} Received</span>
-                        <span className="rfq-resp-indicator awaiting">⏳ {summary.awaiting_response} Awaiting</span>
+                        <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> {summary.responses_received} Received</span>
+                        <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> {summary.awaiting_response} Awaiting</span>
                         {summary.responses_received > 0 && (
                           <button type="button" className="btn-sm btn-primary" onClick={() => setDetail({ mode: 'pr', group })}>View All Responses</button>
                         )}
@@ -2987,7 +3005,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                                       <td><strong>{rfq.rfq_no || '—'}</strong></td>
                                       <td>{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '—'}</td>
                                       <td>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleDateString() : '—'}</td>
-                                      <td><span className={`rfq-resp-indicator ${indicator.className}`}>{indicator.icon} {indicator.label}</span></td>
+                                      <td><span className={`rfq-resp-indicator ${indicator.className}`}><StatusGlyph>{indicator.icon}</StatusGlyph> {indicator.label}</span></td>
                                       <td>
                                         <div className="rfq-mgmt-row-actions">
                                           <button type="button" className="btn-sm btn-secondary" onClick={() => setDetail({ mode: 'rfq', group, rfq })}>View RFQ</button>
@@ -7295,7 +7313,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       </div>
 
       {message && (
-        <div className={`message-banner message-${message.type}`}>
+        <div className={`message-banner message-${message.type}`} role={message.type === 'error' ? 'alert' : 'status'}>
           {message.text}
         </div>
       )}
@@ -7594,7 +7612,7 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
               <span className="admin-nav-section-label notifications-group-label">{bucket}</span>
               {items.map((notif) => (
                 <div key={notif.id} className={`notification-item notification-${notif.type}`}>
-                  <div className="notification-icon">
+                  <div className="notification-icon" aria-hidden="true">
                     {notif.type === 'opportunity' && <BriefcaseBusiness size={20} />}
                     {notif.type === 'rfq_received' && <Send size={20} />}
                     {notif.type === 'quotation_submitted' && <CheckCircle size={20} />}
@@ -7602,6 +7620,7 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
                     {notif.type === 'quotation_awarded' && <CheckCircle size={20} />}
                     {notif.type === 'quotation_rejected' && <AlertCircle size={20} />}
                     {notif.type === 'profile_approved' && <CheckCircle size={20} />}
+                    {!['opportunity', 'rfq_received', 'quotation_submitted', 'quotation_review', 'quotation_awarded', 'quotation_rejected', 'profile_approved'].includes(notif.type) && <Bell size={20} />}
                   </div>
                   <div className="notification-content">
                     <h4>{notif.title}</h4>
