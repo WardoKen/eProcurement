@@ -54,6 +54,9 @@ import DragDropUpload, {
 } from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
 import Sidebar from './components/Sidebar'
+import Breadcrumbs from './components/ui/Breadcrumbs'
+import ErrorBoundary from './components/ui/ErrorBoundary'
+import ToastProvider from './components/ui/ToastProvider'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -2916,6 +2919,22 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
   )
 }
 
+const ADMIN_TAB_LABELS = {
+  dashboard: 'Dashboard',
+  'pr-monitoring': 'PR Review & Monitoring',
+  'assign-categories': 'Assign Categories',
+  'supplier-matching': 'Supplier Matching',
+  'rfq-responses': 'RFQ Management',
+  'manual-rfqs': 'Manual RFQs',
+  suppliers: 'Supplier Management',
+  'buyer-accounts': 'End User Accounts',
+  'pr-numbering-settings': 'PR Numbering',
+  'pr-notification-settings': 'PR Notifications',
+}
+
+// Workflow screens reached from PR Review & Monitoring, not from the sidebar.
+const ADMIN_WORKFLOW_TABS = new Set(['assign-categories', 'supplier-matching'])
+
 const Admin = () => {
   const navigate = useNavigate()
   const [currentTab, setCurrentTab] = React.useState('dashboard')
@@ -3814,6 +3833,18 @@ const Admin = () => {
 
       {/* Admin Content */}
       <div className="admin-content">
+        {currentTab !== 'dashboard' && (
+          <Breadcrumbs
+            items={[
+              { label: 'Admin Portal', onClick: () => setCurrentTab('dashboard') },
+              ...(ADMIN_WORKFLOW_TABS.has(currentTab)
+                ? [{ label: ADMIN_TAB_LABELS['pr-monitoring'], onClick: () => setCurrentTab('pr-monitoring') }]
+                : []),
+              { label: ADMIN_TAB_LABELS[currentTab] || currentTab },
+            ]}
+          />
+        )}
+        <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
           <div className="supplier-section">
             <div className="supplier-header">
@@ -5154,6 +5185,7 @@ const Admin = () => {
             </div>
           </div>
         )}
+        </ErrorBoundary>
       </div>
       {reviewAction && (
         <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={() => !supplierActioningId && setReviewAction(null)}>
@@ -5624,6 +5656,10 @@ const Buyer = () => {
 
       {/* Buyer Content */}
       <div className="admin-content">
+        {currentTab !== 'dashboard' && (
+          <Breadcrumbs items={[{ label: 'End User Portal', onClick: () => setCurrentTab('dashboard') }, { label: 'Live Status' }]} />
+        )}
+        <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
           <div className="supplier-section">
             <div className="supplier-header">
@@ -5651,6 +5687,7 @@ const Buyer = () => {
             <BuyerPRStatusViewer prIds={submittedPrIds} username={user?.username || ''} />
           </div>
         )}
+        </ErrorBoundary>
       </div>
     </div>
   )
@@ -5947,14 +5984,20 @@ const Supplier = () => {
         onToggleNav={() => setNavCollapsed((v) => !v)}
         supplierId={supplierId}
         apiBaseUrl={apiBaseUrl}
+        procurementLocked={!isApproved}
       />
       <div className="admin-content">
+        {currentPage !== 'dashboard' && (
+          <Breadcrumbs items={[{ label: 'Supplier Portal', onClick: () => handlePageChange('dashboard') }, { label: SUPPLIER_PAGE_LABELS[currentPage] || currentPage }]} />
+        )}
+        <ErrorBoundary resetKey={currentPage}>
         {currentPage === 'dashboard' && <SupplierDashboard supplierId={supplierId} apiBaseUrl={apiBaseUrl} supplierStatus={supplierStatus} />}
         {currentPage === 'opportunities' && (isApproved ? <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'quotations' && (isApproved ? <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'rfqs' && (isApproved ? <SupplierRFQs supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'profile' && <CompanyProfile supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         {currentPage === 'notifications' && <SupplierNotifications supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
+        </ErrorBoundary>
       </div>
     </div>
   )
@@ -6205,7 +6248,16 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
   )
 }
 
-const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onToggleNav, supplierId, apiBaseUrl }) => {
+const SUPPLIER_PAGE_LABELS = {
+  dashboard: 'Dashboard',
+  opportunities: 'Opportunities',
+  rfqs: 'RFQs',
+  quotations: 'Quotations',
+  profile: 'Profile',
+  notifications: 'Notifications',
+}
+
+const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onToggleNav, supplierId, apiBaseUrl, procurementLocked }) => {
   const [supplierDetails, setSupplierDetails] = React.useState(null)
 
   React.useEffect(() => {
@@ -6244,7 +6296,7 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
           { id: 'opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
           { id: 'rfqs', label: 'RFQs', icon: Send },
           { id: 'quotations', label: 'Quotations', icon: FileText },
-        ] },
+        ].map((item) => (procurementLocked ? { ...item, locked: true, lockedReason: 'available after BAC approval' } : item)) },
         { section: 'ACCOUNT', items: [
           { id: 'profile', label: 'Profile', icon: Building2 },
           { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -7249,8 +7301,9 @@ const AppLayout = () => {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       {showMainNavbar && (
-        <nav className={`navbar ${mobileNavOpen ? 'mobile-open' : ''}`}>
+        <nav className={`navbar ${mobileNavOpen ? 'mobile-open' : ''}`} aria-label="Main">
           <div className="navbar-left navbar-brand-row">
             <Link to="/" className="navbar-logo-link">
               <span className="admin-brand-mark" aria-label="eProcure">eP</span>
@@ -7260,8 +7313,8 @@ const AppLayout = () => {
               <span>Procurement Operations</span>
             </Link>
             <div className="navbar-links" id="public-nav-links">
-              <Link to={homeLink} className={`nav-item ${location.pathname === homeLink || (homeLink === '/' && location.pathname === '/') ? 'active' : ''}`}><House size={15} /> Home</Link>
-              <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`}><HelpCircle size={15} /> Help & FAQ</Link>
+              <Link to={homeLink} className={`nav-item ${location.pathname === homeLink ? 'active' : ''}`} aria-current={location.pathname === homeLink ? 'page' : undefined}><House size={15} aria-hidden="true" /> Home</Link>
+              <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`} aria-current={location.pathname === '/faq' ? 'page' : undefined}><HelpCircle size={15} aria-hidden="true" /> Help & FAQ</Link>
             </div>
           </div>
 
@@ -7298,7 +7351,8 @@ const AppLayout = () => {
         </nav>
       )}
 
-      <main>
+      <main id="main-content" tabIndex={-1}>
+        <ErrorBoundary resetKey={location.pathname} homeHref="/">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/faq" element={<FAQ />} />
@@ -7311,6 +7365,7 @@ const AppLayout = () => {
           <Route path="/supplier/register" element={<SupplierRegistration />} />
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin" element={<Admin />} />} />
         </Routes>
+        </ErrorBoundary>
       </main>
       {!user && <Footer />}
     </div>
@@ -7319,7 +7374,9 @@ const AppLayout = () => {
 
 const App = () => (
   <BrowserRouter>
-    <AppLayout />
+    <ToastProvider>
+      <AppLayout />
+    </ToastProvider>
   </BrowserRouter>
 )
 
