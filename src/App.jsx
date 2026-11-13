@@ -66,6 +66,7 @@ import useConfirm from './components/ui/useConfirm'
 import { useToast } from './components/ui/toast-context'
 import { FieldError, RequiredMark } from './components/ui/FormParts'
 import KpiTile from './components/ui/KpiTile'
+import ProcurementStepper from './components/ui/ProcurementStepper'
 import useTableControls from './components/ui/useTableControls'
 import { Pagination, TableToolbar } from './components/ui/TableParts'
 import { apiFetch } from './lib/apiClient'
@@ -1376,16 +1377,21 @@ const WorkflowStepper = ({ current }) => {
   const order = steps.map((s) => s.key)
   const currentIndex = order.indexOf(current)
   return (
-    <div className="workflow-stepper">
+    <div className="workflow-stepper" role="list" aria-label="Purchase Request workflow">
       {steps.map((step, i) => {
         const isDone = i < currentIndex
         const isActive = i === currentIndex
         return (
           <React.Fragment key={step.key}>
-            {i > 0 && <span className="workflow-step-arrow">→</span>}
-            <div className={`workflow-step${isDone ? ' step-done' : ''}${isActive ? ' step-active' : ''}`}>
-              <span className="step-icon">{isDone ? '✓' : isActive ? '►' : '○'}</span>
+            {i > 0 && <span className="workflow-step-arrow" aria-hidden="true">→</span>}
+            <div
+              role="listitem"
+              aria-current={isActive ? 'step' : undefined}
+              className={`workflow-step${isDone ? ' step-done' : ''}${isActive ? ' step-active' : ''}`}
+            >
+              <span className="step-icon" aria-hidden="true">{isDone ? '✓' : isActive ? '►' : '○'}</span>
               <span className="step-label">{step.label}</span>
+              <span className="sr-only">{isDone ? ' (completed)' : isActive ? ' (current step)' : ''}</span>
             </div>
           </React.Fragment>
         )
@@ -1862,6 +1868,11 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         <h1>RFQ Preparation</h1>
         <p>Edit the RFQ details, click <strong>Save RFQ</strong> to apply changes and refresh the preview, then <strong>Send RFQ to Supplier</strong> to deliver it.</p>
       </div>
+      <p className="record-status">
+        <span>RFQ for <strong>{supplier.company_name}</strong>{groupCategory ? <> · {groupCategory}</> : null}</span>
+        <span>Current status: <strong>{rfq?.status ? rfqStatusLabelText(rfq.status) : 'Not saved yet'}</strong></span>
+      </p>
+      <ProcurementStepper status={rfq?.status} label={`RFQ progress for ${supplier.company_name}`} />
       {error && <div className="alert alert-error">{error}</div>}
       {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`}>{notice}</div>}
       {isManualSelection && (
@@ -1978,6 +1989,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
 }
 
 const rfqStatusLabelText = (status) => {
+  if (status === 'draft') return 'Draft (not sent)'
   if (status === 'quotation_received') return 'Quotation Received'
   if (status === 'completed') return 'RFQ Completed'
   return 'RFQ Sent'
@@ -2493,8 +2505,9 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: 'RFQ Management', onClick: onBack }, { label: `Responses · ${pr.pr_no}` }]} />
       <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
-        <ChevronLeft size={14} /> Back to RFQ Management
+        <ChevronLeft size={14} aria-hidden="true" /> Back to RFQ Management
       </button>
       <div className="supplier-header">
         <h1>Supplier Responses · {pr.pr_no}</h1>
@@ -2569,13 +2582,15 @@ const RFQDetailView = ({ group, rfq, onBack, onView }) => {
 
   return (
     <>
+      <Breadcrumbs items={[{ label: 'RFQ Management', onClick: onBack }, { label: pr.pr_no }, { label: rfq.rfq_no }]} />
       <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
-        <ChevronLeft size={14} /> Back to RFQ Management
+        <ChevronLeft size={14} aria-hidden="true" /> Back to RFQ Management
       </button>
       <div className="supplier-header">
         <h1>{rfq.rfq_no}</h1>
-        <p><span className={`status-badge ${rfq.has_response ? 'status-open' : 'status-review'}`}>{rfq.status_label || rfq.status}</span></p>
+        <p className="record-status">Current status <span className={`status-badge ${rfq.has_response ? 'status-open' : 'status-review'}`}>{rfq.status_label || rfq.status}</span></p>
       </div>
+      <ProcurementStepper status={rfq.status} label={`Progress of ${rfq.rfq_no}`} />
 
       <div className="card rfq-review-card">
         <h2>RFQ Information</h2>
@@ -2765,6 +2780,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
               <button type="button" className="modal-close" onClick={() => setOpenRfq(null)} aria-label="Close">×</button>
             </div>
             <div className="modal-body">
+              <ProcurementStepper status={openRfq.status} label={`Progress of ${openRfq.rfq_no}`} />
               <div className="detail-grid">
                 <div><strong>Supplier: </strong><span>{openRfq.manual_supplier_name || openRfq.supplier_name}</span></div>
                 <div><strong>Type: </strong><span>Manual / Unregistered</span></div>
@@ -6425,7 +6441,9 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
                     <h3>Request for Quotation</h3>
                     <p className="supplier-subtext">{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
                   </div>
-                  <span className={`status-badge ${responded ? 'status-open' : 'status-review'}`}>{rfqSupplierStatusLabel(rfq)}</span>
+                  <span className={`status-badge ${responded ? 'status-open' : 'status-review'}`}>
+                    <span className="sr-only">Status: </span>{rfqSupplierStatusLabel(rfq)}
+                  </span>
                 </div>
                 <div className="rfq-supplier-card-body">
                   <div><strong>From:</strong> {pr.office_section || pr.entity_name || 'N/A'}</div>
@@ -6433,7 +6451,7 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
                   {rfq.submitted_at && <div><strong>Submitted:</strong> {new Date(rfq.submitted_at).toLocaleString()}</div>}
                 </div>
                 <div className="form-actions">
-                  <button type="button" className="btn-primary" onClick={() => setSelectedRfqId(rfq.id)}>View RFQ</button>
+                  <button type="button" className="btn-primary" onClick={() => setSelectedRfqId(rfq.id)} aria-label={`View RFQ ${rfq.rfq_no}`}>View RFQ</button>
                   {rfq.generated_pdf_url && (
                     <a className="btn-secondary" href={rfq.generated_pdf_url} download target="_blank" rel="noreferrer"><Download size={14} /> Download RFQ</a>
                   )}
@@ -6487,11 +6505,13 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
 
   return (
     <div className="supplier-content-inner">
-      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} /> Back to RFQs</button>
+      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} aria-hidden="true" /> Back to RFQs</button>
       <div className="supplier-header">
         <h2>Request for Quotation</h2>
         <p>{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
       </div>
+      <p className="record-status">Current status: <strong>{rfqSupplierStatusLabel(rfq)}</strong></p>
+      <ProcurementStepper status={rfq.status} label={`Progress of ${rfq.rfq_no}`} />
       {error && <div className="alert alert-error">{error}</div>}
       {notice && <div className="alert alert-success">{notice}</div>}
 
