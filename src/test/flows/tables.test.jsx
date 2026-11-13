@@ -1,7 +1,7 @@
 // List controls added to screens: search, filters, sorting, pagination.
 // They only reorder or slice what the API already returned.
 import { describe, expect, it } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { installApi, renderAt, signIn } from '../harness'
 import { adminUser, numberedPr } from '../fixtures'
 
@@ -99,5 +99,61 @@ describe('supplier management list', () => {
     await user.selectOptions(screen.getByLabelText(/^status$/i), 'Pending Review')
     expect(names()).toEqual(['Alpha Supplies'])
     expect(api.mutations()).toHaveLength(0)
+  })
+})
+
+describe('supplier portal lists', () => {
+  const supplier = { role: 'supplier', username: 'acme', supplier_id: 7, supplier_status: 'Approved' }
+  const base = {
+    'GET /api/suppliers/7/profile/': { json: { company_name: 'Acme' } },
+    'GET /api/suppliers/7/dashboard/': { json: {} },
+  }
+  const opportunities = [
+    { id: 1, pr_no: '2026-11-001', office_section: 'ICT Office', entity_name: 'CTU', purpose: 'Laptops', category: 'IT Equipment', grand_total: 2000, status: 'matched' },
+    { id: 2, pr_no: '2026-11-002', office_section: 'Library', entity_name: 'CTU', purpose: 'Shelves', category: 'Furniture', grand_total: null, status: 'in_review' },
+  ]
+
+  it('opportunities sort by budget and show readable statuses', async () => {
+    signIn(supplier)
+    installApi({ ...base, 'GET /api/suppliers/7/opportunities/': { json: { opportunities } } })
+    const { user } = renderAt('/supplier')
+    await user.click(screen.getAllByRole('button', { name: /^opportunities$/i })[0])
+
+    const table = await screen.findByRole('table', { name: /procurement opportunities/i })
+    expect(within(table).getByText('In Review')).toBeInTheDocument()
+    expect(within(table).getByText('₱0.00')).toBeInTheDocument()
+    await user.click(within(within(table).getByRole('columnheader', { name: /budget/i })).getByRole('button'))
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent('2026-11-002')
+  })
+
+  it('a failed opportunities load is reported and retryable', async () => {
+    signIn(supplier)
+    const api = installApi({ ...base, 'GET /api/suppliers/7/opportunities/': { status: 500, json: {} } })
+    const { user } = renderAt('/supplier')
+    await user.click(screen.getAllByRole('button', { name: /^opportunities$/i })[0])
+
+    expect(await screen.findByText(/opportunities could not be loaded/i)).toBeInTheDocument()
+    const before = api.find('GET', '/api/suppliers/7/opportunities/').length
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => expect(api.find('GET', '/api/suppliers/7/opportunities/').length).toBe(before + 1))
+  })
+
+  it('quotations list renders and searches by status', async () => {
+    signIn(supplier)
+    installApi({
+      ...base,
+      'GET /api/suppliers/7/opportunities/': { json: { opportunities: [] } },
+      'GET /api/suppliers/7/quotations/': { json: { quotations: [
+        { id: 1, pr_no: '2026-11-001', created_at: '2026-11-02T00:00:00Z', quoted_amount: 1900, status: 'under_review' },
+        { id: 2, pr_no: '2026-10-004', created_at: '2026-10-12T00:00:00Z', quoted_amount: 500, status: 'awarded' },
+      ] } },
+    })
+    const { user } = renderAt('/supplier')
+    await user.click(screen.getAllByRole('button', { name: /^quotations$/i })[0])
+
+    const table = await screen.findByRole('table', { name: /your submitted quotations/i })
+    expect(within(table).getByText('Under Review')).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/search quotations/i), 'awarded')
+    expect(within(table).getAllByRole('row')).toHaveLength(2)
   })
 })

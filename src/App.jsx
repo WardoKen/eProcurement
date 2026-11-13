@@ -68,7 +68,7 @@ import { FieldError, RequiredMark } from './components/ui/FormParts'
 import KpiTile from './components/ui/KpiTile'
 import ProcurementStepper from './components/ui/ProcurementStepper'
 import useTableControls from './components/ui/useTableControls'
-import { Pagination, TableToolbar } from './components/ui/TableParts'
+import { Pagination, SortableHeader, TableToolbar } from './components/ui/TableParts'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -6777,46 +6777,53 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
   )
 }
 
+// Display formatting only, e.g. "in_review" -> "In Review". Stored values are unchanged.
+const humanizeStatus = (status) => String(status || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+const formatPesoAmount = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
 const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
-  const navigate = useNavigate()
   const [opportunities, setOpportunities] = React.useState([])
-  const [filteredOpportunities, setFilteredOpportunities] = React.useState([])
   const [loading, setLoading] = React.useState(true)
-  const [searchTerm, setSearchTerm] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [reloadToken, setReloadToken] = React.useState(0)
   const [selectedOpp, setSelectedOpp] = React.useState(null)
 
   React.useEffect(() => {
     const fetchOpportunities = async () => {
       try {
         setLoading(true)
+        setError('')
         const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
         if (response.ok) {
           const data = await response.json()
-          setOpportunities(data.opportunities)
-          setFilteredOpportunities(data.opportunities)
+          setOpportunities(Array.isArray(data.opportunities) ? data.opportunities : [])
+        } else {
+          setError('Opportunities could not be loaded.')
         }
-      } catch (error) {
-        console.error('Failed to fetch opportunities:', error)
+      } catch (fetchError) {
+        console.error('Failed to fetch opportunities:', fetchError)
+        setError('Unable to reach eProcure to load opportunities.')
       } finally {
         setLoading(false)
       }
     }
 
     if (supplierId) fetchOpportunities()
-  }, [supplierId, apiBaseUrl])
+  }, [supplierId, apiBaseUrl, reloadToken])
 
-  const handleSearch = (term) => {
-    setSearchTerm(term)
-    const filtered = opportunities.filter(
-      (opp) =>
-        opp.pr_no.toLowerCase().includes(term.toLowerCase()) ||
-        opp.entity_name.toLowerCase().includes(term.toLowerCase()) ||
-        opp.purpose?.toLowerCase().includes(term.toLowerCase())
-    )
-    setFilteredOpportunities(filtered)
-  }
+  const table = useTableControls(opportunities, {
+    search: (opp) => [opp.pr_no, opp.entity_name, opp.office_section, opp.purpose, opp.category],
+    sorters: {
+      pr_no: (opp) => opp.pr_no,
+      office: (opp) => opp.office_section,
+      category: (opp) => opp.category,
+      budget: (opp) => Number(opp.grand_total || 0),
+      status: (opp) => opp.status,
+    },
+    pageSize: 10,
+  })
 
-  if (loading) return <SkeletonRows count={5} />
+  if (loading) return <div className="supplier-content-inner" aria-busy="true"><SkeletonRows count={5} /></div>
 
   if (selectedOpp) {
     return <OpportunityDetail opportunity={selectedOpp} onBack={() => setSelectedOpp(null)} apiBaseUrl={apiBaseUrl} />
@@ -6829,46 +6836,47 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
         <p>Explore purchase requests matching your registered services</p>
       </div>
 
-      <div className="supplier-search-bar">
-        <Search size={18} />
-        <input
-          type="text"
-          placeholder="Search by PR number, office, or purpose..."
-          value={searchTerm}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-      </div>
+      {error && (
+        <div className="alert alert-error" role="alert">
+          {error}{' '}
+          <button type="button" className="link-like" onClick={() => setReloadToken((token) => token + 1)}>Try again</button>
+        </div>
+      )}
 
-      {filteredOpportunities.length > 0 ? (
+      <TableToolbar table={table} searchLabel="Search opportunities" searchPlaceholder="PR number, office, purpose or category" noun="opportunity" />
+
+      {table.total > 0 ? (
         <div className="opportunities-table-container">
-          <table className="admin-table">
+          <table className="admin-table responsive-table">
+            <caption className="sr-only">Procurement opportunities matching your categories</caption>
             <thead>
               <tr>
-                <th>PR Number</th>
-                <th>Office</th>
-                <th>Purpose</th>
-                <th>Category</th>
-                <th>Budget</th>
-                <th>Status</th>
-                <th>Action</th>
+                <SortableHeader table={table} sortKey="pr_no">PR Number</SortableHeader>
+                <SortableHeader table={table} sortKey="office">Office</SortableHeader>
+                <th scope="col">Purpose</th>
+                <SortableHeader table={table} sortKey="category">Category</SortableHeader>
+                <SortableHeader table={table} sortKey="budget">Budget</SortableHeader>
+                <SortableHeader table={table} sortKey="status">Status</SortableHeader>
+                <th scope="col">Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredOpportunities.map((opp) => (
+              {table.rows.map((opp) => (
                 <tr key={opp.id}>
-                  <td><strong>{opp.pr_no}</strong></td>
-                  <td>{opp.office_section}</td>
-                  <td>{opp.purpose}</td>
-                  <td>{opp.category}</td>
-                  <td>₱{opp.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td>
-                    <span className={`status-badge status-${opp.status}`}>{opp.status}</span>
+                  <td data-label="PR Number"><strong>{opp.pr_no}</strong></td>
+                  <td data-label="Office">{opp.office_section}</td>
+                  <td data-label="Purpose">{opp.purpose}</td>
+                  <td data-label="Category">{opp.category}</td>
+                  <td data-label="Budget">{formatPesoAmount(opp.grand_total)}</td>
+                  <td data-label="Status">
+                    <span className={`status-badge status-${opp.status}`}>{humanizeStatus(opp.status)}</span>
                   </td>
-                  <td>
+                  <td data-label="">
                     <button
                       type="button"
                       className="action-link"
                       onClick={() => setSelectedOpp(opp)}
+                      aria-label={`View details for ${opp.pr_no}`}
                     >
                       View Details
                     </button>
@@ -6877,12 +6885,13 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
               ))}
             </tbody>
           </table>
+          <Pagination table={table} label="Opportunity pages" />
         </div>
-      ) : (
+      ) : !error && (
         <div className="empty-state">
-          <BriefcaseBusiness size={48} />
-          <h3>No matching opportunities</h3>
-          <p>Check back later or update your company profile to see more opportunities.</p>
+          <BriefcaseBusiness size={48} aria-hidden="true" />
+          <h3>{opportunities.length ? 'No opportunities match your search' : 'No matching opportunities'}</h3>
+          <p>{opportunities.length ? 'Try a different PR number, office or category.' : 'Check back later or update your company profile to see more opportunities.'}</p>
         </div>
       )}
     </div>
@@ -6892,6 +6901,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
 const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
   const [prDetails, setPrDetails] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
 
   React.useEffect(() => {
     const fetchDetails = async () => {
@@ -6900,9 +6910,12 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
         if (response.ok) {
           const data = await response.json()
           setPrDetails(data)
+        } else {
+          setError('The Purchase Request details could not be loaded. The summary below comes from the opportunity list.')
         }
-      } catch (error) {
-        console.error('Failed to fetch PR details:', error)
+      } catch (fetchError) {
+        console.error('Failed to fetch PR details:', fetchError)
+        setError('Unable to reach eProcure to load the Purchase Request details.')
       } finally {
         setLoading(false)
       }
@@ -6916,13 +6929,14 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
   return (
     <div className="supplier-content-inner">
       <button type="button" className="back-link" onClick={onBack}>
-        <ChevronLeft size={18} /> Back to Opportunities
+        <ChevronLeft size={18} aria-hidden="true" /> Back to Opportunities
       </button>
 
       <div className="supplier-header">
-        <h2>{prDetails?.pr_no}</h2>
-        <p>{prDetails?.purpose}</p>
+        <h2>{prDetails?.pr_no || opportunity.pr_no}</h2>
+        <p>{prDetails?.purpose || opportunity.purpose}</p>
       </div>
+      {error && <div className="alert alert-error" role="alert">{error}</div>}
 
       <div className="details-grid">
         <div className="detail-card">
@@ -6945,11 +6959,11 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
           </div>
           <div className="detail-row">
             <label>Grand Total:</label>
-            <span>₱{(prDetails?.grand_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+            <span>{formatPesoAmount(prDetails?.grand_total ?? opportunity.grand_total)}</span>
           </div>
           <div className="detail-row">
             <label>Status:</label>
-            <span className={`status-badge status-${prDetails?.status}`}>{prDetails?.status}</span>
+            <span className={`status-badge status-${prDetails?.status || opportunity.status}`}>{humanizeStatus(prDetails?.status || opportunity.status)}</span>
           </div>
         </div>
 
@@ -6971,8 +6985,8 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
                     <tr key={idx}>
                       <td>{item.item_description}</td>
                       <td>{item.quantity} {item.unit}</td>
-                      <td>₱{item.unit_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                      <td>₱{item.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td>{formatPesoAmount(item.unit_cost)}</td>
+                      <td>{formatPesoAmount(item.total_cost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -6996,41 +7010,46 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
 
 const MyQuotations = ({ supplierId, apiBaseUrl }) => {
   const [quotations, setQuotations] = React.useState([])
-  const [filteredQuotations, setFilteredQuotations] = React.useState([])
   const [loading, setLoading] = React.useState(true)
-  const [searchTerm, setSearchTerm] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [reloadToken, setReloadToken] = React.useState(0)
 
   React.useEffect(() => {
     const fetchQuotations = async () => {
       try {
         setLoading(true)
+        setError('')
         const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/quotations/`)
         if (response.ok) {
           const data = await response.json()
-          setQuotations(data.quotations)
-          setFilteredQuotations(data.quotations)
+          setQuotations(Array.isArray(data.quotations) ? data.quotations : [])
+        } else {
+          setError('Your quotations could not be loaded.')
         }
-      } catch (error) {
-        console.error('Failed to fetch quotations:', error)
+      } catch (fetchError) {
+        console.error('Failed to fetch quotations:', fetchError)
+        setError('Unable to reach eProcure to load your quotations.')
       } finally {
         setLoading(false)
       }
     }
 
     if (supplierId) fetchQuotations()
-  }, [supplierId, apiBaseUrl])
+  }, [supplierId, apiBaseUrl, reloadToken])
 
-  const handleSearch = (term) => {
-    setSearchTerm(term)
-    const filtered = quotations.filter(
-      (q) =>
-        q.pr_no.toLowerCase().includes(term.toLowerCase()) ||
-        q.status.toLowerCase().includes(term.toLowerCase())
-    )
-    setFilteredQuotations(filtered)
-  }
+  const table = useTableControls(quotations, {
+    search: (q) => [q.pr_no, q.status, humanizeStatus(q.status)],
+    sorters: {
+      pr_no: (q) => q.pr_no,
+      submitted: (q) => q.created_at,
+      amount: (q) => Number(q.quoted_amount || 0),
+      delivery: (q) => (q.estimated_delivery_days === null || q.estimated_delivery_days === undefined ? '' : Number(q.estimated_delivery_days)),
+      status: (q) => q.status,
+    },
+    pageSize: 10,
+  })
 
-  if (loading) return <SkeletonRows count={5} />
+  if (loading) return <div className="supplier-content-inner" aria-busy="true"><SkeletonRows count={5} /></div>
 
   return (
     <div className="supplier-content-inner">
@@ -7039,52 +7058,53 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
         <p>Track the status of all your submitted quotations.</p>
       </div>
 
-      <div className="supplier-search-bar">
-        <Search size={18} />
-        <input
-          type="text"
-          placeholder="Search by PR number or status..."
-          value={searchTerm}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-      </div>
+      {error && (
+        <div className="alert alert-error" role="alert">
+          {error}{' '}
+          <button type="button" className="link-like" onClick={() => setReloadToken((token) => token + 1)}>Try again</button>
+        </div>
+      )}
 
-      {filteredQuotations.length > 0 ? (
+      <TableToolbar table={table} searchLabel="Search quotations" searchPlaceholder="PR number or status" noun="quotation" />
+
+      {table.total > 0 ? (
         <div className="quotations-table-container">
-          <table className="admin-table">
+          <table className="admin-table responsive-table">
+            <caption className="sr-only">Your submitted quotations</caption>
             <thead>
               <tr>
-                <th>PR Number</th>
-                <th>Date Submitted</th>
-                <th>Quoted Amount</th>
-                <th>Est. Delivery</th>
-                <th>Warranty</th>
-                <th>Status</th>
+                <SortableHeader table={table} sortKey="pr_no">PR Number</SortableHeader>
+                <SortableHeader table={table} sortKey="submitted">Date Submitted</SortableHeader>
+                <SortableHeader table={table} sortKey="amount">Quoted Amount</SortableHeader>
+                <SortableHeader table={table} sortKey="delivery">Est. Delivery</SortableHeader>
+                <th scope="col">Warranty</th>
+                <SortableHeader table={table} sortKey="status">Status</SortableHeader>
               </tr>
             </thead>
             <tbody>
-              {filteredQuotations.map((q) => (
+              {table.rows.map((q) => (
                 <tr key={q.id}>
-                  <td><strong>{q.pr_no}</strong></td>
-                  <td>{new Date(q.created_at).toLocaleDateString()}</td>
-                  <td>₱{q.quoted_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td>{q.estimated_delivery_days ? `${q.estimated_delivery_days} days` : '—'}</td>
-                  <td>{q.warranty_months ? `${q.warranty_months} months` : '—'}</td>
-                  <td>
+                  <td data-label="PR Number"><strong>{q.pr_no}</strong></td>
+                  <td data-label="Date Submitted">{q.created_at ? new Date(q.created_at).toLocaleDateString() : '—'}</td>
+                  <td data-label="Quoted Amount">{formatPesoAmount(q.quoted_amount)}</td>
+                  <td data-label="Est. Delivery">{q.estimated_delivery_days ? `${q.estimated_delivery_days} days` : '—'}</td>
+                  <td data-label="Warranty">{q.warranty_months ? `${q.warranty_months} months` : '—'}</td>
+                  <td data-label="Status">
                     <span className={`status-badge status-${q.status}`}>
-                      {q.status.replace('_', ' ')}
+                      {humanizeStatus(q.status)}
                     </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <Pagination table={table} label="Quotation pages" />
         </div>
-      ) : (
+      ) : !error && (
         <div className="empty-state">
-          <FileText size={48} />
-          <h3>No quotations yet</h3>
-          <p>Submit your first quotation from Procurement Opportunities.</p>
+          <FileText size={48} aria-hidden="true" />
+          <h3>{quotations.length ? 'No quotations match your search' : 'No quotations yet'}</h3>
+          <p>{quotations.length ? 'Try a different PR number or status.' : 'Download an RFQ from the RFQs tab, complete it, and upload it to submit a quotation.'}</p>
         </div>
       )}
     </div>
