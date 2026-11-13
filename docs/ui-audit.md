@@ -14,7 +14,7 @@ build or deploy config are out of scope.
 | File | Lines | Notes |
 | --- | --- | --- |
 | `src/App.jsx` | 7,326 | Every portal, screen, modal and route in one module. |
-| `src/index.css` | 9,005 | Four `:root` token blocks (lines 3, 3834, 5864, 7348), each a later redesign that overrides the one before. 824 hard-coded hex colors, 31 media queries, no `prefers-reduced-motion`. |
+| `src/index.css` | 9,005 | Five `:root` blocks (lines 3, 3834, 5864, 7348, 7880), each a later redesign overriding the one before. The last, a "canonical layer", already defines semantic colors, a 4–48 px spacing scale, radii and shadows. It has no type, motion, focus, layer or target-size tokens, and the file still holds 824 literal hex colors. 31 media queries, no `prefers-reduced-motion`. |
 | `src/components/DragDropUpload.jsx` | 1,375 | PR upload, OCR review, signature check, declaration, save. |
 | `src/components/SupplierRegistration.jsx` | 621 | 4-step supplier registration wizard. |
 | `src/components/Sidebar.jsx` | 99 | Shared portal sidebar. |
@@ -197,14 +197,15 @@ real friction. **L** is polish.
 
 ## 5. Cross-cutting issues
 
-1. **Design tokens.** Four conflicting `:root` blocks; no spacing or type scale tokens; 824 literal hex colors.
-2. **Modals.** 16 hand-rolled overlays, none with focus trap, Escape-to-close, or focus restore.
-3. **Blocking dialogs.** `window.alert` / `window.confirm` are used in 14 places.
-4. **Feedback.** No toast or live-region system; success and error messages are inconsistent.
-5. **Errors.** No error boundary anywhere.
-6. **Tables.** Sorting and pagination exist only on the unrouted `Opportunities` component.
-7. **Motion.** Spinners and transitions ignore `prefers-reduced-motion`.
-8. **Status.** Status badge classes are recomputed in about 8 places with slightly different maps.
+1. **Design tokens.** Five stacked `:root` blocks. The last one has color, spacing, radius and shadow tokens but no type, motion, focus or layer tokens; 824 literal hex colors.
+2. **Contrast (WCAG 1.4.3 / 1.4.11).** `--text-muted` is 2.99:1 on white and 2.72:1 on the page background. Warning badge text is 4.42:1. Input borders (`--border-strong`) are 1.69:1. The focus ring (teal at 25% alpha) is about 1.4:1.
+3. **Modals.** 16 hand-rolled overlays, none with focus trap, Escape-to-close, or focus restore.
+4. **Blocking dialogs.** `window.alert` / `window.confirm` are used in 14 places.
+5. **Feedback.** No toast or live-region system; success and error messages are inconsistent.
+6. **Errors.** No error boundary anywhere.
+7. **Tables.** Sorting and pagination exist only on the unrouted `Opportunities` component.
+8. **Motion.** Spinners and transitions ignore `prefers-reduced-motion`.
+9. **Status.** Status badge classes are recomputed in about 8 places with slightly different maps.
 
 ## 6. Prioritized plan
 
@@ -213,12 +214,12 @@ Each step is one commit (or a small group). Build, lint and tests run after each
 | Priority | Step | Addresses |
 | --- | --- | --- |
 | P0 | Safety net: frontend contract tests that record every flow's request URL, method and payload; manual checklist | Verification for everything below |
-| P0 | Design tokens (one source of truth layered over the legacy blocks) plus base a11y CSS: focus ring, reduced motion, `.sr-only`, skip link | §5.1, §5.7 |
-| P0 | Shared components: `Modal` (focus trap, Escape, restore), `ConfirmDialog`, `ToastProvider`, `ErrorBoundary`, `Breadcrumbs`, `StatusBadge`, `ProcurementStepper`, `KpiTile`, `useTableControls` + `TableToolbar` + `Pagination`, `FieldError` | §5.2–5.8 |
+| P0 | Complete the token set (type, motion, focus, layers, target size) in a final layer, fix failing contrast values, base a11y CSS: focus ring, reduced motion, `.sr-only`, skip link | §5.1, §5.2, §5.8 |
+| P0 | Shared components: `Modal` (focus trap, Escape, restore), `ConfirmDialog` / `useConfirm`, `ToastProvider`, `ErrorBoundary`, `Breadcrumbs`, `ProcurementStepper`, `KpiTile`, `useTableControls` + `TableToolbar` + `SortableHeader` + `Pagination`, `FieldError` / `RequiredMark` | §5.3–5.7 |
 | P1 | App shell: error boundary, toasts, skip link, `aria-current`, breadcrumbs per portal | Shell items |
 | P1 | Irreversible-action confirmations: Send RFQ, Create manual RFQ, Assign PR Number, Reject supplier (consequence stated) | H items |
 | P1 | Auth screens: labels, inline validation, pending state, no `alert()` | Login / Forgot / Reset |
-| P1 | Migrate all modals to the shared `Modal` | §5.2 |
+| P1 | Migrate all modals to the shared `Modal` | §5.3 |
 | P2 | Admin Dashboard KPI tiles with units and zero states | Dashboard |
 | P2 | PR Monitoring: table semantics, sort, filter, pagination, mobile cards | PR Monitoring |
 | P2 | Supplier Management: status filter, sort, pagination | Supplier Mgmt |
