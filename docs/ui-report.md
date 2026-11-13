@@ -44,6 +44,7 @@ The full list is `git diff --stat d41dca8 HEAD`, 44 files before this commit.
   - `src/components/Sidebar.jsx`
   - `src/main.jsx` (imports the new stylesheet)
   - `package.json` and `package-lock.json` (dev dependencies `vitest`, `@testing-library/*`, `jsdom`, and a `test` script)
+  - `package.json` also carries an unrelated local-dev change that was committed with the test tooling in `0a1c18f`: the `start-backend:win` script now uses the venv at `%USERPROFILE%\.venvs\eProcure` (moved out of OneDrive earlier in this session). It isn't build or deploy config.
   - `.gitignore`
 - **Added, UI:**
   - `src/styles/design-system.css`
