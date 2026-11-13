@@ -62,6 +62,7 @@ import ConfirmDialog from './components/ui/ConfirmDialog'
 import useConfirm from './components/ui/useConfirm'
 import { useToast } from './components/ui/toast-context'
 import { FieldError, RequiredMark } from './components/ui/FormParts'
+import KpiTile from './components/ui/KpiTile'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -3068,6 +3069,7 @@ const Admin = () => {
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = React.useState(null)
   const [exportingSuppliers, setExportingSuppliers] = React.useState(false)
   const [exportingPrs, setExportingPrs] = React.useState(false)
   const [exportError, setExportError] = React.useState('')
@@ -3236,6 +3238,7 @@ const Admin = () => {
       const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/admin/dashboard-summary/`)
       if (!res.ok) throw new Error('Failed to load dashboard data')
       setDashboardStats(await res.json())
+      setDashboardUpdatedAt(new Date())
     } catch (error) {
       console.error(error)
       setDashboardError(error?.message || 'Failed to load dashboard data')
@@ -3577,7 +3580,13 @@ const Admin = () => {
     const rfq = dashboardStats?.rfq_stats || { total_sent: 0, with_response: 0, avg_quotations_per_rfq: 0 }
     const responseRate = rfq.total_sent > 0 ? Math.round((rfq.with_response / rfq.total_sent) * 100) : 0
 
+    const supplierCount = (status) => (dashboardStats?.supplier_status_breakdown || [])
+      .filter((row) => row.status === status)
+      .reduce((sum, row) => sum + (row.count || 0), 0)
+
     return {
+      approvedSuppliers: supplierCount('Approved'),
+      suppliersAwaitingReview: supplierCount('Pending Review') + supplierCount('For Compliance'),
       supplierStatus: toBarItems(dashboardStats?.supplier_status_breakdown),
       documentStatus: toBarItems(dashboardStats?.document_status_breakdown),
       prStatus: toBarItems(dashboardStats?.pr_status_breakdown, PR_STATUS_LABELS),
@@ -3969,11 +3978,42 @@ const Admin = () => {
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
           <div className="supplier-section">
-            <div className="supplier-header">
-              <h1>Admin Dashboard</h1>
-              <p>System overview and management controls</p>
+            <div className="supplier-header dashboard-header-row">
+              <div>
+                <h1>Admin Dashboard</h1>
+                <p>System overview and management controls</p>
+              </div>
+              <div className="dashboard-refresh">
+                <span className="field-hint" aria-live="polite">
+                  {dashboardUpdatedAt ? `Updated ${dashboardUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · refreshes every 30 seconds` : ''}
+                </span>
+                <button type="button" className="btn-sm btn-secondary" onClick={loadDashboardStats} disabled={dashboardLoading}>
+                  <RefreshCw size={14} className={dashboardLoading ? 'spin' : ''} aria-hidden="true" />
+                  {dashboardLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
             </div>
-            {dashboardError && <div className="alert alert-error" style={{ marginBottom: '16px' }}>{dashboardError}</div>}
+            {dashboardError && (
+              <div className="alert alert-error" role="alert" style={{ marginBottom: '16px' }}>
+                {dashboardError}. The figures below may be out of date.{' '}
+                <button type="button" className="link-like" onClick={loadDashboardStats}>Try again</button>
+              </div>
+            )}
+
+            {dashboardLoading && !dashboardStats ? (
+              <ul className="kpi-grid" aria-busy="true" aria-label="Key figures loading">
+                {Array.from({ length: 6 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
+              </ul>
+            ) : (
+              <ul className="kpi-grid" aria-label="Key figures">
+                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit="PRs" zeroHint="No Purchase Requests submitted yet." hint="All PRs on record" />
+                <KpiTile icon={FilePen} label="Awaiting PR number" value={unnumberedPrRecords.length} unit="PRs" tone={unnumberedPrRecords.length ? 'warning' : undefined} zeroHint="Review queue is clear." hint="Need BAC review in PR Review & Monitoring" />
+                <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit="suppliers" zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
+                <KpiTile icon={Users} label="Suppliers awaiting review" value={dashboardBreakdowns.suppliersAwaitingReview} unit="suppliers" tone={dashboardBreakdowns.suppliersAwaitingReview ? 'warning' : undefined} zeroHint="No registrations waiting." hint="Pending Review or For Compliance" />
+                <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit="RFQs" zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
+                <KpiTile icon={TrendingUp} label="RFQ response rate" value={`${dashboardBreakdowns.responseRate}`} unit="%" zeroHint={dashboardBreakdowns.rfq.total_sent ? 'No quotations received yet.' : 'Available once RFQs are sent.'} hint={`${dashboardBreakdowns.rfq.with_response} of ${dashboardBreakdowns.rfq.total_sent} RFQs answered`} />
+              </ul>
+            )}
 
             {dashboardLoading && !dashboardStats ? (
               <div className="admin-dashboard-grid">
@@ -6527,11 +6567,14 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
   const [summary, setSummary] = React.useState(null)
   const [opportunities, setOpportunities] = React.useState([])
   const [loading, setLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState('')
+  const [reloadToken, setReloadToken] = React.useState(0)
 
   React.useEffect(() => {
     const fetchDashboard = async () => {
       try {
         setLoading(true)
+        setLoadError('')
         const [summaryRes, opportunitiesRes] = await Promise.all([
           apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/dashboard/`),
           apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/opportunities/`)
@@ -6540,30 +6583,48 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
         if (summaryRes.ok) {
           const data = await summaryRes.json()
           setSummary(data)
+        } else {
+          setLoadError('Your dashboard figures could not be loaded.')
         }
 
         if (opportunitiesRes.ok) {
           const data = await opportunitiesRes.json()
-          setOpportunities(data.opportunities.slice(0, 3))
+          setOpportunities((data.opportunities || []).slice(0, 3))
         }
       } catch (error) {
         console.error('Failed to fetch dashboard:', error)
+        setLoadError('Unable to reach eProcure to load your dashboard.')
       } finally {
         setLoading(false)
       }
     }
 
     if (supplierId) fetchDashboard()
-  }, [supplierId, apiBaseUrl])
+  }, [supplierId, apiBaseUrl, reloadToken])
 
-  if (loading) return <SkeletonRows count={6} />
+  if (loading) {
+    return (
+      <div className="supplier-content-inner" aria-busy="true">
+        <ul className="kpi-grid" aria-label="Key figures loading">
+          {Array.from({ length: 5 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
+        </ul>
+      </div>
+    )
+  }
 
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>Welcome back, {summary?.company_name}</h2>
+        <h2>Welcome back{summary?.company_name ? `, ${summary.company_name}` : ''}</h2>
         <p>Here's a quick overview of your procurement activities.</p>
       </div>
+
+      {loadError && (
+        <div className="alert alert-error" role="alert">
+          {loadError}{' '}
+          <button type="button" className="link-like" onClick={() => setReloadToken((token) => token + 1)}>Try again</button>
+        </div>
+      )}
 
       <div className="supplier-status-card">
         <span className={`status-pill ${supplierStatus === 'Approved' ? 'success' : supplierStatus === 'For Compliance' || supplierStatus === 'Rejected' ? 'danger' : 'warning'}`}>
@@ -6581,57 +6642,13 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
         </p>
       </div>
 
-      <div className="dashboard-cards-grid">
-        <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#dbeafe' }}>
-            <BriefcaseBusiness size={24} color="#0284c7" />
-          </div>
-          <div>
-            <div className="stat-value">{summary?.open_opportunities || 0}</div>
-            <div className="stat-label">Matching Opportunities</div>
-          </div>
-        </div>
-
-        <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#e9d5ff' }}>
-            <FileText size={24} color="#7c3aed" />
-          </div>
-          <div>
-            <div className="stat-value">{summary?.submitted_quotations || 0}</div>
-            <div className="stat-label">Quotations Submitted</div>
-          </div>
-        </div>
-
-        <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#fed7aa' }}>
-            <Clock size={24} color="#ea580c" />
-          </div>
-          <div>
-            <div className="stat-value">{summary?.pending_quotations || 0}</div>
-            <div className="stat-label">Under Review</div>
-          </div>
-        </div>
-
-        <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#fecaca' }}>
-            <AlertCircle size={24} color="#dc2626" />
-          </div>
-          <div>
-            <div className="stat-value">{summary?.rejected_quotations || 0}</div>
-            <div className="stat-label">Not Selected</div>
-          </div>
-        </div>
-
-        <div className="dashboard-card-stat">
-          <div className="stat-icon" style={{ background: '#e9d5ff' }}>
-            <CheckCircle size={24} color="#7c3aed" />
-          </div>
-          <div>
-            <div className="stat-value approval-status-value">{summary?.verification_status || 'Pending'}</div>
-            <div className="stat-label">Approval Status</div>
-          </div>
-        </div>
-      </div>
+      <ul className="kpi-grid" aria-label="Key figures">
+        <KpiTile icon={BriefcaseBusiness} label="Matching Opportunities" value={summary?.open_opportunities} unit="open" zeroHint="No open PRs match your categories yet." />
+        <KpiTile icon={FileText} label="Quotations Submitted" value={summary?.submitted_quotations} unit="total" zeroHint="You haven't submitted a quotation yet." />
+        <KpiTile icon={Clock} label="Under Review" value={summary?.pending_quotations} unit="quotations" zeroHint="Nothing awaiting BAC review." />
+        <KpiTile icon={AlertCircle} label="Not Selected" value={summary?.rejected_quotations} unit="quotations" zeroHint="None so far." />
+        <KpiTile icon={CheckCircle} label="Approval Status" value={summary?.verification_status || 'Pending'} hint="Your registration with the BAC" tone={summary?.verification_status === 'Approved' ? 'success' : 'warning'} />
+      </ul>
 
       {opportunities.length > 0 && (
         <div className="supplier-section">
@@ -6646,7 +6663,7 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
                 <p className="opportunity-office">{opp.office_section}</p>
                 <p className="opportunity-purpose">{opp.purpose}</p>
                 <div className="opportunity-footer">
-                  <div><strong>Budget:</strong> ₱{opp.grand_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                  <div><strong>Budget:</strong> ₱{Number(opp.grand_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                   <div><strong>Category:</strong> {opp.category}</div>
                 </div>
               </div>

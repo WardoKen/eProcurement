@@ -164,3 +164,47 @@ describe('end user live status', () => {
     expect(api.find('GET', '/api/pr/list/?submitted_by=enduser1')).toHaveLength(1)
   })
 })
+
+describe('dashboard KPI tiles', () => {
+  it('labels each figure with its unit', async () => {
+    signIn(adminUser)
+    installApi({ ...baseRoutes, 'GET /api/pr/list/': { json: [numberedPr, { ...numberedPr, id: 50, pr_no: '' }] } })
+    renderAt('/admin')
+
+    const kpis = await screen.findByRole('list', { name: 'Key figures' })
+    const tile = (label) => within(kpis).getByText(label).closest('li')
+    expect(tile('Purchase Requests')).toHaveTextContent('4PRs')
+    expect(tile('Awaiting PR number')).toHaveTextContent('1PRs')
+    expect(tile('Registered suppliers')).toHaveTextContent('2 approved')
+    expect(tile('Suppliers awaiting review')).toHaveTextContent('1suppliers')
+    expect(tile('RFQs sent')).toHaveTextContent('5RFQs')
+    expect(tile('RFQ response rate')).toHaveTextContent('40%')
+  })
+
+  it('reads as "nothing yet" on an empty system', async () => {
+    signIn(adminUser)
+    installApi({
+      'GET /api/admin/dashboard-summary/': { json: {} },
+      'GET /api/pr/list/': { json: [] },
+      'GET /api/suppliers/': { json: [] },
+    })
+    renderAt('/admin')
+
+    const kpis = await screen.findByRole('list', { name: 'Key figures' })
+    expect(within(kpis).getByText('No Purchase Requests submitted yet.')).toBeInTheDocument()
+    expect(within(kpis).getByText('Available once RFQs are sent.')).toBeInTheDocument()
+  })
+
+  it('supplier dashboard shows a retryable error instead of silent zeros', async () => {
+    signIn({ role: 'supplier', username: 'acme', supplier_id: 7, supplier_status: 'Approved' })
+    const api = installApi({
+      'GET /api/suppliers/7/dashboard/': { status: 500, json: {} },
+      'GET /api/suppliers/7/opportunities/': { json: { opportunities: [] } },
+    })
+    const { user } = renderAt('/supplier')
+
+    expect(await screen.findByText(/dashboard figures could not be loaded/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => expect(api.find('GET', '/api/suppliers/7/dashboard/')).toHaveLength(2))
+  })
+})

@@ -600,3 +600,16 @@ button.link-like {
   .ds-pagination { flex-direction: column; align-items: stretch; }
   .ds-pagination-controls { justify-content: space-between; }
 }
+
+/* ── Dashboard header ───────────────────────────────────────────────────── */
+
+.dashboard-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.dashboard-refresh { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.dashboard-refresh .field-hint { margin: 0; }
