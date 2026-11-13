@@ -61,6 +61,7 @@ import Modal from './components/ui/Modal'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import useConfirm from './components/ui/useConfirm'
 import { useToast } from './components/ui/toast-context'
+import { FieldError, RequiredMark } from './components/ui/FormParts'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -956,21 +957,34 @@ const Login = () => {
   const initialRole = searchParams.get('role') || 'buyer'
   const [role, setRole] = React.useState(initialRole)
   const [showPassword, setShowPassword] = React.useState(false)
+  const [fieldErrors, setFieldErrors] = React.useState({})
+  const [formError, setFormError] = React.useState('')
+  const [submitting, setSubmitting] = React.useState(false)
+  const toast = useToast()
   const resetSucceeded = searchParams.get('reset') === 'success'
+  const roleLabels = { admin: 'Admin', buyer: 'End User', supplier: 'Supplier' }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (submitting) return
 
-    const fd = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    const fd = new FormData(form)
     const username = (fd.get('username') || '').toString().trim()
     const password = (fd.get('password') || '').toString()
     const selectedRole = (fd.get('role') || role || 'buyer').toString()
 
-    if (!username || !password) {
-      alert('Please enter your username and password.')
+    const nextErrors = {}
+    if (!username) nextErrors.username = 'Enter your username.'
+    if (!password) nextErrors.password = 'Enter your password.'
+    setFieldErrors(nextErrors)
+    setFormError('')
+    if (Object.keys(nextErrors).length) {
+      form.querySelector(nextErrors.username ? '[name="username"]' : '[name="password"]')?.focus()
       return
     }
 
+    setSubmitting(true)
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
@@ -984,7 +998,7 @@ const Login = () => {
 
         const result = await response.json()
         if (!response.ok) {
-          alert(result.message || 'Login failed')
+          setFormError(result.message || 'Login failed. Check your role, username and password.')
           return
         }
 
@@ -1021,7 +1035,7 @@ const Login = () => {
           }
         }
 
-        alert(`Login successful as ${user.role}`)
+        toast.success(`Signed in as ${roleLabels[user.role] || user.role}.`)
         if (user.role === 'admin') {
           navigate('/admin')
         } else if (user.role === 'buyer') {
@@ -1033,11 +1047,13 @@ const Login = () => {
         }
       } catch (error) {
         console.error(error)
-        alert('Unable to reach the authentication server.')
+        setFormError('Unable to reach the authentication server. Check your connection and try again.')
       }
     } catch (error) {
       console.error(error)
-      alert('Unable to reach the authentication server.')
+      setFormError('Unable to reach the authentication server. Check your connection and try again.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -1064,9 +1080,13 @@ const Login = () => {
               Your password has been reset. Please log in with your new password.
             </div>
           )}
-          <form className="login-form" onSubmit={handleSubmit}>
+          {formError && (
+            <div className="alert alert-error" role="alert">{formError}</div>
+          )}
+          <form className="login-form" onSubmit={handleSubmit} noValidate aria-busy={submitting || undefined}>
             <div className="form-field">
-              <select name="role" value={role} onChange={(e) => setRole(e.target.value)} className="form-select">
+              <label htmlFor="login-role">Sign in as</label>
+              <select id="login-role" name="role" value={role} onChange={(e) => setRole(e.target.value)} className="form-select">
                 <option value="">Select Login as</option>
                 <option value="buyer">End User</option>
                 <option value="supplier">Supplier</option>
@@ -1075,43 +1095,64 @@ const Login = () => {
             </div>
 
             <div className="form-field">
-              <input name="username" type="text" placeholder="Username" />
+              <label htmlFor="login-username">Username<RequiredMark /></label>
+              <input
+                id="login-username"
+                name="username"
+                type="text"
+                placeholder="Username"
+                autoComplete="username"
+                required
+                aria-invalid={fieldErrors.username ? true : undefined}
+                aria-describedby={fieldErrors.username ? 'login-username-error' : undefined}
+                onChange={() => fieldErrors.username && setFieldErrors((prev) => ({ ...prev, username: '' }))}
+              />
+              <FieldError id="login-username-error">{fieldErrors.username}</FieldError>
             </div>
 
             <div className="form-field password-field">
+              <label htmlFor="login-password">Password<RequiredMark /></label>
               <div className="password-input-wrapper">
                 <input
+                  id="login-password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Password"
+                  autoComplete="current-password"
+                  required
+                  aria-invalid={fieldErrors.password ? true : undefined}
+                  aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                  onChange={() => fieldErrors.password && setFieldErrors((prev) => ({ ...prev, password: '' }))}
                 />
                 <button
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword((prev) => !prev)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
                 >
                   {showPassword ? (
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17.94 17.94A10.97 10.97 0 0 1 12 20c-5 0-9.27-3-11-7 1.18-2.54 3.16-4.7 5.57-5.88" />
                       <path d="M1 1l22 22" />
                       <path d="M9.88 9.88A3 3 0 0 0 14.12 14.12" />
                       <path d="M14.12 9.88a3 3 0 0 1-4.24 4.24" />
                     </svg>
                   ) : (
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                       <circle cx="12" cy="12" r="3" />
                     </svg>
                   )}
                 </button>
               </div>
+              <FieldError id="login-password-error">{fieldErrors.password}</FieldError>
             </div>
 
             <div className="form-actions login-actions login-main-actions">
               <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
               <button type="button" className="btn-outline" onClick={() => navigate('/forgot-password')}>Forgot Password</button>
-              <button type="submit" className="btn-login">Log In</button>
+              <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Signing in…' : 'Log In'}</button>
             </div>
           </form>
         </div>
@@ -1154,7 +1195,7 @@ const ForgotPassword = () => {
     <div className="login-page">
       <div className="login-container">
         <div className="login-form-container">
-          <h2>FORGOT PASSWORD</h2>
+          <h2>Forgot password</h2>
           {submitted ? (
             <>
               <div className="alert alert-success" role="status">
@@ -1166,12 +1207,16 @@ const ForgotPassword = () => {
             </>
           ) : (
             <form className="login-form" onSubmit={handleSubmit}>
-              <p className="helper-text">Enter your username or the email address on your account and we'll send you a link to reset your password.</p>
+              <p className="helper-text" id="forgot-help">Enter your username or the email address on your account and we'll send you a link to reset your password.</p>
               <div className="form-field">
+                <label htmlFor="forgot-identifier">Username or email<RequiredMark /></label>
                 <input
+                  id="forgot-identifier"
                   name="identifier"
                   type="text"
                   placeholder="Username or Email"
+                  autoComplete="username"
+                  aria-describedby="forgot-help"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   required
@@ -1196,6 +1241,7 @@ const ResetPassword = () => {
   const [password, setPassword] = React.useState('')
   const [confirmPassword, setConfirmPassword] = React.useState('')
   const [error, setError] = React.useState('')
+  const [fieldErrors, setFieldErrors] = React.useState({})
   const [submitting, setSubmitting] = React.useState(false)
   const [tokenRejected, setTokenRejected] = React.useState(false)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -1205,13 +1251,16 @@ const ResetPassword = () => {
     setError('')
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long.')
+      setFieldErrors({ password: 'Password must be at least 8 characters long.' })
+      document.getElementById('reset-password')?.focus()
       return
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+      setFieldErrors({ confirmPassword: 'Passwords do not match.' })
+      document.getElementById('reset-confirm-password')?.focus()
       return
     }
+    setFieldErrors({})
 
     setSubmitting(true)
     try {
@@ -1240,7 +1289,7 @@ const ResetPassword = () => {
       <div className="login-page">
         <div className="login-container">
           <div className="login-form-container">
-            <h2>RESET PASSWORD</h2>
+            <h2>Reset password</h2>
             <div className="alert alert-error" role="alert">
               {error || 'This password reset link is invalid or missing. Please request a new one.'}
             </div>
@@ -1257,27 +1306,40 @@ const ResetPassword = () => {
     <div className="login-page">
       <div className="login-container">
         <div className="login-form-container">
-          <h2>RESET PASSWORD</h2>
-          <form className="login-form" onSubmit={handleSubmit}>
+          <h2>Reset password</h2>
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="form-field">
+              <label htmlFor="reset-password">New password<RequiredMark /></label>
               <input
+                id="reset-password"
                 type="password"
                 placeholder="New Password"
+                autoComplete="new-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); if (fieldErrors.password) setFieldErrors({}) }}
                 minLength={8}
                 required
+                aria-invalid={fieldErrors.password ? true : undefined}
+                aria-describedby={fieldErrors.password ? 'reset-password-error' : 'reset-password-hint'}
               />
+              <p className="field-hint" id="reset-password-hint">At least 8 characters.</p>
+              <FieldError id="reset-password-error">{fieldErrors.password}</FieldError>
             </div>
             <div className="form-field">
+              <label htmlFor="reset-confirm-password">Confirm new password<RequiredMark /></label>
               <input
+                id="reset-confirm-password"
                 type="password"
                 placeholder="Confirm New Password"
+                autoComplete="new-password"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => { setConfirmPassword(e.target.value); if (fieldErrors.confirmPassword) setFieldErrors({}) }}
                 minLength={8}
                 required
+                aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                aria-describedby={fieldErrors.confirmPassword ? 'reset-confirm-error' : undefined}
               />
+              <FieldError id="reset-confirm-error">{fieldErrors.confirmPassword}</FieldError>
             </div>
             {error && (
               <div className="alert alert-error" role="alert">{error}</div>

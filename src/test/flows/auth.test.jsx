@@ -108,3 +108,44 @@ describe('password reset', () => {
     expect(api.mutations()).toHaveLength(0)
   })
 })
+
+describe('login form feedback', () => {
+  it('flags each empty field inline and focuses the first one', async () => {
+    installApi({})
+    const { user } = renderAt('/login')
+
+    await user.click(screen.getByRole('button', { name: /^log in$/i }))
+
+    const username = screen.getByLabelText(/^username/i)
+    expect(username).toHaveAttribute('aria-invalid', 'true')
+    expect(username).toHaveAccessibleDescription('Enter your username.')
+    expect(screen.getByLabelText(/^password/i)).toHaveAccessibleDescription('Enter your password.')
+    expect(username).toHaveFocus()
+    expect(window.alert).not.toHaveBeenCalled()
+  })
+
+  it('shows a rejected login inline and keeps what was typed', async () => {
+    installApi({ 'POST /api/login/': { status: 401, json: { message: 'Invalid username or password.' } } })
+    const { user } = renderAt('/login')
+
+    await logIn(user, { role: 'buyer', username: 'nobody', password: 'wrongpass' })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password.')
+    expect(screen.getByLabelText(/^username/i)).toHaveValue('nobody')
+    expect(screen.getByRole('button', { name: /^log in$/i })).toBeEnabled()
+    expect(window.alert).not.toHaveBeenCalled()
+  })
+
+  it('reset password ties the mismatch error to the confirm field', async () => {
+    installApi({})
+    const { user } = renderAt('/reset-password?token=abc123')
+
+    await user.type(screen.getByLabelText(/^new password/i), 'newsecret1')
+    await user.type(screen.getByLabelText(/^confirm new password/i), 'different1')
+    await user.click(screen.getByRole('button', { name: /reset password/i }))
+
+    const confirm = screen.getByLabelText(/^confirm new password/i)
+    expect(confirm).toHaveAttribute('aria-invalid', 'true')
+    expect(confirm).toHaveAccessibleDescription('Passwords do not match.')
+  })
+})
