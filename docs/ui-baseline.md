@@ -9,6 +9,7 @@ to check it again after every commit.
 npm run build                 # production build
 npx eslint src                # lint (baseline: 32 problems, 31 errors / 1 warning, all pre-existing)
 npm test                      # frontend contract tests (Vitest + Testing Library)
+node tools/ui-walkthrough.mjs . tools/ui-walkthrough-out   # real-browser a11y/overflow check (see the file header)
 # backend API suite (Django). Tests have no __init__.py, so pass module labels:
 cd backend && python manage.py test api.tests.test_authorization api.tests.test_category_grouped_matching \
   api.tests.test_ocr_unavailable api.tests.test_password_reset api.tests.test_pr_number_format \
@@ -23,6 +24,17 @@ cd backend && python manage.py test api.tests.test_authorization api.tests.test_
 | `npx eslint src` | 32 problems (31 errors, 1 warning), all pre-existing |
 | `npm test` | 38 / 38 pass |
 | Django API tests | 283 / 283 pass |
+
+## Final results (end of the overhaul)
+
+| Check | Result |
+| --- | --- |
+| `npm run build` | Pass (JS 544 kB / CSS 145 kB) |
+| `npx eslint src` | 31 problems (30 errors, 1 warning), all pre-existing; none added |
+| `npm test` | 78 / 78 pass (the 38 baseline tests plus 40 new) |
+| Django API tests | 283 / 283 pass |
+| Snapshot files changed since baseline | 0 |
+| `tools/ui-walkthrough.mjs` (Chrome + axe-core, 27 screens at 1280 px and 360 px) | 54 / 54 checks clean: no WCAG A/AA violations, no horizontal overflow, no runtime errors |
 
 ## How the contract tests work
 
