@@ -1,0 +1,61 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`BAC PR review and numbering > Assign PR Number finalizes the review with automatic numbering 1`] = `
+{
+  "approved_by": "Carla Esposo",
+  "category": "",
+  "custom_pr_number": "",
+  "date": "2026-11-01",
+  "entity_name": "Cebu Technological University",
+  "finalize_review": true,
+  "fund_cluster": "01",
+  "funds_available_by": "Ben Diaz",
+  "items": [
+    {
+      "category": "IT Equipment",
+      "item_description": "Laptop, 16GB RAM",
+      "quantity": 2,
+      "stock_property_no": "SP-1",
+      "unit": "pc",
+      "unit_cost": 1000,
+    },
+  ],
+  "office_section": "ICT Office",
+  "pr_no": "",
+  "pr_number_mode": "automatic",
+  "purpose": "Laptops for the computer laboratory",
+  "requested_by": "Ana Cruz",
+  "responsibility_center_code": "RC-100",
+  "twg_verified_by": "",
+}
+`;
+
+exports[`BAC PR review and numbering > Save Corrections sends the edited record without finalizing 1`] = `
+{
+  "approved_by": "Carla Esposo",
+  "category": "",
+  "custom_pr_number": "",
+  "date": "2026-11-01",
+  "entity_name": "CTU Main Campus",
+  "finalize_review": false,
+  "fund_cluster": "01",
+  "funds_available_by": "Ben Diaz",
+  "items": [
+    {
+      "category": "IT Equipment",
+      "item_description": "Laptop, 16GB RAM",
+      "quantity": 2,
+      "stock_property_no": "SP-1",
+      "unit": "pc",
+      "unit_cost": 1000,
+    },
+  ],
+  "office_section": "ICT Office",
+  "pr_no": "",
+  "pr_number_mode": "automatic",
+  "purpose": "Laptops for the computer laboratory",
+  "requested_by": "Ana Cruz",
+  "responsibility_center_code": "RC-100",
+  "twg_verified_by": "",
+}
+`;

@@ -1,0 +1,42 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`End User PR upload and review > saves the reviewed record only after the declaration is acknowledged 1`] = `
+{
+  "fields": {
+    "date": "2026-11-01",
+    "declaration_acknowledged": true,
+    "entityName": "Cebu Technological University",
+    "fundCluster": "01",
+    "grand_total": "2000.00",
+    "lineItems": [
+      {
+        "description": "Laptop, 16GB RAM",
+        "quantity": "2",
+        "stockPropertyNumber": "SP-1",
+        "totalCost": "2000.00",
+        "unit": "pc",
+        "unitCost": "1000.00",
+      },
+    ],
+    "officeSection": "ICT Office",
+    "prNumber": "",
+    "prNumberMode": "automatic",
+    "purpose": "Laptops for the computer laboratory",
+    "requested_by_name": "Ana Cruz",
+    "requested_items": [
+      {
+        "description": "Laptop, 16GB RAM",
+        "quantity": 2,
+        "stock_no": "SP-1",
+        "total_cost": 2000,
+        "unit": "pc",
+        "unit_cost": 1000,
+      },
+    ],
+    "responsibilityCenterCode": "RC-100",
+    "reviewOnly": true,
+    "sourceFilename": "pr-2026.pdf",
+    "submittedBy": "enduser1",
+  },
+}
+`;

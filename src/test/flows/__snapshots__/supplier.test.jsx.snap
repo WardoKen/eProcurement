@@ -1,0 +1,78 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`supplier registration wizard > submits the full registration as multipart form data 1`] = `
+[
+  [
+    "companyName",
+    "Acme Supplies, Inc.",
+  ],
+  [
+    "businessType",
+    "Sole Proprietorship",
+  ],
+  [
+    "businessAddress",
+    "Cebu City",
+  ],
+  [
+    "tin",
+    "123-456-789-000",
+  ],
+  [
+    "contactPerson",
+    "Jo Reyes",
+  ],
+  [
+    "contactNumber",
+    "09171234567",
+  ],
+  [
+    "email",
+    "sales@acme.ph",
+  ],
+  [
+    "productsServices",
+    "Computers and peripherals",
+  ],
+  [
+    "category_ids",
+    "1",
+  ],
+  [
+    "username",
+    "acme",
+  ],
+  [
+    "password",
+    "secret123",
+  ],
+  [
+    "confirmPassword",
+    "secret123",
+  ],
+  [
+    "mayor_permit",
+    "file:mayor.pdf",
+  ],
+  [
+    "business_permit",
+    "file:permit.pdf",
+  ],
+  [
+    "philgeps_registration",
+    "file:philgeps.pdf",
+  ],
+  [
+    "bir_registration",
+    "file:bir.pdf",
+  ],
+  [
+    "tax_clearance",
+    "file:tax.pdf",
+  ],
+  [
+    "dti_registration",
+    "file:dti.pdf",
+  ],
+]
+`;
