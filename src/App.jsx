@@ -45,6 +45,9 @@ import {
   FilePen,
   Store,
   UserCog,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react'
 import DragDropUpload, {
   SignatureValidationPanel,
@@ -63,6 +66,8 @@ import useConfirm from './components/ui/useConfirm'
 import { useToast } from './components/ui/toast-context'
 import { FieldError, RequiredMark } from './components/ui/FormParts'
 import KpiTile from './components/ui/KpiTile'
+import useTableControls from './components/ui/useTableControls'
+import { Pagination, TableToolbar } from './components/ui/TableParts'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -3056,6 +3061,7 @@ const Admin = () => {
   const [prDeletingId, setPrDeletingId] = React.useState(null)
   const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
   const [viewingPr, setViewingPr] = React.useState(null)
+  const [prStatusFilter, setPrStatusFilter] = React.useState('all')
   const [editingPr, setEditingPr] = React.useState(null)
   const [editPrForm, setEditPrForm] = React.useState(null)
   const [editPrLoading, setEditPrLoading] = React.useState(false)
@@ -3924,6 +3930,21 @@ const Admin = () => {
 
   const unnumberedPrRecords = prRecords.filter((pr) => !pr.pr_no?.trim())
   const numberedPrRecords = prRecords.filter((pr) => pr.pr_no?.trim())
+  const prMonitorTable = useTableControls(numberedPrRecords, {
+    search: (pr) => [pr.pr_no, pr.entity_name, pr.office_section, pr.category],
+    filter: prStatusFilter === 'all' ? undefined : (pr) => pr.status === prStatusFilter,
+    sorters: {
+      id: (pr) => pr.id,
+      pr_no: (pr) => pr.pr_no,
+      entity: (pr) => pr.entity_name,
+      office: (pr) => pr.office_section,
+      items: (pr) => Number(pr.items_count ?? 0),
+      total: (pr) => Number(pr.grand_total ?? 0),
+      status: (pr) => getPrStatusMeta(pr.status).label,
+      created: (pr) => pr.created_at,
+    },
+    pageSize: 10,
+  })
 
   const handleSelectMatchedSupplier = (card) => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
@@ -4876,40 +4897,72 @@ const Admin = () => {
               )}
             </div>
 
+            <section className="pr-monitor-section" aria-labelledby="pr-monitor-heading">
+            <h3 id="pr-monitor-heading" className="sr-only">Numbered Purchase Requests</h3>
+            <TableToolbar table={prMonitorTable} searchLabel="Search numbered PRs" searchPlaceholder="PR number, entity, office or category" noun="Purchase Request">
+              <div className="data-toolbar-field">
+                <label htmlFor="pr-status-filter">Status</label>
+                <select id="pr-status-filter" value={prStatusFilter} onChange={(event) => { setPrStatusFilter(event.target.value); prMonitorTable.resetPage() }}>
+                  <option value="all">All statuses</option>
+                  {prStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+            </TableToolbar>
             <div className="pr-monitor-table-shell">
-              <div className="pr-monitor-table-wrapper">
-                <div className="pr-monitor-table-head">
-                  <span>ID</span>
-                  <span>PR Number</span>
-                  <span>Entity</span>
-                  <span>Office</span>
-                  <span>Items</span>
-                  <span>Grand Total</span>
-                  <span>Status</span>
-                  <span>Created</span>
-                  <span>Next Step</span>
-                  <span>Actions</span>
+              <div className="pr-monitor-table-wrapper" role="table" aria-labelledby="pr-monitor-heading" aria-rowcount={prMonitorTable.total + 1}>
+                <div className="pr-monitor-table-head" role="row">
+                  {[
+                    ['id', 'ID'],
+                    ['pr_no', 'PR Number'],
+                    ['entity', 'Entity'],
+                    ['office', 'Office'],
+                    ['items', 'Items'],
+                    ['total', 'Grand Total'],
+                    ['status', 'Status'],
+                    ['created', 'Created'],
+                  ].map(([key, label]) => (
+                    <span key={key} role="columnheader" aria-sort={prMonitorTable.ariaSort(key)}>
+                      <button type="button" className="sort-button" onClick={() => prMonitorTable.toggleSort(key)}>
+                        {label}
+                        {prMonitorTable.ariaSort(key) === 'ascending' ? <ArrowUp size={12} aria-hidden="true" /> : prMonitorTable.ariaSort(key) === 'descending' ? <ArrowDown size={12} aria-hidden="true" /> : <ArrowUpDown size={12} aria-hidden="true" />}
+                      </button>
+                    </span>
+                  ))}
+                  <span role="columnheader">Next Step</span>
+                  <span role="columnheader">Actions</span>
                 </div>
 
-                {numberedPrRecords.length === 0 && !prLoading && (
-                  <div className="pr-monitor-table-row">
-                    <span className="admin-entry-name" style={{ gridColumn: '1 / -1' }}>No numbered Purchase Requests found yet.</span>
-                  </div>
-                )}
-
                 {prLoading && prRecords.length === 0 && (
-                  <div className="pr-monitor-table-row" style={{ gridColumn: '1 / -1' }}>
-                    <SkeletonRows count={4} />
+                  <div className="pr-monitor-table-row" role="row" aria-busy="true">
+                    <span role="cell" style={{ gridColumn: '1 / -1' }}><SkeletonRows count={4} /></span>
                   </div>
                 )}
 
-                {numberedPrRecords.map((pr) => {
+                {!prLoading && prMonitorTable.total === 0 && (
+                  <div className="pr-monitor-table-row pr-monitor-empty" role="row">
+                    <span role="cell" className="admin-entry-name" style={{ gridColumn: '1 / -1' }}>
+                      {numberedPrRecords.length === 0
+                        ? 'No numbered Purchase Requests yet. Requests appear here once you assign their PR number above.'
+                        : 'No Purchase Requests match your search or status filter.'}
+                      {numberedPrRecords.length > 0 && (
+                        <>
+                          {' '}
+                          <button type="button" className="link-like" onClick={() => { prMonitorTable.setQuery(''); setPrStatusFilter('all') }}>Clear filters</button>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                {prMonitorTable.rows.map((pr) => {
                   const isEditing = Boolean(editingStatusById[pr.id])
                   const statusMeta = getPrStatusMeta(pr.status)
+                  const prLabel = pr.pr_no || `PR #${pr.id}`
+                  const rowBusy = prSavingId === pr.id || prDeletingId === pr.id
                   return (
-                    <div key={pr.id} className="pr-monitor-table-row">
-                      <span className="admin-entry-id">{pr.id}</span>
-                      <span>
+                    <div key={pr.id} className="pr-monitor-table-row" role="row">
+                      <span role="cell" data-label="ID" className="admin-entry-id">{pr.id}</span>
+                      <span role="cell" data-label="PR Number">
                         <button
                           type="button"
                           className="pr-number-link"
@@ -4919,11 +4972,11 @@ const Admin = () => {
                           {pr.pr_no || 'N/A'}
                         </button>
                       </span>
-                      <span className="admin-entry-name">{pr.entity_name || 'N/A'}</span>
-                      <span>{pr.office_section || 'N/A'}</span>
-                      <span>{pr.items_count ?? 0}</span>
-                      <span className="pr-currency">{formatPeso(pr.grand_total ?? 0)}</span>
-                      <span>
+                      <span role="cell" data-label="Entity" className="admin-entry-name">{pr.entity_name || 'N/A'}</span>
+                      <span role="cell" data-label="Office">{pr.office_section || 'N/A'}</span>
+                      <span role="cell" data-label="Items">{pr.items_count ?? 0}</span>
+                      <span role="cell" data-label="Grand Total" className="pr-currency">{formatPeso(pr.grand_total ?? 0)}</span>
+                      <span role="cell" data-label="Status">
                         {!isEditing ? (
                           <span className={`status-badge ${statusMeta.className}`}>
                             {statusMeta.label}
@@ -4931,9 +4984,10 @@ const Admin = () => {
                         ) : (
                           <select
                             value={pendingStatusById[pr.id] || pr.status || 'uploaded'}
-                            disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                            disabled={rowBusy}
                             onChange={(e) => setPendingStatusById((prev) => ({ ...prev, [pr.id]: e.target.value }))}
                             className="pr-status-select"
+                            aria-label={`Status for ${prLabel}`}
                           >
                             {prStatusOptions.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -4941,8 +4995,8 @@ const Admin = () => {
                           </select>
                         )}
                       </span>
-                      <span>{pr.created_at ? new Date(pr.created_at).toLocaleString() : 'N/A'}</span>
-                      <span className="pr-matching-action">
+                      <span role="cell" data-label="Created">{pr.created_at ? new Date(pr.created_at).toLocaleString() : 'N/A'}</span>
+                      <span role="cell" data-label="Next Step" className="pr-matching-action">
                         {pr.status !== 'uploaded' && !pr.has_quotation && (
                           <button
                             type="button"
@@ -4956,48 +5010,48 @@ const Admin = () => {
                           </button>
                         )}
                       </span>
-                      <span className="pr-row-actions">
+                      <span role="cell" data-label="Actions" className="pr-row-actions">
                         <button
                           type="button"
                           className="icon-action-btn"
                           title="View"
-                          aria-label="View"
+                          aria-label={`View ${prLabel}`}
                           onClick={() => handleViewPr(pr)}
                         >
-                          <Eye size={14} />
+                          <Eye size={14} aria-hidden="true" />
                         </button>
                         {!isEditing ? (
                           <button
                             type="button"
                             className="icon-action-btn"
                             title="Edit Purchase Request"
-                            aria-label="Edit Purchase Request"
-                            disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                            aria-label={`Edit ${prLabel}`}
+                            disabled={rowBusy}
                             onClick={() => handleEditPr(pr)}
                           >
-                            <Pencil size={14} />
+                            <Pencil size={14} aria-hidden="true" />
                           </button>
                         ) : (
                           <>
                             <button
                               type="button"
                               className="icon-action-btn"
-                              title="Save"
-                              aria-label="Save"
-                              disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                              title="Save status"
+                              aria-label={`Save status for ${prLabel}`}
+                              disabled={rowBusy}
                               onClick={() => handleSaveStatusEdit(pr)}
                             >
-                              <Check size={14} />
+                              <Check size={14} aria-hidden="true" />
                             </button>
                             <button
                               type="button"
                               className="icon-action-btn"
-                              title="Cancel"
-                              aria-label="Cancel"
-                              disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                              title="Cancel status change"
+                              aria-label={`Cancel status change for ${prLabel}`}
+                              disabled={rowBusy}
                               onClick={() => handleCancelStatusEdit(pr.id)}
                             >
-                              <X size={14} />
+                              <X size={14} aria-hidden="true" />
                             </button>
                           </>
                         )}
@@ -5006,22 +5060,22 @@ const Admin = () => {
                             type="button"
                             className="icon-action-btn"
                             title="Edit Status"
-                            aria-label="Edit Status"
-                            disabled={prSavingId === pr.id || prDeletingId === pr.id}
+                            aria-label={`Edit status of ${prLabel}`}
+                            disabled={rowBusy}
                             onClick={() => handleStartStatusEdit(pr)}
                           >
-                            <Settings size={14} />
+                            <Settings size={14} aria-hidden="true" />
                           </button>
                         )}
                         <button
                           type="button"
                           className="icon-action-btn delete"
                           title={prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
-                          aria-label="Delete"
-                          disabled={prDeletingId === pr.id || prSavingId === pr.id}
+                          aria-label={`Delete ${prLabel}`}
+                          disabled={rowBusy}
                           onClick={() => requestPrDelete(pr.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={14} aria-hidden="true" />
                         </button>
                       </span>
                     </div>
@@ -5029,6 +5083,8 @@ const Admin = () => {
                 })}
               </div>
             </div>
+            <Pagination table={prMonitorTable} label="Numbered Purchase Requests pages" />
+            </section>
 
             {editingPr && (
               <Modal labelledBy="edit-pr-title" className="modal-content pr-edit-modal" onClose={closeEditPr} dismissible={!editPrSaving}>

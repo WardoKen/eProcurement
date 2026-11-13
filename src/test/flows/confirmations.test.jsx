@@ -120,7 +120,7 @@ describe('modal focus management on real screens', () => {
     const { user } = renderAt('/admin')
     await openPrMonitoring(user)
 
-    await user.click(screen.getByRole('button', { name: 'View' }))
+    await user.click(screen.getByRole('button', { name: 'View 2026-11-001' }))
 
     const dialog = await screen.findByRole('dialog', { name: /purchase request 2026-11-001/i })
     expect(dialog).toHaveTextContent('In Review')
