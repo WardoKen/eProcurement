@@ -102,7 +102,7 @@ describe('end user accounts', () => {
     await user.click(screen.getAllByRole('button', { name: /end user accounts/i })[0])
 
     await user.click(await screen.findByRole('button', { name: /^delete/i }))
-    const dialog = await screen.findByRole('dialog', { name: /delete end user account/i })
+    const dialog = await screen.findByRole('alertdialog', { name: /delete end user account/i })
     await user.click(within(dialog).getByRole('button', { name: /delete account/i }))
 
     await waitFor(() => expect(api.find('DELETE', '/api/buyer-accounts/5/')).toHaveLength(1))

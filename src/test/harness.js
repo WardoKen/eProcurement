@@ -109,7 +109,7 @@ export function renderAt(path) {
 // is open, accept it with its confirming button; when the action confirms
 // some other way (or not at all), this is a no-op. This keeps the payload
 // assertions valid whether or not a confirmation step sits in front.
-export async function acceptConfirmation(user, confirmName = /^confirm|^send|^assign|^create|^reject|^approve|^delete/i) {
+export async function acceptConfirmation(user, confirmName = /^confirm|^send|^assign|^create|^reject|^approve|^delete|^change/i) {
   const dialog = screen.queryByRole('alertdialog')
   if (!dialog) return false
   const button = within(dialog).getAllByRole('button').find((candidate) => confirmName.test(candidate.textContent.trim()))

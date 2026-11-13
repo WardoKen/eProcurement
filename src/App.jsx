@@ -57,6 +57,10 @@ import Sidebar from './components/Sidebar'
 import Breadcrumbs from './components/ui/Breadcrumbs'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastProvider from './components/ui/ToastProvider'
+import Modal from './components/ui/Modal'
+import ConfirmDialog from './components/ui/ConfirmDialog'
+import useConfirm from './components/ui/useConfirm'
+import { useToast } from './components/ui/toast-context'
 import { apiFetch } from './lib/apiClient'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
@@ -1638,6 +1642,8 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [previewUrl, setPreviewUrl] = React.useState('')
+  const [confirmDialog, confirm] = useConfirm()
+  const toast = useToast()
   const rfqApiBase = apiBase.replace(/\/$/, '')
   const busy = Boolean(pendingAction)
   const isSent = rfq?.status === 'sent'
@@ -1726,9 +1732,13 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         setError('The selected supplier has no email address on file.')
         return
       }
-      if (!window.confirm(`Send RFQ ${rfq.rfq_no} to ${supplier.email}? Once sent it can no longer be edited.`)) {
-        return
-      }
+      const confirmed = await confirm({
+        title: `Send RFQ ${rfq.rfq_no}?`,
+        message: `The RFQ and its PDF will be emailed to ${supplier.company_name} at ${supplier.email}.`,
+        consequence: 'Once sent, this RFQ can no longer be edited. Save any last changes before sending.',
+        confirmLabel: 'Send RFQ',
+      })
+      if (!confirmed) return
     }
     setPendingAction(action)
     setError('')
@@ -1767,6 +1777,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       setNotice(send
         ? `RFQ ${data.rfq_no} sent to ${supplier.email}. It can no longer be edited.`
         : 'Changes saved. The RFQ preview below has been updated.')
+      toast.success(send ? `RFQ ${data.rfq_no} sent to ${supplier.email}.` : 'RFQ saved.')
     } catch (saveError) {
       setError(saveError.message === 'Failed to fetch'
         ? `Unable to reach the backend at ${rfqApiBase}. Please verify that Django is running.`
@@ -1893,6 +1904,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           <iframe key={previewUrl} title="RFQ preview" src={previewUrl} style={{ width: '100%', minHeight: '820px', border: '1px solid #d1d5db', borderRadius: 8 }} />
         </div>
       )}
+      {confirmDialog}
     </div>
   )
 }
@@ -2075,6 +2087,8 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [manualRfqBusy, setManualRfqBusy] = React.useState(false)
   const [manualRfqError, setManualRfqError] = React.useState('')
   const [manualRfqResult, setManualRfqResult] = React.useState(null)
+  const [confirmDialog, confirm] = useConfirm()
+  const toast = useToast()
 
   React.useEffect(() => {
     apiFetch(`${apiBase}/api/procurement-modes/`)
@@ -2091,6 +2105,13 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     const name = manualRfqName.trim()
     if (!name) { setManualRfqError('Enter the supplier / company name.'); return }
     if (!manualRfqMode.trim()) { setManualRfqError('Enter a mode of procurement.'); return }
+    const confirmed = await confirm({
+      title: 'Issue manual RFQ?',
+      message: `An RFQ for the ${manualRfqGroup?.item_count ?? ''} item(s) in ${manualRfqGroup?.category || 'this category'} will be issued to "${name}".`,
+      consequence: 'A quotation number is assigned immediately and recorded on this Purchase Request. It cannot be withdrawn or reused.',
+      confirmLabel: 'Create RFQ',
+    })
+    if (!confirmed) return
     setManualRfqBusy(true)
     setManualRfqError('')
     try {
@@ -2107,6 +2128,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.message || body.error || `Failed to create RFQ (HTTP ${res.status})`)
       setManualRfqResult({ ...body, _category: manualRfqGroup?.category || '' })
+      toast.success(`Manual RFQ issued. Quotation No. ${body.quotation_no}.`)
       setManualRfqGroup(null)
       setManualRfqName('')
       setManualRfqMode('')
@@ -2237,11 +2259,10 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
       )}
 
       {manualRfqGroup && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="manual-rfq-title" onClick={() => setManualRfqGroup(null)}>
-          <div className="modal-content" onClick={(event) => event.stopPropagation()}>
+        <Modal labelledBy="manual-rfq-title" onClose={() => setManualRfqGroup(null)} dismissible={!manualRfqBusy}>
             <div className="modal-header">
               <h3 id="manual-rfq-title">Add Unregistered Supplier — {manualRfqGroup.category}</h3>
-              <button type="button" className="modal-close" onClick={() => setManualRfqGroup(null)}>×</button>
+              <button type="button" className="modal-close" onClick={() => setManualRfqGroup(null)} aria-label="Close" disabled={manualRfqBusy}>×</button>
             </div>
             <div className="modal-body">
               {manualRfqError && <div className="alert alert-error" style={{ marginBottom: 10 }}>{manualRfqError}</div>}
@@ -2273,9 +2294,9 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
                 {manualRfqBusy ? 'Creating…' : 'Create RFQ'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
+      {confirmDialog}
 
       <div className="form-actions" style={{ marginTop: 20 }}>
         <button type="button" className="btn-secondary" onClick={onBack}>← Back to Categories</button>
@@ -2919,6 +2940,25 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
   )
 }
 
+// What each supplier decision means for the supplier, stated before it is made.
+const SUPPLIER_DECISION_COPY = {
+  Approved: {
+    title: 'Approve Supplier',
+    consequence: 'The supplier gains access to procurement opportunities, RFQs and quotations, and can be matched to Purchase Requests in its categories.',
+    confirmLabel: 'Confirm Approval',
+  },
+  Rejected: {
+    title: 'Reject Supplier',
+    consequence: 'The supplier loses access to opportunities, RFQs and quotations, and sees your remarks. To be reconsidered they must contact the BAC.',
+    confirmLabel: 'Confirm Rejection',
+  },
+  'For Compliance': {
+    title: 'Request Additional Documents',
+    consequence: 'The supplier is asked to resubmit documents and stays locked out of procurement until the BAC approves them again.',
+    confirmLabel: 'Confirm Request',
+  },
+}
+
 const ADMIN_TAB_LABELS = {
   dashboard: 'Dashboard',
   'pr-monitoring': 'PR Review & Monitoring',
@@ -3001,6 +3041,8 @@ const Admin = () => {
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
   const [buyerDeleteConfirm, setBuyerDeleteConfirm] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+  const [confirmDialog, confirm] = useConfirm()
+  const toast = useToast()
   const prStatusOptions = [
     { value: 'uploaded', label: 'Uploaded' },
     { value: 'in_review', label: 'In Review' },
@@ -3338,6 +3380,7 @@ const Admin = () => {
       setDocumentStatusDrafts({})
       setSupplierError('')
       setReviewAction(null)
+      toast.success(`${supplierRegistrations.find((item) => item.id === supplierId)?.company_name || 'Supplier'} marked ${nextStatus}.`)
     } catch (error) {
       console.error(error)
       setSupplierError(error?.message || `Failed to ${actionName} supplier`)
@@ -3579,6 +3622,7 @@ const Admin = () => {
         throw new Error(payload?.message || 'Failed to update PR status')
       }
       setPrRecords((prev) => prev.map((row) => (row.id === prId ? { ...row, status: nextStatus } : row)))
+      toast.success(`Status updated to ${getPrStatusMeta(nextStatus).label}.`)
     } catch (error) {
       console.error(error)
       setPrError(error?.message || 'Failed to update PR status')
@@ -3600,6 +3644,7 @@ const Admin = () => {
       }
       setPrRecords((prev) => prev.filter((row) => row.id !== prId))
       setPrDeleteConfirmId(null)
+      toast.success('Purchase Request deleted.')
     } catch (error) {
       console.error(error)
       setPrError(error?.message || 'Failed to delete PR')
@@ -3645,6 +3690,15 @@ const Admin = () => {
 
   const handleSaveStatusEdit = async (pr) => {
     const nextStatus = pendingStatusById[pr.id] || pr.status || 'uploaded'
+    if (nextStatus !== pr.status) {
+      const confirmed = await confirm({
+        title: `Change status of ${pr.pr_no || `PR #${pr.id}`}?`,
+        message: `${getPrStatusMeta(pr.status).label} → ${getPrStatusMeta(nextStatus).label}`,
+        consequence: 'The End User sees the new status in Live Status and may be emailed, depending on PR Notification settings.',
+        confirmLabel: 'Change Status',
+      })
+      if (!confirmed) return
+    }
     await handlePrStatusChange(pr.id, nextStatus)
     setEditingStatusById((prev) => ({ ...prev, [pr.id]: false }))
   }
@@ -5089,7 +5143,23 @@ const Admin = () => {
                         <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
                         <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
                         {!editPrForm.pr_no && (
-                          <button type="button" className="btn btn-primary" onClick={() => handleSavePrEdit(true)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={async () => {
+                              const numberText = editPrNumberMode === 'custom'
+                                ? `custom number ${editPrCustomNumber.trim() || '(blank)'}`
+                                : 'the next available number from PR Numbering'
+                              const confirmed = await confirm({
+                                title: 'Assign the official PR number?',
+                                message: `This saves your corrections and assigns ${numberText}.`,
+                                consequence: 'PR numbers are permanent. Once assigned, the request moves into PR monitoring and the number cannot be changed or reused.',
+                                confirmLabel: 'Assign PR Number',
+                              })
+                              if (confirmed) handleSavePrEdit(true)
+                            }}
+                            disabled={editPrSaving || !editPrForm.entity_name.trim()}
+                          >
                             {editPrSaving ? 'Assigning...' : 'Assign PR Number'}
                           </button>
                         )}
@@ -5159,55 +5229,100 @@ const Admin = () => {
           </div>
         )}
         {prDeleteConfirmId && (
-          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-pr-title" onClick={() => !prDeletingId && setPrDeleteConfirmId(null)}>
-            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
-              <div className="modal-header"><h3 id="delete-pr-title">Delete Purchase Request</h3><button type="button" className="modal-close" onClick={() => setPrDeleteConfirmId(null)} disabled={Boolean(prDeletingId)}>×</button></div>
-              <div className="modal-body"><p>Are you sure you want to delete Purchase Request <strong>#{prDeleteConfirmId}</strong>?</p><p className="helper-text">This action cannot be undone.</p></div>
-              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setPrDeleteConfirmId(null)} disabled={Boolean(prDeletingId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handlePrDelete(prDeleteConfirmId)} disabled={Boolean(prDeletingId)}>{prDeletingId ? 'Deleting...' : 'Confirm Delete'}</button></div>
-            </div>
-          </div>
+          <ConfirmDialog
+            title="Delete Purchase Request"
+            tone="danger"
+            confirmLabel="Delete Purchase Request"
+            busy={Boolean(prDeletingId)}
+            busyLabel="Deleting..."
+            consequence="The request, its line items and its uploaded document are removed. This cannot be undone."
+            onConfirm={() => handlePrDelete(prDeleteConfirmId)}
+            onCancel={() => setPrDeleteConfirmId(null)}
+          >
+            <p>Delete Purchase Request <strong>{prRecords.find((row) => row.id === prDeleteConfirmId)?.pr_no || `#${prDeleteConfirmId}`}</strong>?</p>
+          </ConfirmDialog>
         )}
         {supplierDeleteConfirm && (
-          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-supplier-title" onClick={() => !supplierDeletingId && setSupplierDeleteConfirm(null)}>
-            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
-              <div className="modal-header"><h3 id="delete-supplier-title">Delete Supplier Account</h3><button type="button" className="modal-close" onClick={() => setSupplierDeleteConfirm(null)} disabled={Boolean(supplierDeletingId)}>×</button></div>
-              <div className="modal-body"><p>Permanently delete <strong>{supplierDeleteConfirm.companyName}</strong>?</p><p className="helper-text">This removes the supplier login, its registration, documents, RFQs, and submitted quotations. This action cannot be undone.</p></div>
-              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setSupplierDeleteConfirm(null)} disabled={Boolean(supplierDeletingId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handleDeleteSupplier(supplierDeleteConfirm.id)} disabled={Boolean(supplierDeletingId)}>{supplierDeletingId ? 'Deleting...' : 'Delete Account'}</button></div>
-            </div>
-          </div>
+          <ConfirmDialog
+            title="Delete Supplier Account"
+            tone="danger"
+            confirmLabel="Delete Account"
+            busy={Boolean(supplierDeletingId)}
+            busyLabel="Deleting..."
+            consequence="This removes the supplier login, its registration, documents, RFQs, and submitted quotations. This cannot be undone."
+            onConfirm={() => handleDeleteSupplier(supplierDeleteConfirm.id)}
+            onCancel={() => setSupplierDeleteConfirm(null)}
+          >
+            <p>Permanently delete <strong>{supplierDeleteConfirm.companyName}</strong>?</p>
+          </ConfirmDialog>
         )}
         {buyerDeleteConfirm && (
-          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-buyer-title" onClick={() => !buyerAccountActionId && setBuyerDeleteConfirm(null)}>
-            <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
-              <div className="modal-header"><h3 id="delete-buyer-title">Delete End User Account</h3><button type="button" className="modal-close" onClick={() => setBuyerDeleteConfirm(null)} disabled={Boolean(buyerAccountActionId)}>×</button></div>
-              <div className="modal-body"><p>Permanently delete the account for <strong>{buyerDeleteConfirm.full_name || buyerDeleteConfirm.username}</strong>?</p><p className="helper-text">The user will no longer be able to sign in. This action cannot be undone.</p></div>
-              <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setBuyerDeleteConfirm(null)} disabled={Boolean(buyerAccountActionId)}>Cancel</button><button type="button" className="btn btn-danger" onClick={() => handleDeleteBuyerAccount(buyerDeleteConfirm)} disabled={Boolean(buyerAccountActionId)}>{buyerAccountActionId ? 'Deleting...' : 'Delete Account'}</button></div>
-            </div>
-          </div>
+          <ConfirmDialog
+            title="Delete End User Account"
+            tone="danger"
+            confirmLabel="Delete Account"
+            busy={Boolean(buyerAccountActionId)}
+            busyLabel="Deleting..."
+            consequence="The user will no longer be able to sign in. This cannot be undone."
+            onConfirm={() => handleDeleteBuyerAccount(buyerDeleteConfirm)}
+            onCancel={() => setBuyerDeleteConfirm(null)}
+          >
+            <p>Permanently delete the account for <strong>{buyerDeleteConfirm.full_name || buyerDeleteConfirm.username}</strong>?</p>
+          </ConfirmDialog>
         )}
+        {confirmDialog}
         </ErrorBoundary>
       </div>
-      {reviewAction && (
-        <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={() => !supplierActioningId && setReviewAction(null)}>
-          <div className="supplier-review-modal" onClick={(event) => event.stopPropagation()}>
+      {reviewAction && (() => {
+        const decision = SUPPLIER_DECISION_COPY[reviewAction.nextStatus] || SUPPLIER_DECISION_COPY.Approved
+        const remarksRequired = reviewAction.nextStatus !== 'Approved'
+        const remarksMissing = remarksRequired && Boolean(supplierError) && !reviewRemarks.trim()
+        return (
+          <Modal
+            role="alertdialog"
+            labelledBy="review-action-title"
+            describedBy="review-action-consequence"
+            overlayClassName="supplier-preview-overlay"
+            className="supplier-review-modal"
+            onClose={() => setReviewAction(null)}
+            dismissible={!supplierActioningId}
+          >
             <div className="supplier-preview-header">
               <div>
-                <div className="supplier-panel-title">{reviewAction.actionName === 'approve' ? 'Approve Supplier' : reviewAction.actionName === 'reject' ? 'Reject Supplier' : 'Request Additional Documents'}</div>
+                <h3 className="supplier-panel-title" id="review-action-title">{decision.title}</h3>
                 <div className="supplier-subtext">{reviewAction.companyName}</div>
               </div>
-              <button className="icon-action-btn" type="button" onClick={() => setReviewAction(null)} disabled={Boolean(supplierActioningId)} aria-label="Close review action modal"><X size={14} /></button>
+              <button className="icon-action-btn" type="button" onClick={() => setReviewAction(null)} disabled={Boolean(supplierActioningId)} aria-label="Close"><X size={14} aria-hidden="true" /></button>
             </div>
-            <p>Confirm this action and provide review remarks for the supplier record.</p>
-            <label className="supplier-review-label" htmlFor="review-action-remarks">Review Remarks{reviewAction.nextStatus !== 'Approved' ? ' *' : ''}</label>
-            <textarea id="review-action-remarks" className="supplier-review-textarea" value={reviewRemarks} onChange={(event) => setReviewRemarks(event.target.value)} placeholder="Enter review remarks" autoFocus />
-            {supplierError && <div className="alert alert-error" style={{ marginTop: 12 }}>{supplierError}</div>}
+            <p className="confirm-consequence" id="review-action-consequence">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>{decision.consequence}</span>
+            </p>
+            <label className="supplier-review-label" htmlFor="review-action-remarks">
+              Review Remarks{remarksRequired && <span className="required-mark" aria-hidden="true"> *</span>}
+            </label>
+            <p className="field-hint" id="review-action-remarks-hint">
+              {remarksRequired ? 'Required. The supplier sees these remarks in their profile.' : 'Optional. Shown to the supplier in their profile.'}
+            </p>
+            <textarea
+              id="review-action-remarks"
+              className="supplier-review-textarea"
+              value={reviewRemarks}
+              onChange={(event) => setReviewRemarks(event.target.value)}
+              placeholder="Enter review remarks"
+              required={remarksRequired}
+              aria-invalid={remarksMissing || undefined}
+              aria-describedby={`review-action-remarks-hint${remarksMissing ? ' review-action-error' : ''}`}
+              autoFocus
+            />
+            {supplierError && <div className="alert alert-error" id="review-action-error" role="alert" style={{ marginTop: 12 }}>{supplierError}</div>}
             <div className="form-actions">
               <button type="button" className="btn-secondary" onClick={() => setReviewAction(null)} disabled={Boolean(supplierActioningId)}>Cancel</button>
-              <button type="button" className={reviewAction.nextStatus === 'Rejected' ? 'btn-danger' : 'btn-primary'} onClick={() => executeReviewDecision(reviewAction.supplierId, reviewAction.nextStatus, reviewAction.actionName)} disabled={Boolean(supplierActioningId)}>{supplierActioningId ? 'Saving...' : 'Confirm'}</button>
+              <button type="button" className={reviewAction.nextStatus === 'Rejected' ? 'btn-danger' : 'btn-primary'} onClick={() => executeReviewDecision(reviewAction.supplierId, reviewAction.nextStatus, reviewAction.actionName)} disabled={Boolean(supplierActioningId)}>{supplierActioningId ? 'Saving...' : decision.confirmLabel}</button>
             </div>
-          </div>
-        </div>
-      )}
+          </Modal>
+        )
+      })()}
     </div>
   )
 }
@@ -6980,9 +7095,13 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
               )}
             </div>
             {profile.status === 'For Compliance' && showResubmitDocuments && (
-              <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={() => setShowResubmitDocuments(false)}>
-              <section className="supplier-preview-modal profile-resubmit-card" onClick={(event) => event.stopPropagation()}>
-                <div className="supplier-preview-header"><div><h3>Resubmit Documents</h3><p className="supplier-subtext">Upload corrected or requested documents for BAC review.</p></div><button type="button" className="icon-action-btn" onClick={() => setShowResubmitDocuments(false)} aria-label="Close resubmit documents">×</button></div>
+              <Modal
+                labelledBy="resubmit-documents-title"
+                overlayClassName="supplier-preview-overlay"
+                className="supplier-preview-modal profile-resubmit-card"
+                onClose={() => setShowResubmitDocuments(false)}
+              >
+                <div className="supplier-preview-header"><div><h3 id="resubmit-documents-title">Resubmit Documents</h3><p className="supplier-subtext">Upload corrected or requested documents for BAC review.</p></div><button type="button" className="icon-action-btn" onClick={() => setShowResubmitDocuments(false)} aria-label="Close resubmit documents">×</button></div>
                 <div className="profile-resubmit-list">
                   {(profile.documents || []).reduce((documents, document) => documents.some((item) => item.doc_type === document.doc_type) ? documents : [...documents, document], []).map((document) => (
                     <div className="profile-resubmit-row" key={document.doc_type}>
@@ -6996,7 +7115,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                         <span className="profile-document-verified">Document verified by BAC</span>
                       ) : (
                         <>
-                          <input type="file" accept={acceptAttr(UPLOAD_KINDS.SUPPLIER_REQUIREMENT)} onChange={(event) => {
+                          <input type="file" aria-label={`Replacement file for ${getSupplierDocumentLabel(document.doc_type)}`} accept={acceptAttr(UPLOAD_KINDS.SUPPLIER_REQUIREMENT)} onChange={(event) => {
                             const picked = event.target.files?.[0] || null
                             if (picked) {
                               const check = validateFile(picked, UPLOAD_KINDS.SUPPLIER_REQUIREMENT)
@@ -7010,8 +7129,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                     </div>
                   ))}
                 </div>
-      </section>
-              </div>
+              </Modal>
             )}
           </div>
         </div>
@@ -7132,13 +7250,16 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
         </form>
       )}
       {resubmitConfirm && (
-        <div className="modal-overlay resubmit-confirm-overlay" role="dialog" aria-modal="true" onClick={() => setResubmitConfirm(null)}>
-          <div className="modal-content delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header"><h3>Confirm Document Resubmission</h3><button type="button" className="modal-close" onClick={() => setResubmitConfirm(null)}>×</button></div>
-            <div className="modal-body"><p>Resubmit <strong>{getSupplierDocumentLabel(resubmitConfirm.docType)}</strong> for BAC verification?</p><p className="helper-text">File: {resubmitConfirm.fileName}</p></div>
-            <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setResubmitConfirm(null)}>Cancel</button><button type="button" className="btn btn-primary" onClick={() => { handleResubmit(resubmitConfirm.docType); setResubmitConfirm(null) }}>Confirm Resubmit</button></div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Confirm Document Resubmission"
+          confirmLabel="Confirm Resubmit"
+          consequence="Your supplier status returns to Pending Review until the BAC verifies the new file."
+          onConfirm={() => { handleResubmit(resubmitConfirm.docType); setResubmitConfirm(null) }}
+          onCancel={() => setResubmitConfirm(null)}
+        >
+          <p>Resubmit <strong>{getSupplierDocumentLabel(resubmitConfirm.docType)}</strong> for BAC verification?</p>
+          <p className="helper-text">File: {resubmitConfirm.fileName}</p>
+        </ConfirmDialog>
       )}
     </div>
   )

@@ -102,7 +102,7 @@ describe('BAC PR review and numbering', () => {
     await user.click(within(queue).getByRole('button', { name: /^delete/i }))
     expect(api.find('DELETE', '/api/pr/42/')).toHaveLength(0)
 
-    const dialog = await screen.findByRole('dialog', { name: /delete purchase request/i })
+    const dialog = await screen.findByRole('alertdialog', { name: /delete purchase request/i })
     await user.click(within(dialog).getByRole('button', { name: /confirm delete|^delete/i }))
 
     await waitFor(() => expect(api.find('DELETE', '/api/pr/42/')).toHaveLength(1))

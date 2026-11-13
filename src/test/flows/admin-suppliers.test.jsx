@@ -117,7 +117,7 @@ describe('supplier verification', () => {
 
     await user.click(await screen.findByRole('button', { name: /^delete account$/i }))
     expect(api.find('DELETE', '/api/suppliers/7/')).toHaveLength(0)
-    const dialog = await screen.findByRole('dialog', { name: /delete supplier account/i })
+    const dialog = await screen.findByRole('alertdialog', { name: /delete supplier account/i })
     await user.click(within(dialog).getByRole('button', { name: /delete account/i }))
 
     await waitFor(() => expect(api.find('DELETE', '/api/suppliers/7/')).toHaveLength(1))
