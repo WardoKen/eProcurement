@@ -71,3 +71,33 @@ describe('PR monitoring table', () => {
     expect(dataRows(table)).toHaveLength(10)
   })
 })
+
+describe('supplier management list', () => {
+  const suppliers = [
+    { id: 1, company_name: 'Bravo Trading', status: 'Approved', email: 'b@x.ph' },
+    { id: 2, company_name: 'Alpha Supplies', status: 'Pending Review', email: 'a@x.ph' },
+    { id: 3, company_name: 'Charlie Corp', status: 'Rejected', email: 'c@x.ph' },
+  ]
+  const supplierRoutes = { ...routes, 'GET /api/suppliers/': { json: suppliers } }
+  const names = () => screen.getAllByRole('listitem').map((item) => item.querySelector('.supplier-name')?.textContent).filter(Boolean)
+
+  it('filters by status and sorts by name in both directions', async () => {
+    signIn(adminUser)
+    const api = installApi(supplierRoutes)
+    const { user } = renderAt('/admin')
+    await user.click(screen.getAllByRole('button', { name: /supplier management/i })[0])
+    await screen.findByText('Bravo Trading')
+
+    expect(names()).toEqual(['Bravo Trading', 'Alpha Supplies', 'Charlie Corp'])
+    await user.selectOptions(screen.getByLabelText(/^sort by$/i), 'name:descending')
+    expect(names()).toEqual(['Charlie Corp', 'Bravo Trading', 'Alpha Supplies'])
+    await user.selectOptions(screen.getByLabelText(/^sort by$/i), 'name:ascending')
+    expect(names()).toEqual(['Alpha Supplies', 'Bravo Trading', 'Charlie Corp'])
+    await user.selectOptions(screen.getByLabelText(/^sort by$/i), 'default')
+    expect(names()).toEqual(['Bravo Trading', 'Alpha Supplies', 'Charlie Corp'])
+
+    await user.selectOptions(screen.getByLabelText(/^status$/i), 'Pending Review')
+    expect(names()).toEqual(['Alpha Supplies'])
+    expect(api.mutations()).toHaveLength(0)
+  })
+})

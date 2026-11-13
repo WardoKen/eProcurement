@@ -67,7 +67,7 @@ describe('confirmation steps', () => {
     installApi(adminRoutes)
     const { user } = renderAt('/admin')
     await user.click(screen.getAllByRole('button', { name: /supplier management/i })[0])
-    await user.click(await screen.findByRole('button', { name: /^view details$/i }))
+    await user.click(await screen.findByRole('button', { name: /^view details for acme supplies/i }))
     const review = await screen.findByRole('dialog', { name: /acme supplies/i })
     await user.click(within(review).getByRole('button', { name: /reject registration/i }))
 

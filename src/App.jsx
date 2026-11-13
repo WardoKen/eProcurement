@@ -3096,7 +3096,7 @@ const Admin = () => {
   const [supplierLoading, setSupplierLoading] = React.useState(false)
   const [supplierError, setSupplierError] = React.useState('')
   const [supplierActioningId, setSupplierActioningId] = React.useState(null)
-  const [supplierSearch, setSupplierSearch] = React.useState('')
+  const [supplierStatusFilter, setSupplierStatusFilter] = React.useState('all')
   const [supplierDetails, setSupplierDetails] = React.useState({})
   const [selectedSupplierId, setSelectedSupplierId] = React.useState(null)
   const [selectedSupplierDetails, setSelectedSupplierDetails] = React.useState(null)
@@ -3549,21 +3549,25 @@ const Admin = () => {
     }
   }
 
-  const filteredSuppliers = React.useMemo(() => {
-    const query = supplierSearch.trim().toLowerCase()
-    if (!query) return supplierRegistrations
-
-    return supplierRegistrations.filter((supplier) => {
-      const haystack = [
-        supplier.company_name,
-        supplier.contact_person,
-        supplier.email,
-        supplier.business_type,
-        supplier.categories?.join(' '),
-      ].filter(Boolean).join(' ').toLowerCase()
-      return haystack.includes(query)
-    })
-  }, [supplierRegistrations, supplierSearch])
+  const supplierTable = useTableControls(supplierRegistrations, {
+    search: (supplier) => [
+      supplier.company_name,
+      supplier.contact_person,
+      supplier.email,
+      supplier.business_type,
+      supplier.categories?.join(' '),
+    ],
+    filter: supplierStatusFilter === 'all'
+      ? undefined
+      : (supplier) => (supplier.status || 'Pending Review') === supplierStatusFilter,
+    sorters: {
+      newest: (supplier) => -Number(supplier.id || 0),
+      name: (supplier) => supplier.company_name,
+      status: (supplier) => supplier.status || 'Pending Review',
+    },
+    pageSize: 10,
+  })
+  const filteredSuppliers = supplierTable.rows
 
   const selectedSupplier = React.useMemo(() => (
     supplierRegistrations.find((supplier) => supplier.id === selectedSupplierId) || null
@@ -4208,18 +4212,8 @@ const Admin = () => {
               <div className="supplier-verification-list-card">
                 <div className="supplier-verification-toolbar">
                   <div>
-                    <h3>Supplier Registrations</h3>
+                    <h3 id="supplier-registrations-heading">Supplier Registrations</h3>
                     <p>Search and select a supplier to review.</p>
-                  </div>
-                  <div className="supplier-search-box">
-                    <Search size={16} />
-                    <input
-                      type="text"
-                      value={supplierSearch}
-                      onChange={(event) => setSupplierSearch(event.target.value)}
-                      placeholder="Search suppliers"
-                      aria-label="Search suppliers"
-                    />
                   </div>
                   <button
                     type="button"
@@ -4227,36 +4221,66 @@ const Admin = () => {
                     onClick={handleExportSuppliers}
                     disabled={exportingSuppliers}
                   >
-                    <Download size={14} />
+                    <Download size={14} aria-hidden="true" />
                     {exportingSuppliers ? 'Exporting...' : 'Export Report'}
                   </button>
                 </div>
 
-                <div className="supplier-verification-table">
+                <TableToolbar table={supplierTable} searchLabel="Search suppliers" searchPlaceholder="Company, contact, email, business type or category" noun="supplier">
+                  <div className="data-toolbar-field">
+                    <label htmlFor="supplier-status-filter">Status</label>
+                    <select id="supplier-status-filter" value={supplierStatusFilter} onChange={(event) => { setSupplierStatusFilter(event.target.value); supplierTable.resetPage() }}>
+                      <option value="all">All statuses</option>
+                      <option value="Pending Review">Pending Review</option>
+                      <option value="For Compliance">For Compliance</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </div>
+                  <div className="data-toolbar-field">
+                    <label htmlFor="supplier-sort">Sort by</label>
+                    <select
+                      id="supplier-sort"
+                      value={supplierTable.sort ? `${supplierTable.sort.key}:${supplierTable.sort.direction}` : 'default'}
+                      onChange={(event) => {
+                        const [key, direction] = event.target.value.split(':')
+                        supplierTable.setSort(key === 'default' ? null : { key, direction })
+                      }}
+                    >
+                      <option value="default">As registered</option>
+                      <option value="newest:ascending">Newest first</option>
+                      <option value="newest:descending">Oldest first</option>
+                      <option value="name:ascending">Company name (A–Z)</option>
+                      <option value="name:descending">Company name (Z–A)</option>
+                      <option value="status:ascending">Status</option>
+                    </select>
+                  </div>
+                </TableToolbar>
+
+                <div className="supplier-verification-table" aria-labelledby="supplier-registrations-heading" role="list">
                   {supplierLoading && supplierRegistrations.length === 0 && (
-                    <div className="supplier-verification-row-card">Loading supplier registrations...</div>
+                    <div className="supplier-verification-row-card" role="listitem" aria-busy="true"><SkeletonRows count={3} /></div>
                   )}
 
-                  {!supplierLoading && filteredSuppliers.length === 0 && (
-                    <div className="supplier-verification-row-card">No supplier registrations found.</div>
+                  {!supplierLoading && supplierTable.total === 0 && (
+                    <div className="supplier-verification-row-card" role="listitem">
+                      {supplierRegistrations.length === 0
+                        ? 'No supplier registrations yet. New registrations appear here for BAC review.'
+                        : 'No suppliers match your search or status filter.'}
+                    </div>
                   )}
 
                   {filteredSuppliers.map((item) => {
                     const statusMeta = getSupplierStatusMeta(item.status)
                     const isSelected = selectedSupplierId === item.id
                     return (
+                      // Mouse users can click anywhere on the card; keyboard and
+                      // screen reader users use the card's own buttons.
                       <div
                         key={item.id}
+                        role="listitem"
                         className={`supplier-verification-row-card ${isSelected ? 'selected' : ''}`}
-                        role="button"
-                        tabIndex={0}
                         onClick={() => handleSelectSupplier(item)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            handleSelectSupplier(item)
-                          }
-                        }}
                       >
                         <div className="supplier-card-main">
                           <div className="supplier-card-heading">
@@ -4286,6 +4310,7 @@ const Admin = () => {
                               className="supplier-inline-action-btn view"
                               type="button"
                               title="Review"
+                              aria-label={`View details for ${item.company_name || 'supplier'}`}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleSelectSupplier(item)
@@ -4343,6 +4368,7 @@ const Admin = () => {
                     )
                   })}
                 </div>
+                <Pagination table={supplierTable} label="Supplier registration pages" />
               </div>
 
               {selectedSupplierId && (

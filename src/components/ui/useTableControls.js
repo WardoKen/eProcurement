@@ -81,6 +81,7 @@ export default function useTableControls(rows, {
     query,
     setQuery: (value) => { setQueryState(value); setPage(1) },
     sort,
+    setSort: (next) => { setSort(next); setPage(1) },
     toggleSort,
     ariaSort: (key) => (sort?.key === key ? sort.direction : 'none'),
     page: currentPage,

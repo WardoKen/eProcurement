@@ -20,7 +20,7 @@ const routes = {
 
 async function openSupplierReview(user) {
   await user.click(screen.getAllByRole('button', { name: /supplier management/i })[0])
-  await user.click(await screen.findByRole('button', { name: /^view details$/i }))
+  await user.click(await screen.findByRole('button', { name: /^view details for acme supplies/i }))
   return screen.findByRole('dialog', { name: /acme supplies/i })
 }
 
