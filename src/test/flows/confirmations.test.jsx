@@ -92,3 +92,38 @@ describe('confirmation steps', () => {
     expect(api.find('DELETE', '/api/pr/42/')).toHaveLength(0)
   })
 })
+
+describe('modal focus management on real screens', () => {
+  it('PR review modal traps focus, closes on Escape and returns focus to its trigger', async () => {
+    signIn(adminUser)
+    installApi(adminRoutes)
+    const { user } = renderAt('/admin')
+    await openPrMonitoring(user)
+    const trigger = await screen.findByRole('button', { name: /review pr/i })
+    await user.click(trigger)
+    const dialog = await screen.findByRole('dialog', { name: /edit purchase request/i })
+    await screen.findByDisplayValue('RC-100')
+
+    for (let index = 0; index < 40; index += 1) {
+      await user.tab()
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    }
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: /edit purchase request/i })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('View on a PR opens a summary dialog instead of a browser alert', async () => {
+    signIn(adminUser)
+    installApi(adminRoutes)
+    const { user } = renderAt('/admin')
+    await openPrMonitoring(user)
+
+    await user.click(screen.getByRole('button', { name: 'View' }))
+
+    const dialog = await screen.findByRole('dialog', { name: /purchase request 2026-11-001/i })
+    expect(dialog).toHaveTextContent('In Review')
+    expect(window.alert).not.toHaveBeenCalled()
+  })
+})

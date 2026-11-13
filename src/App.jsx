@@ -2466,15 +2466,16 @@ const rfqMgmtFormatDateTime = (value) => (value ? new Date(value).toLocaleString
 const RFQDocumentViewerModal = ({ viewer, onClose }) => {
   if (!viewer) return null
   return (
-    <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="supplier-preview-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="supplier-preview-header">
-          <div className="supplier-panel-title">{viewer.title}</div>
-          <button className="icon-action-btn" type="button" onClick={onClose} aria-label="Close document viewer"><X size={14} /></button>
+    <Modal labelledBy="rfq-viewer-title" overlayClassName="supplier-preview-overlay" className="supplier-preview-modal" onClose={onClose}>
+      <div className="supplier-preview-header">
+        <h3 className="supplier-panel-title" id="rfq-viewer-title">{viewer.title}</h3>
+        <div className="rfq-mgmt-row-actions">
+          <a className="btn-sm btn-secondary" href={viewer.url} target="_blank" rel="noreferrer">Open in new tab</a>
+          <button className="icon-action-btn" type="button" onClick={onClose} aria-label="Close document viewer"><X size={14} aria-hidden="true" /></button>
         </div>
-        <iframe className="supplier-preview-frame" src={viewer.url} title={viewer.title} />
       </div>
-    </div>
+      <iframe className="supplier-preview-frame" src={viewer.url} title={viewer.title} />
+    </Modal>
   )
 }
 
@@ -2652,6 +2653,8 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
   const [activeSearch, setActiveSearch] = React.useState('')
   const [openRfq, setOpenRfq] = React.useState(null)
   const [uploadingId, setUploadingId] = React.useState(null)
+  const [uploadError, setUploadError] = React.useState('')
+  const toast = useToast()
   const base = apiBaseUrl.replace(/\/$/, '')
 
   const load = React.useCallback(async (term = '') => {
@@ -2676,6 +2679,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
   const uploadCompleted = async (rfq, file) => {
     if (!file) return
     setUploadingId(rfq.id)
+    setUploadError('')
     try {
       const body = new FormData()
       body.append('file', file)
@@ -2684,8 +2688,9 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
       if (!res.ok) throw new Error(data.message || data.error || 'Upload failed.')
       await load(activeSearch)
       setOpenRfq(data)
+      toast.success('Completed RFQ uploaded.')
     } catch (err) {
-      window.alert(err.message || 'Upload failed.')
+      setUploadError(err.message || 'Upload failed.')
     } finally {
       setUploadingId(null)
     }
@@ -2739,7 +2744,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
                 <div><strong>Issued:</strong> {rfq.sent_at ? new Date(rfq.sent_at).toLocaleString() : new Date(rfq.created_at).toLocaleString()}</div>
               </div>
               <div className="supplier-match-foot">
-                <button type="button" className="btn-sm btn-secondary" onClick={() => setOpenRfq(rfq)}>Open</button>
+                <button type="button" className="btn-sm btn-secondary" onClick={() => { setUploadError(''); setOpenRfq(rfq) }}>Open</button>
                 <a className="btn-sm btn-primary" href={`${base}/api/manual-rfqs/${rfq.id}/pdf/`} target="_blank" rel="noreferrer">Download RFQ</a>
               </div>
             </article>
@@ -2748,11 +2753,10 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
       )}
 
       {openRfq && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setOpenRfq(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <Modal labelledBy="manual-rfq-detail-title" onClose={() => setOpenRfq(null)} dismissible={uploadingId !== openRfq.id}>
             <div className="modal-header">
-              <h3>Manual RFQ — {openRfq.manual_supplier_name || openRfq.supplier_name}</h3>
-              <button type="button" className="modal-close" onClick={() => setOpenRfq(null)}>×</button>
+              <h3 id="manual-rfq-detail-title">Manual RFQ — {openRfq.manual_supplier_name || openRfq.supplier_name}</h3>
+              <button type="button" className="modal-close" onClick={() => setOpenRfq(null)} aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               <div className="detail-grid">
@@ -2781,23 +2785,26 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
                     type="file"
                     accept={acceptAttr(UPLOAD_KINDS.COMPLETED_RFQ)}
                     disabled={uploadingId === openRfq.id}
+                    aria-invalid={uploadError ? true : undefined}
+                    aria-describedby={uploadError ? 'manual-rfq-upload-error' : undefined}
                     onChange={(e) => {
                       const picked = e.target.files?.[0] || null
                       if (picked) {
                         const check = validateFile(picked, UPLOAD_KINDS.COMPLETED_RFQ)
-                        if (!check.ok) { window.alert(check.error); e.target.value = ''; return }
+                        if (!check.ok) { setUploadError(check.error); e.target.value = ''; return }
                         uploadCompleted(openRfq, picked)
                       }
                     }}
                   />
                 </label>
+                {uploadingId === openRfq.id && <p className="field-hint" role="status">Uploading…</p>}
+                <FieldError id="manual-rfq-upload-error">{uploadError}</FieldError>
               </div>
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setOpenRfq(null)}>Close</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setOpenRfq(null)} disabled={uploadingId === openRfq.id}>Close</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )
@@ -3047,6 +3054,7 @@ const Admin = () => {
   const [prSavingId, setPrSavingId] = React.useState(null)
   const [prDeletingId, setPrDeletingId] = React.useState(null)
   const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
+  const [viewingPr, setViewingPr] = React.useState(null)
   const [editingPr, setEditingPr] = React.useState(null)
   const [editPrForm, setEditPrForm] = React.useState(null)
   const [editPrLoading, setEditPrLoading] = React.useState(false)
@@ -3765,9 +3773,7 @@ const Admin = () => {
     setEditingStatusById((prev) => ({ ...prev, [pr.id]: false }))
   }
 
-  const handleViewPr = (pr) => {
-    window.alert(`PR #${pr.pr_no || pr.id}\nEntity: ${pr.entity_name || 'N/A'}\nStatus: ${getPrStatusMeta(pr.status).label}`)
-  }
+  const handleViewPr = (pr) => setViewingPr(pr)
 
   const handleEditPr = async (pr) => {
     setEditingPr(pr)
@@ -3912,7 +3918,7 @@ const Admin = () => {
 
   const handleSelectMatchedSupplier = (card) => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
-    window.alert(`Selected ${name} for ${card.prNo}.`)
+    toast.info(`Selected ${name} for ${card.prNo}.`)
   }
 
   return (
@@ -4279,12 +4285,17 @@ const Admin = () => {
               </div>
 
               {selectedSupplierId && (
-                <div className="supplier-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="supplier-review-title" onClick={closeSupplierReview}>
-                  <div className="supplier-preview-modal supplier-review-modal" onClick={(event) => event.stopPropagation()}>
+                <Modal
+                  labelledBy="supplier-review-title"
+                  overlayClassName="supplier-preview-overlay"
+                  className="supplier-preview-modal supplier-review-modal"
+                  onClose={closeSupplierReview}
+                  dismissible={!reviewAction && !supplierDeleteConfirm && !previewVisible}
+                >
                     {!selectedSupplierDetails ? (
-                      <div className="supplier-empty-state">
-                        <Building2 size={24} />
-                        <h3>Loading supplier review</h3>
+                      <div className="supplier-empty-state" aria-busy="true">
+                        <Building2 size={24} aria-hidden="true" />
+                        <h3 id="supplier-review-title">Loading supplier review</h3>
                         <p>Loading the supplier profile and compliance documents.</p>
                       </div>
                     ) : (
@@ -4422,21 +4433,24 @@ const Admin = () => {
                     </div>
                   </>
                     )}
-                  </div>
-                </div>
+                </Modal>
               )}
             </div>
 
             {previewVisible && previewDoc && (
-              <div className="supplier-preview-overlay" role="dialog" aria-modal="true" onClick={closePreview}>
-                <div className="supplier-preview-modal" onClick={(event) => event.stopPropagation()}>
+              <Modal
+                labelledBy="doc-preview-title"
+                overlayClassName="supplier-preview-overlay"
+                className="supplier-preview-modal"
+                onClose={closePreview}
+              >
                   <div className="supplier-preview-header">
                     <div>
-                      <div className="supplier-panel-title">Document Preview</div>
+                      <h3 className="supplier-panel-title" id="doc-preview-title">Document Preview: {getDocumentLabel(previewDoc.doc_type)}</h3>
                       <div className="supplier-subtext">{previewDoc.original_name || previewDoc.doc_type}</div>
                     </div>
                     <button className="icon-action-btn" type="button" onClick={closePreview} aria-label="Close preview">
-                      <X size={14} />
+                      <X size={14} aria-hidden="true" />
                     </button>
                   </div>
                   {String(previewDoc.file_url || '').toLowerCase().endsWith('.pdf') ? (
@@ -4446,8 +4460,7 @@ const Admin = () => {
                       <img src={previewDoc.file_url} alt={previewDoc.original_name || previewDoc.doc_type} />
                     </div>
                   )}
-                </div>
-              </div>
+              </Modal>
             )}
           </div>
         )}
@@ -4978,14 +4991,13 @@ const Admin = () => {
             </div>
 
             {editingPr && (
-              <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-pr-title" onClick={closeEditPr}>
-                <div className="modal-content pr-edit-modal" onClick={(event) => event.stopPropagation()}>
+              <Modal labelledBy="edit-pr-title" className="modal-content pr-edit-modal" onClose={closeEditPr} dismissible={!editPrSaving}>
                   <div className="modal-header">
                     <h2 id="edit-pr-title">Edit Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
                     <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close edit Purchase Request">×</button>
                   </div>
                   {editPrLoading || !editPrForm ? (
-                    <div className="modal-body"><SkeletonRows count={4} /></div>
+                    <div className="modal-body" aria-busy="true"><SkeletonRows count={4} /></div>
                   ) : (
                     <>
                       <div className="modal-body pr-edit-body">
@@ -5225,11 +5237,15 @@ const Admin = () => {
                             {editPrSaving ? 'Assigning...' : 'Assign PR Number'}
                           </button>
                         )}
+                        {!editPrForm.entity_name.trim() && (
+                          <p className="field-error" role="status" style={{ flexBasis: '100%', justifyContent: 'flex-end' }}>
+                            Enter the Entity Name to save this Purchase Request.
+                          </p>
+                        )}
                       </div>
                     </>
                   )}
-                </div>
-              </div>
+              </Modal>
             )}
 
             <div className="admin-checklist">
@@ -5331,6 +5347,30 @@ const Admin = () => {
           >
             <p>Permanently delete the account for <strong>{buyerDeleteConfirm.full_name || buyerDeleteConfirm.username}</strong>?</p>
           </ConfirmDialog>
+        )}
+        {viewingPr && (
+          <Modal labelledBy="view-pr-title" onClose={() => setViewingPr(null)} className="modal-content delete-confirm-modal">
+            <div className="modal-header">
+              <h3 id="view-pr-title">Purchase Request {viewingPr.pr_no || `#${viewingPr.id}`}</h3>
+              <button type="button" className="modal-close" onClick={() => setViewingPr(null)} aria-label="Close">×</button>
+            </div>
+            <div className="modal-body">
+              <p className="record-status">
+                Current status <span className={`status-badge ${getPrStatusMeta(viewingPr.status).className}`}>{getPrStatusMeta(viewingPr.status).label}</span>
+              </p>
+              <dl className="buyer-status-facts">
+                <div><dt>Entity</dt><dd>{viewingPr.entity_name || 'N/A'}</dd></div>
+                <div><dt>Office</dt><dd>{viewingPr.office_section || 'N/A'}</dd></div>
+                <div><dt>Items</dt><dd>{viewingPr.items_count ?? 0}</dd></div>
+                <div><dt>Grand total</dt><dd>{formatPeso(viewingPr.grand_total)}</dd></div>
+                <div><dt>Created</dt><dd>{viewingPr.created_at ? new Date(viewingPr.created_at).toLocaleString() : 'N/A'}</dd></div>
+              </dl>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setViewingPr(null)}>Close</button>
+              <button type="button" className="btn btn-primary" onClick={() => { const pr = viewingPr; setViewingPr(null); setCurrentTab('pr-monitoring'); handleEditPr(pr) }}>Open Review</button>
+            </div>
+          </Modal>
         )}
         {confirmDialog}
         </ErrorBoundary>

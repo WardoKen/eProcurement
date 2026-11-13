@@ -1,5 +1,6 @@
 import React from 'react'
 import { apiFetch } from '../lib/apiClient'
+import Modal from './ui/Modal'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -581,14 +582,11 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
       </form>
 
       {successModalOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="supplier-registration-success-title"
-          onClick={() => setSuccessModalOpen(false)}
+        <Modal
+          labelledBy="supplier-registration-success-title"
+          className="modal-content registration-success-modal"
+          onClose={() => setSuccessModalOpen(false)}
         >
-          <div className="modal-content registration-success-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <h2 id="supplier-registration-success-title">Registration Submitted Successfully</h2>
               <button
@@ -613,8 +611,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                 Continue
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   )

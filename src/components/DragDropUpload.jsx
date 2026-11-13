@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { apiFetch } from '../lib/apiClient'
+import Modal from './ui/Modal'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '').trim()
@@ -684,7 +685,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           )
           return
         }
-        window.alert(err?.message || err?.error || 'Failed to save PR')
+        setSaveBlockedMessage(err?.message || err?.error || 'The Purchase Request could not be saved. Please try again.')
         return
       }
 
@@ -695,7 +696,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       setSavedPr(result)
       setSaveSuccessModalOpen(true)
     } catch {
-      window.alert('Network error while saving PR')
+      setSaveBlockedMessage('Unable to reach the server, so the Purchase Request was not saved. Your entries are kept; please try again.')
     } finally {
       setSaving(false)
     }
@@ -761,12 +762,19 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           onClick={() => {
             if (!file) onChooseClick()
           }}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return
+            if ((event.key === 'Enter' || event.key === ' ') && !file) {
+              event.preventDefault()
+              onChooseClick()
+            }
+          }}
           role="button"
           tabIndex={0}
-          aria-label="Upload Purchase Request file"
+          aria-label={file ? `Selected file ${file.name}` : 'Upload Purchase Request file: press Enter to browse, or drop a file here'}
           data-drag={dragOver ? 'true' : 'false'}
         >
-          <input ref={fileInputRef} type="file" accept={acceptAttr(UPLOAD_KINDS.PR)} style={{ display: 'none' }} onChange={onFileInputChange} />
+          <input ref={fileInputRef} type="file" accept={acceptAttr(UPLOAD_KINDS.PR)} style={{ display: 'none' }} onChange={onFileInputChange} tabIndex={-1} aria-hidden="true" />
 
           {!file && (
             <div className="dropzone-inner">
@@ -819,21 +827,17 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
         </div>
 
         {uploadMessage && (
-          <div className={`alert ${uploadSuccess ? 'alert-success' : 'alert-error'}`}>
+          <div className={`alert ${uploadSuccess ? 'alert-success' : 'alert-error'}`} role={uploadSuccess ? 'status' : 'alert'}>
             {uploadMessage}
           </div>
+        )}
+        {uploading && (
+          <p className="helper-text" role="status">Uploading and extracting details. This can take a moment for scanned documents…</p>
         )}
       </div>
 
       {uploadSuccessModalOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="upload-success-title"
-          onClick={() => setUploadSuccessModalOpen(false)}
-        >
-          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={(event) => event.stopPropagation()}>
+        <Modal labelledBy="upload-success-title" onClose={() => setUploadSuccessModalOpen(false)} style={{ maxWidth: '440px' }}>
             <div className="modal-header">
               <h3 id="upload-success-title">Purchase Request Uploaded</h3>
               <button
@@ -857,13 +861,11 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                 Continue Reviewing
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {saveSuccessModalOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
-          <div className="modal-content save-success-modal" onClick={(event) => event.stopPropagation()}>
+        <Modal labelledBy="save-success-title" className="modal-content save-success-modal" dismissible={false}>
             <div className="modal-header">
               <h3 id="save-success-title">Purchase Request Submitted</h3>
             </div>
@@ -899,8 +901,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                 if (typeof onSaved === 'function') onSaved(submittedId)
               }}>Continue</button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       <div className="pr-review-split">
@@ -1339,17 +1340,16 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           </div>
 
           {deleteModalOpen && pendingDeleteIndex !== null && (
-            <div className="modal-overlay" role="dialog" aria-modal="true">
-              <div className="modal-content" style={{ maxWidth: '440px' }}>
+            <Modal role="alertdialog" labelledBy="delete-item-title" describedBy="delete-item-body" onClose={closeDeleteModal} style={{ maxWidth: '440px' }}>
                 <div className="modal-header">
-                  <h3>Delete Purchase Request Item</h3>
+                  <h3 id="delete-item-title">Delete Purchase Request Item</h3>
                   <button type="button" className="modal-close" onClick={closeDeleteModal} aria-label="Close delete confirmation">
                     ×
                   </button>
                 </div>
 
-                <div className="modal-body">
-                  <p>Are you sure you want to remove this item?</p>
+                <div className="modal-body" id="delete-item-body">
+                  <p>Remove item {pendingDeleteIndex + 1}{fields.lineItems?.[pendingDeleteIndex]?.description ? ` (${fields.lineItems[pendingDeleteIndex].description})` : ''}?</p>
                   <p className="helper-text">This action only removes the item from the current Purchase Request before it is saved.</p>
                 </div>
 
@@ -1357,8 +1357,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
                   <button type="button" className="btn btn-outline" onClick={closeDeleteModal}>Cancel</button>
                   <button type="button" className="btn btn-danger" onClick={confirmDeleteItem}>Delete Item</button>
                 </div>
-              </div>
-            </div>
+            </Modal>
           )}
 
           {rawText && (
