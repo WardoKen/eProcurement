@@ -64,7 +64,7 @@ import Modal from './components/ui/Modal'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import useConfirm from './components/ui/useConfirm'
 import { useToast } from './components/ui/toast-context'
-import { FieldError, RequiredMark } from './components/ui/FormParts'
+import { FieldError, RequiredLegend, RequiredMark } from './components/ui/FormParts'
 import KpiTile from './components/ui/KpiTile'
 import ProcurementStepper from './components/ui/ProcurementStepper'
 import useTableControls from './components/ui/useTableControls'
@@ -3128,10 +3128,10 @@ const Admin = () => {
   const [buyerAccountSaving, setBuyerAccountSaving] = React.useState(false)
   const [buyerAccountMessage, setBuyerAccountMessage] = React.useState('')
   const [buyerAccountError, setBuyerAccountError] = React.useState('')
+  const [buyerFieldErrors, setBuyerFieldErrors] = React.useState({})
   const [showBuyerPassword, setShowBuyerPassword] = React.useState(false)
   const [buyerAccounts, setBuyerAccounts] = React.useState([])
   const [buyerAccountsLoading, setBuyerAccountsLoading] = React.useState(false)
-  const [buyerAccountSearch, setBuyerAccountSearch] = React.useState('')
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
   const [buyerDeleteConfirm, setBuyerDeleteConfirm] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -3168,12 +3168,15 @@ const Admin = () => {
     event.preventDefault()
     setBuyerAccountMessage('')
     setBuyerAccountError('')
+    setBuyerFieldErrors({})
     if (buyerAccountForm.password !== buyerAccountForm.confirmPassword) {
-      setBuyerAccountError('Passwords do not match.')
+      setBuyerFieldErrors({ confirmPassword: 'Passwords do not match.' })
+      document.getElementById('buyer-confirm-password')?.focus()
       return
     }
     if (buyerAccountForm.password.length < 8) {
-      setBuyerAccountError('Password must be at least 8 characters long.')
+      setBuyerFieldErrors({ password: 'Password must be at least 8 characters long.' })
+      document.getElementById('buyer-password')?.focus()
       return
     }
 
@@ -3194,6 +3197,7 @@ const Admin = () => {
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message || 'Unable to create End User account.')
       setBuyerAccountMessage('End User account created successfully.')
+      toast.success(`End User account created for ${buyerAccountForm.fullName.trim() || buyerAccountForm.username.trim()}.`)
       setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
       loadBuyerAccounts()
     } catch (error) {
@@ -3203,12 +3207,11 @@ const Admin = () => {
     }
   }
 
-  const filteredBuyerAccounts = React.useMemo(() => {
-    const query = buyerAccountSearch.trim().toLowerCase()
-    if (!query) return buyerAccounts
-    return buyerAccounts.filter((account) => [account.full_name, account.username, account.email, account.unit_office]
-      .filter(Boolean).join(' ').toLowerCase().includes(query))
-  }, [buyerAccountSearch, buyerAccounts])
+  const buyerAccountTable = useTableControls(buyerAccounts, {
+    search: (account) => [account.full_name, account.username, account.email, account.unit_office],
+    pageSize: 10,
+  })
+  const filteredBuyerAccounts = buyerAccountTable.rows
 
   const handleDeleteBuyerAccount = async (account) => {
     setBuyerAccountActionId(account.id)
@@ -4582,37 +4585,63 @@ const Admin = () => {
                     <p className="supplier-subtext">New accounts are created with access to PR upload.</p>
                   </div>
                 </div>
-                <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit}>
+                <form className="buyer-account-form" onSubmit={handleBuyerAccountSubmit} aria-busy={buyerAccountSaving || undefined}>
+                <RequiredLegend />
                 <label className="form-field">
-                  <span>Full Name</span>
-                  <input required value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="End User name" />
+                  <span>Full Name<RequiredMark /></span>
+                  <input required autoComplete="name" value={buyerAccountForm.fullName} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, fullName: event.target.value }))} placeholder="End User name" />
                 </label>
                 <label className="form-field">
-                  <span>Username</span>
-                  <input required value={buyerAccountForm.username} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, username: event.target.value }))} placeholder="enduser.username" />
+                  <span>Username<RequiredMark /></span>
+                  <input required autoComplete="off" value={buyerAccountForm.username} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, username: event.target.value }))} placeholder="enduser.username" />
                 </label>
                 <label className="form-field">
-                  <span>Email</span>
-                  <input required type="email" value={buyerAccountForm.email} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="enduser@office.edu" />
+                  <span>Email<RequiredMark /></span>
+                  <input required type="email" autoComplete="email" value={buyerAccountForm.email} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="enduser@office.edu" />
                 </label>
                 <label className="form-field">
-                  <span>Unit / Office</span>
+                  <span>Unit / Office<RequiredMark /></span>
                   <input required value={buyerAccountForm.unitOffice} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, unitOffice: event.target.value }))} placeholder="Procurement Office" />
                 </label>
-                <label className="form-field buyer-password-field">
-                  <span>Password</span>
+                <div className="form-field buyer-password-field">
+                  <label htmlFor="buyer-password">Password<RequiredMark /></label>
                   <div className="password-input-wrapper">
-                    <input required type={showBuyerPassword ? 'text' : 'password'} minLength={8} value={buyerAccountForm.password} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value }))} placeholder="At least 8 characters" />
-                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
+                    <input
+                      id="buyer-password"
+                      required
+                      type={showBuyerPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      minLength={8}
+                      value={buyerAccountForm.password}
+                      onChange={(event) => { setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value })); if (buyerFieldErrors.password) setBuyerFieldErrors({}) }}
+                      placeholder="At least 8 characters"
+                      aria-invalid={buyerFieldErrors.password ? true : undefined}
+                      aria-describedby={buyerFieldErrors.password ? 'buyer-password-error' : 'buyer-password-hint'}
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)} aria-pressed={showBuyerPassword} aria-label={showBuyerPassword ? 'Hide passwords' : 'Show passwords'}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
                   </div>
-                </label>
-                <label className="form-field buyer-password-field">
-                  <span>Confirm Password</span>
+                  <p className="field-hint" id="buyer-password-hint">At least 8 characters. Share it with the End User securely.</p>
+                  <FieldError id="buyer-password-error">{buyerFieldErrors.password}</FieldError>
+                </div>
+                <div className="form-field buyer-password-field">
+                  <label htmlFor="buyer-confirm-password">Confirm Password<RequiredMark /></label>
                   <div className="password-input-wrapper">
-                    <input required type={showBuyerPassword ? 'text' : 'password'} minLength={8} value={buyerAccountForm.confirmPassword} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} placeholder="Re-enter password" />
-                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
+                    <input
+                      id="buyer-confirm-password"
+                      required
+                      type={showBuyerPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      minLength={8}
+                      value={buyerAccountForm.confirmPassword}
+                      onChange={(event) => { setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value })); if (buyerFieldErrors.confirmPassword) setBuyerFieldErrors({}) }}
+                      placeholder="Re-enter password"
+                      aria-invalid={buyerFieldErrors.confirmPassword ? true : undefined}
+                      aria-describedby={buyerFieldErrors.confirmPassword ? 'buyer-confirm-error' : undefined}
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)} aria-pressed={showBuyerPassword} aria-label={showBuyerPassword ? 'Hide passwords' : 'Show passwords'}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
                   </div>
-                </label>
+                  <FieldError id="buyer-confirm-error">{buyerFieldErrors.confirmPassword}</FieldError>
+                </div>
                 {buyerAccountError && <div className="alert alert-error" role="alert">{buyerAccountError}</div>}
                 {buyerAccountMessage && <div className="alert alert-success" role="status">{buyerAccountMessage}</div>}
                 <div className="form-actions">
@@ -4628,14 +4657,18 @@ const Admin = () => {
                     <p className="supplier-subtext">{buyerAccounts.length} End User account{buyerAccounts.length === 1 ? '' : 's'} registered</p>
                   </div>
                   <div className="buyer-account-search">
-                    <Search size={16} />
-                    <input type="search" value={buyerAccountSearch} onChange={(event) => setBuyerAccountSearch(event.target.value)} placeholder="Search accounts" aria-label="Search End User accounts" />
+                    <Search size={16} aria-hidden="true" />
+                    <input type="search" value={buyerAccountTable.query} onChange={(event) => buyerAccountTable.setQuery(event.target.value)} placeholder="Search accounts" aria-label="Search End User accounts" />
                   </div>
                 </div>
                 {buyerAccountsLoading ? (
-                  <div className="buyer-accounts-empty">Loading accounts...</div>
-                ) : filteredBuyerAccounts.length === 0 ? (
-                  <div className="buyer-accounts-empty">No End User accounts found.</div>
+                  <div className="buyer-accounts-empty" aria-busy="true"><SkeletonRows count={3} /></div>
+                ) : buyerAccountTable.total === 0 ? (
+                  <div className="buyer-accounts-empty">
+                    {buyerAccounts.length === 0
+                      ? 'No End User accounts yet. Create one with the form to let an office submit Purchase Requests.'
+                      : 'No End User accounts match your search.'}
+                  </div>
                 ) : (
                   <div className="buyer-accounts-list">
                     {filteredBuyerAccounts.map((account) => (
@@ -4646,8 +4679,8 @@ const Admin = () => {
                           <small>{account.unit_office || 'Office not specified'} · {account.email || 'No email'}</small>
                         </div>
                         <div className="buyer-account-record-actions">
-                          <button type="button" className="btn-sm btn-danger" onClick={() => setBuyerDeleteConfirm(account)} disabled={buyerAccountActionId === account.id}>
-                            <Trash2 size={14} />
+                          <button type="button" className="btn-sm btn-danger" onClick={() => setBuyerDeleteConfirm(account)} disabled={buyerAccountActionId === account.id} aria-label={`Delete account ${account.username}`}>
+                            <Trash2 size={14} aria-hidden="true" />
                             {buyerAccountActionId === account.id ? 'Deleting...' : 'Delete'}
                           </button>
                         </div>
@@ -4655,6 +4688,7 @@ const Admin = () => {
                     ))}
                   </div>
                 )}
+                <Pagination table={buyerAccountTable} label="End User account pages" />
               </section>
             </div>
           </div>

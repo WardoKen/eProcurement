@@ -1,6 +1,7 @@
 import React from 'react'
 import { apiFetch } from '../lib/apiClient'
 import Modal from './ui/Modal'
+import { FieldError, RequiredLegend, RequiredMark } from './ui/FormParts'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -60,6 +61,8 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   })
   const [otherEligibilityFile, setOtherEligibilityFile] = React.useState(null)
   const [errors, setErrors] = React.useState([])
+  const [fieldErrors, setFieldErrors] = React.useState({})
+  const errorSummaryRef = React.useRef(null)
   const [message, setMessage] = React.useState('')
   const [submitting, setSubmitting] = React.useState(false)
   const [uploadProgress, setUploadProgress] = React.useState(0)
@@ -86,6 +89,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
   function updateField(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
+    if (fieldErrors[name]) setFieldErrors((current) => ({ ...current, [name]: '' }))
   }
 
   function handleRequiredFileChange(key, file) {
@@ -98,6 +102,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     }
     setRequiredFiles((current) => ({ ...current, [key]: file }))
     setErrors([])
+    if (fieldErrors[key]) setFieldErrors((current) => ({ ...current, [key]: '' }))
   }
 
   function handleOtherEligibilityFileChange(file) {
@@ -114,25 +119,30 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
   function validateStep(nextStep) {
     const nextErrors = []
+    const nextFieldErrors = {}
+    const add = (field, message) => {
+      nextErrors.push(message)
+      if (!nextFieldErrors[field]) nextFieldErrors[field] = message
+    }
 
     if (nextStep >= 2) {
-      if (!form.companyName.trim()) nextErrors.push('Company Name is required')
-      if (!form.businessAddress.trim()) nextErrors.push('Business Address is required')
-      if (!form.contactPerson.trim()) nextErrors.push('Contact Person is required')
-      if (!form.email.trim() || !validateEmail(form.email.trim())) nextErrors.push('Email address must be valid')
-      if (!form.contactNumber.trim() || !validatePhone(form.contactNumber.trim())) nextErrors.push('Phone number must be valid')
+      if (!form.companyName.trim()) add('companyName', 'Company Name is required')
+      if (!form.businessAddress.trim()) add('businessAddress', 'Business Address is required')
+      if (!form.contactPerson.trim()) add('contactPerson', 'Contact Person is required')
+      if (!form.email.trim() || !validateEmail(form.email.trim())) add('email', 'Email address must be valid')
+      if (!form.contactNumber.trim() || !validatePhone(form.contactNumber.trim())) add('contactNumber', 'Phone number must be valid')
     }
 
     if (nextStep >= 3) {
-      if (!form.productsServices.trim()) nextErrors.push('Products or services description is required')
-      if (selectedCategoryIds.length === 0) nextErrors.push('At least one supplier category must be selected')
+      if (!form.productsServices.trim()) add('productsServices', 'Products or services description is required')
+      if (selectedCategoryIds.length === 0) add('categories', 'At least one supplier category must be selected')
     }
 
     if (nextStep >= 2) {
-      if (!form.username.trim()) nextErrors.push('Account username is required')
-      if (!form.password.trim()) nextErrors.push('Account password is required')
-      if (form.password !== form.confirmPassword) nextErrors.push('Passwords do not match')
-      if (form.password && form.password.length < 8) nextErrors.push('Password must be at least 8 characters long')
+      if (!form.username.trim()) add('username', 'Account username is required')
+      if (!form.password.trim()) add('password', 'Account password is required')
+      if (form.password !== form.confirmPassword) add('confirmPassword', 'Passwords do not match')
+      if (form.password && form.password.length < 8) add('password', 'Password must be at least 8 characters long')
     }
 
     if (nextStep === 4) {
@@ -148,13 +158,38 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         requiredDocs.push({ key: businessDocKey, label: businessDocLabels[form.businessType] })
       }
       requiredDocs.forEach((doc) => {
-        if (!requiredFiles[doc.key]) nextErrors.push(`${doc.label} is required`)
+        if (!requiredFiles[doc.key]) add(doc.key, `${doc.label} is required`)
       })
     }
 
     setErrors(nextErrors)
+    setFieldErrors(nextFieldErrors)
+    if (nextErrors.length) window.setTimeout(() => errorSummaryRef.current?.focus(), 0)
     return nextErrors.length === 0
   }
+
+  // Ids and ARIA wiring for one field. The visible label stays inside the
+  // existing <label> wrapper; aria-labelledby keeps the inline error out of
+  // the field's name while aria-describedby announces it.
+  const fieldA11y = (key) => ({
+    id: `reg-${key}`,
+    'aria-labelledby': `reg-${key}-label`,
+    'aria-invalid': fieldErrors[key] ? true : undefined,
+    'aria-describedby': fieldErrors[key] ? `reg-${key}-error` : undefined,
+  })
+  const fieldLabel = (key, text, required = true) => (
+    <span id={`reg-${key}-label`}>{text}{required && <RequiredMark />}</span>
+  )
+  const fieldError = (key) => <FieldError id={`reg-${key}-error`}>{fieldErrors[key]}</FieldError>
+  // The step a field lives on, so the summary can say where to fix it.
+  const FIELD_STEP = {
+    companyName: 1, businessAddress: 1, contactPerson: 1, email: 1, contactNumber: 1, username: 1, password: 1, confirmPassword: 1,
+    productsServices: 2, categories: 2,
+  }
+  const errorEntries = errors.map((message) => {
+    const key = Object.keys(fieldErrors).find((field) => fieldErrors[field] === message)
+    return { message, key, step: key ? (FIELD_STEP[key] || 3) : null }
+  })
 
   function goNext() {
     if (validateStep(step + 1)) {
@@ -165,7 +200,17 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
   function goBack() {
     setErrors([])
+    setFieldErrors({})
     setStep((current) => current - 1)
+  }
+
+  function goToField(entry) {
+    if (entry.step && entry.step < step && !submitted) {
+      setStep(entry.step)
+      window.setTimeout(() => document.getElementById(`reg-${entry.key}`)?.focus(), 0)
+      return
+    }
+    document.getElementById(`reg-${entry.key}`)?.focus()
   }
 
   function submitForm(event) {
@@ -277,9 +322,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const renderStepIndicator = () => (
     <div className="wizard-steps" role="list" aria-label="Registration progress">
       {[1, 2, 3, 4].map((item) => (
-        <div key={item} className={`wizard-step ${step >= item ? 'active' : ''}`} role="listitem">
-          <span className="wizard-step-number">{String(item).padStart(2, '0')}</span>
+        <div key={item} className={`wizard-step ${step >= item ? 'active' : ''}`} role="listitem" aria-current={step === item && !submitted ? 'step' : undefined}>
+          <span className="wizard-step-number" aria-hidden="true">{String(item).padStart(2, '0')}</span>
           <span className="wizard-step-label">{['Company & Account Setup', 'Products & Services', 'Document Uploads', 'Review & Submit'][item - 1]}</span>
+          <span className="sr-only">{step > item || submitted ? ' (completed)' : step === item ? ` (current step, ${item} of 4)` : ''}</span>
         </div>
       ))}
     </div>
@@ -309,14 +355,16 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             <h2>Company Information</h2>
             <span className="section-badge">Step 1</span>
           </div>
+          <RequiredLegend />
           <div className="field-grid">
             <label className="form-field">
-              <span>Company / Supplier Name *</span>
-              <input value={form.companyName} onChange={(event) => updateField('companyName', event.target.value)} placeholder="e.g. Acme Supplies, Inc." required />
+              {fieldLabel('companyName', 'Company / Supplier Name')}
+              <input {...fieldA11y('companyName')} value={form.companyName} onChange={(event) => updateField('companyName', event.target.value)} placeholder="e.g. Acme Supplies, Inc." required />
+              {fieldError('companyName')}
             </label>
             <label className="form-field">
-              <span>Business Type *</span>
-              <select value={form.businessType} onChange={(event) => updateField('businessType', event.target.value)}>
+              {fieldLabel('businessType', 'Business Type')}
+              <select {...fieldA11y('businessType')} value={form.businessType} onChange={(event) => updateField('businessType', event.target.value)}>
                 <option>Sole Proprietorship</option>
                 <option>Partnership</option>
                 <option>Corporation</option>
@@ -325,24 +373,29 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               </select>
             </label>
             <label className="form-field">
-              <span>Business Address *</span>
-              <input value={form.businessAddress} onChange={(event) => updateField('businessAddress', event.target.value)} placeholder="Street, City, Province" required />
+              {fieldLabel('businessAddress', 'Business Address')}
+              <input {...fieldA11y('businessAddress')} value={form.businessAddress} onChange={(event) => updateField('businessAddress', event.target.value)} placeholder="Street, City, Province" required />
+              {fieldError('businessAddress')}
             </label>
             <label className="form-field">
-              <span>TIN Number *</span>
-              <input value={form.tin} onChange={(event) => updateField('tin', event.target.value)} placeholder="e.g. 123-456-789-000" required />
+              {fieldLabel('tin', 'TIN Number')}
+              <input {...fieldA11y('tin')} value={form.tin} onChange={(event) => updateField('tin', event.target.value)} placeholder="e.g. 123-456-789-000" required />
+              {fieldError('tin')}
             </label>
             <label className="form-field">
-              <span>Contact Person *</span>
-              <input value={form.contactPerson} onChange={(event) => updateField('contactPerson', event.target.value)} placeholder="Jane Doe" required />
+              {fieldLabel('contactPerson', 'Contact Person')}
+              <input {...fieldA11y('contactPerson')} value={form.contactPerson} onChange={(event) => updateField('contactPerson', event.target.value)} placeholder="Jane Doe" required />
+              {fieldError('contactPerson')}
             </label>
             <label className="form-field">
-              <span>Email Address *</span>
-              <input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="supplier@example.com" required />
+              {fieldLabel('email', 'Email Address')}
+              <input {...fieldA11y('email')} type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="supplier@example.com" required />
+              {fieldError('email')}
             </label>
             <label className="form-field">
-              <span>Phone Number *</span>
-              <input value={form.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} placeholder="09XX-XXX-XXXX" required />
+              {fieldLabel('contactNumber', 'Phone Number')}
+              <input {...fieldA11y('contactNumber')} value={form.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} placeholder="09XX-XXX-XXXX" required />
+              {fieldError('contactNumber')}
             </label>
           </div>
         </section>
@@ -354,26 +407,29 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           <p className="helper-text">Create the login credentials you will use to access the supplier portal.</p>
           <div className="field-grid account-setup-fields">
             <label className="form-field">
-              <span>Username *</span>
-              <input value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="supplierdemo" required />
+              {fieldLabel('username', 'Username')}
+              <input {...fieldA11y('username')} value={form.username} onChange={(event) => updateField('username', event.target.value)} placeholder="supplierdemo" required />
+              {fieldError('username')}
             </label>
             <label className="form-field password-field">
-              <span>Password *</span>
+              {fieldLabel('password', 'Password')}
               <div className="password-input-wrapper">
-                <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters" required />
-                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                <input {...fieldA11y('password')} type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}>
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
+              {fieldError('password')}
             </label>
             <label className="form-field password-field">
-              <span>Confirm Password *</span>
+              {fieldLabel('confirmPassword', 'Confirm Password')}
               <div className="password-input-wrapper">
-                <input type={showPassword ? 'text' : 'password'} value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Re-enter password" required />
-                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                <input {...fieldA11y('confirmPassword')} type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={form.confirmPassword} onChange={(event) => updateField('confirmPassword', event.target.value)} placeholder="Re-enter password" required />
+                <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-pressed={showPassword} aria-label={showPassword ? 'Hide passwords' : 'Show passwords'}>
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
+              {fieldError('confirmPassword')}
             </label>
           </div>
         </section>
@@ -389,12 +445,14 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             <span className="section-badge">Step 2</span>
           </div>
           <label className="form-field">
-            <span>Products / Services *</span>
-            <textarea rows="6" value={form.productsServices} onChange={(event) => updateField('productsServices', event.target.value)} placeholder="Supply and installation of air conditioning systems." required />
+            {fieldLabel('productsServices', 'Products / Services')}
+            <textarea {...fieldA11y('productsServices')} rows="6" value={form.productsServices} onChange={(event) => updateField('productsServices', event.target.value)} placeholder="Supply and installation of air conditioning systems." required />
+            {fieldError('productsServices')}
           </label>
           <div className="form-field">
-            <span>Supplier Categories *</span>
-            <p className="helper-text">Select all categories that match the products or services your company can provide.</p>
+            <span id="reg-categories-label">Supplier Categories<RequiredMark /></span>
+            <p className="helper-text" id="reg-categories-hint">Select all categories that match the products or services your company can provide.</p>
+            {fieldError('categories')}
             <div className="category-search">
               <input
                 type="search"
@@ -404,7 +462,14 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                 aria-label="Search supplier categories"
               />
             </div>
-            <div className="category-groups" role="group" aria-label="Supplier categories">
+            <div
+              className="category-groups"
+              role="group"
+              id="reg-categories"
+              tabIndex={-1}
+              aria-labelledby="reg-categories-label"
+              aria-describedby={fieldErrors.categories ? 'reg-categories-hint reg-categories-error' : 'reg-categories-hint'}
+            >
               <div className="category-group">
                 <div className="category-group-header">
                   <strong>Selected Categories</strong>
@@ -434,7 +499,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                       <input
                         type="checkbox"
                         checked={false}
-                        onChange={() => setSelectedCategoryIds((current) => [...current, category.id])}
+                        onChange={() => {
+                          setSelectedCategoryIds((current) => [...current, category.id])
+                          if (fieldErrors.categories) setFieldErrors((current) => ({ ...current, categories: '' }))
+                        }}
                       />
                       <span>{category.name}</span>
                     </label>
@@ -465,7 +533,14 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                   </div>
                   <span className="upload-card-badge">Required</span>
                 </div>
-                <input type="file" accept={REQUIREMENT_ACCEPT} onChange={(event) => handleRequiredFileChange(doc.key, event.target.files[0])} />
+                <input
+                  type="file"
+                  id={`reg-${doc.key}`}
+                  accept={REQUIREMENT_ACCEPT}
+                  aria-invalid={fieldErrors[doc.key] ? true : undefined}
+                  aria-describedby={fieldErrors[doc.key] ? `reg-${doc.key}-error` : undefined}
+                  onChange={(event) => handleRequiredFileChange(doc.key, event.target.files[0])}
+                />
                 {requiredFiles[doc.key] ? (
                   <div className="file-chip">
                     <span>✓ {requiredFiles[doc.key].name} · {fileTypeLabel(requiredFiles[doc.key])} • {formatFileSize(requiredFiles[doc.key].size)}</span>
@@ -474,6 +549,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
                 ) : (
                   <div className="upload-placeholder">Choose file</div>
                 )}
+                {fieldError(doc.key)}
               </label>
             ))}
           </div>
@@ -557,17 +633,27 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         {renderStepContent()}
 
         {errors.length > 0 && (
-          <div className="error-list">
-            <strong>Please fix the following issues:</strong>
-            <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul>
+          <div className="error-list" role="alert" tabIndex={-1} ref={errorSummaryRef}>
+            <strong>Please fix the following {errors.length === 1 ? 'issue' : `${errors.length} issues`}:</strong>
+            <ul>
+              {errorEntries.map((entry) => (
+                <li key={entry.message}>
+                  {entry.key ? (
+                    <button type="button" className="link-like" onClick={() => goToField(entry)}>
+                      {entry.message}{entry.step && entry.step < step ? ` (Step ${entry.step})` : ''}
+                    </button>
+                  ) : entry.message}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {message && <div className="success-message">{message}</div>}
+        {message && <div className="success-message" role="status">{message}</div>}
 
         {submitting && (
-          <div className="progress-card">
-            <div className="progress-track">
+          <div className="progress-card" role="status" aria-live="polite">
+            <div className="progress-track" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}>
               <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
             </div>
             <span>{uploadProgress}% uploaded</span>
