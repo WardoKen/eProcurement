@@ -20,7 +20,7 @@ def _auth_error(message: str, status: int):
     return JsonResponse({'success': False, 'message': message}, status=status)
 
 
-def require_auth(role=None, owner_param=None):
+def require_auth(role=None, owner_param=None, owner_exempt_roles=()):
     """Require a logged-in session, optionally restricted to a role.
 
     ``role`` may be a single role name (e.g. ``'admin'``) or an iterable of
@@ -30,6 +30,10 @@ def require_auth(role=None, owner_param=None):
     equal the session's own ``supplier_id``. Use it on supplier-portal
     endpoints so one supplier can never reach another supplier's data by
     editing the id in the URL.
+
+    ``owner_exempt_roles`` lists roles (e.g. ``('admin',)``) that pass the
+    ``owner_param`` check for any supplier. They must also be allowed by
+    ``role``; the view is responsible for limiting what they may change.
 
     On success the view gains:
       - ``request.auth_user``: the ``User`` instance for the session.
@@ -58,7 +62,7 @@ def require_auth(role=None, owner_param=None):
             if allowed_roles is not None and user.role.name not in allowed_roles:
                 return _auth_error('You do not have permission to perform this action.', 403)
 
-            if owner_param is not None:
+            if owner_param is not None and user.role.name not in owner_exempt_roles:
                 session_supplier_id = request.session.get('supplier_id')
                 try:
                     url_supplier_id = int(kwargs.get(owner_param))

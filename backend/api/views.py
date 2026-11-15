@@ -2571,9 +2571,15 @@ def supplier_mark_notification_read(request, notification_id):
 
 
 @require_http_methods(['GET', 'PATCH'])
-@require_auth(role='supplier', owner_param='supplier_id')
+@require_auth(role=('supplier', 'admin'), owner_param='supplier_id', owner_exempt_roles=('admin',))
 def supplier_profile(request, supplier_id):
-    """Get or update supplier profile."""
+    """Get or update supplier profile.
+
+    Suppliers read and edit their own profile. Admins may read any profile
+    (Supplier Management review) but not edit it.
+    """
+    if request.method == 'PATCH' and request.auth_role != 'supplier':
+        return JsonResponse({'error': 'Only the supplier can edit this profile.'}, status=403)
     try:
         supplier = Supplier.objects.get(id=supplier_id)
     except Supplier.DoesNotExist:

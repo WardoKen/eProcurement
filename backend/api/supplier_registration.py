@@ -62,6 +62,15 @@ def is_supported_file(file_obj) -> bool:
     return True
 
 
+def is_valid_phone_number(value: str) -> bool:
+    """Accept local (0917 123 4567) and international (+63 917 123 4567,
+    +1 415 555 0123) numbers: digits with optional leading "+", spaces,
+    hyphens or brackets, and 7-15 digits in all (the E.164 maximum)."""
+    if not value or not re.fullmatch(r'\+?[0-9][0-9\s\-()]*', value):
+        return False
+    return 7 <= len(re.sub(r'\D', '', value)) <= 15
+
+
 def validate_supplier_payload(payload: Dict[str, object], files: Dict[str, object], categories: List[str]) -> List[str]:
     errors: List[str] = []
     company_name = sanitize_text(payload.get('companyName'))
@@ -79,7 +88,7 @@ def validate_supplier_payload(payload: Dict[str, object], files: Dict[str, objec
         errors.append('Business Address is required')
     if not contact_person:
         errors.append('Contact Person is required')
-    if not contact_number or not re.fullmatch(r'^(\+63|63|0)?[0-9\s\-]{7,15}$', contact_number):
+    if not is_valid_phone_number(contact_number):
         errors.append('Phone number must be valid')
     if not email or not re.fullmatch(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
         errors.append('Email address must be valid')

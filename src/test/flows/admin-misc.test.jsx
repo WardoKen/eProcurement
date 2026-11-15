@@ -165,6 +165,34 @@ describe('end user live status', () => {
   })
 })
 
+describe('end user live status records', () => {
+  it('shows each Purchase Request as a collapsible record, newest open', async () => {
+    signIn(buyerUser)
+    installApi({
+      'GET /api/pr/next-number/': { json: { pr_no: '2026-11-001' } },
+      'GET /api/pr/list/': { json: [
+        { ...numberedPr, display_stage: 'supplier_matching', display_status: 'Supplier Matching' },
+        { ...numberedPr, id: 50, pr_no: '2026-10-007', display_stage: 'under_review', display_status: 'Under BAC Review' },
+      ] },
+    })
+    const { user } = renderAt('/buyer')
+    await user.click(screen.getAllByRole('button', { name: /live status/i })[0])
+
+    const newest = await screen.findByRole('button', { name: /2026-11-001/ })
+    const older = screen.getByRole('button', { name: /2026-10-007/ })
+    expect(newest).toHaveAttribute('aria-expanded', 'true')
+    expect(older).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById(older.getAttribute('aria-controls'))).not.toBeVisible()
+
+    await user.click(older)
+    expect(older).toHaveAttribute('aria-expanded', 'true')
+    expect(document.getElementById(older.getAttribute('aria-controls'))).toBeVisible()
+
+    await user.click(newest)
+    expect(newest).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
 describe('dashboard KPI tiles', () => {
   it('labels each figure with its unit', async () => {
     signIn(adminUser)

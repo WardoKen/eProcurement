@@ -56,6 +56,11 @@ import DragDropUpload, {
   AutoGrowTextarea,
 } from './components/DragDropUpload'
 import SupplierRegistration from './components/SupplierRegistration'
+import ProcessGuide from './components/ProcessGuide'
+import PhoneField from './components/ui/PhoneField'
+import GroupedDigitsInput from './components/ui/GroupedDigitsInput'
+import { DEFAULT_PHONE_COUNTRY, findPhoneCountry, formatPhoneNumber, isValidPhoneNumber, parsePhoneInput } from './lib/phone'
+import { TIN_EXAMPLE, formatTin, isValidTin, parseTin } from './lib/tin'
 import Sidebar from './components/Sidebar'
 import Breadcrumbs from './components/ui/Breadcrumbs'
 import ErrorBoundary from './components/ui/ErrorBoundary'
@@ -314,7 +319,7 @@ const Home = () => (
         <p className="hero-lede">A document-led workspace for End Users, BAC Secretariat, and suppliers to move university procurement forward with a clear record at every stage.</p>
         <div className="hero-actions">
           <Link to="/login" className="btn-primary">Access eProcure</Link>
-          <Link to="/faq" className="hero-text-link">View the process <ChevronRight size={16} /></Link>
+          <Link to="/process" className="hero-text-link">View the process <ChevronRight size={16} /></Link>
         </div>
       </div>
 
@@ -384,15 +389,15 @@ const Footer = () => (
         <div className="footer-block">
           <h3>Contact Information</h3>
           <ul>
-            <li><Phone size={15} /> +63 912 345 6789</li>
-            <li><Mail size={15} /> 4loops@4a.com</li>
+            <li><Phone size={15} /> +6332 463 9313 </li>
+            <li><Mail size={15} /> tuburan.campus@ctu.edu.ph</li>
           </ul>
         </div>
 
         <div className="footer-block">
           <h3>Office Address</h3>
-          <p>Rizal 2, Bago, Asturias, Cebu</p>
-          <a href="https://maps.app.goo.gl/1bKVQizTht6z4FYS9" className="footer-link">VIEW LOCATION</a>
+          <p>Brgy 8, Poblacion, Tuburan, Cebu, Philippines</p>
+          <a href="https://maps.app.goo.gl/KGsVXS2rXJCGeSge9" className="footer-link">VIEW LOCATION</a>
         </div>
       </div>
     </div>
@@ -6205,21 +6210,40 @@ const BuyerPRTimeline = ({ record }) => {
   )
 }
 
-const BuyerPRStatusCard = ({ record }) => {
+// Each PR is a collapsible record: the header row (number, office, status,
+// submitted date, total) is the toggle, and the facts, timeline and details
+// sit in the body. The most recent PR starts open.
+const BuyerPRStatusCard = ({ record, defaultOpen = false }) => {
+  const [open, setOpen] = React.useState(defaultOpen)
   const [showDetails, setShowDetails] = React.useState(false)
+  const bodyId = React.useId()
   const stage = buyerStageFor(record)
   const statusLabel = record.display_status || BUYER_STAGE_LABELS[stage] || 'Submitted'
+  const submittedOn = buyerLongDate(record.created_at)
 
   return (
-    <article className="buyer-status-record">
-      <div className="buyer-status-record-head">
-        <div>
+    <article className={`buyer-status-record ${open ? 'is-open' : 'is-collapsed'}`}>
+      <button
+        type="button"
+        className="buyer-status-record-head buyer-status-toggle"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls={bodyId}
+      >
+        <span className="buyer-status-record-title">
           <strong>{record.pr_no || `Reference #${record.id}`}</strong>
           <span>{record.entity_name || 'Purchase Request'}</span>
-        </div>
-        <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{statusLabel}</span>
-      </div>
+          <span className="buyer-status-record-meta">
+            {submittedOn ? `Submitted ${submittedOn}` : 'Submitted'} · {buyerPeso(record.grand_total)}
+          </span>
+        </span>
+        <span className="buyer-status-record-aside">
+          <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{statusLabel}</span>
+          <ChevronDown size={18} className="buyer-status-chevron" aria-hidden="true" />
+        </span>
+      </button>
 
+      <div id={bodyId} className="buyer-status-record-body" hidden={!open}>
       <dl className="buyer-status-facts">
         <div>
           <dt>PR Number</dt>
@@ -6281,6 +6305,7 @@ const BuyerPRStatusCard = ({ record }) => {
           </p>
         </div>
       )}
+      </div>
     </article>
   )
 }
@@ -6340,7 +6365,7 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
           <div className="empty-state"><ClipboardList size={48} /><h3>No Purchase Requests yet</h3><p>Submitted Purchase Requests will appear here with their live procurement status.</p></div>
         )}
         <div className="buyer-status-list">
-          {records.map((record) => <BuyerPRStatusCard key={record.id} record={record} />)}
+          {records.map((record, index) => <BuyerPRStatusCard key={record.id} record={record} defaultOpen={index === 0} />)}
         </div>
       </section>
     </>
@@ -7222,6 +7247,18 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const [resubmitFiles, setResubmitFiles] = React.useState({})
   const [resubmitting, setResubmitting] = React.useState('')
   const [resubmitConfirm, setResubmitConfirm] = React.useState(null)
+  // The phone is edited as a country plus national digits (see PhoneField),
+  // read from whatever was stored: "+63 917 123 4567" or a legacy "0917...".
+  const [phone, setPhone] = React.useState({ countryCode: DEFAULT_PHONE_COUNTRY, digits: '' })
+  const [fieldErrors, setFieldErrors] = React.useState({})
+
+  const startEdit = () => {
+    const stored = parsePhoneInput(profile?.contact_phone || '', findPhoneCountry(DEFAULT_PHONE_COUNTRY))
+    setFormData(profile)
+    setPhone({ countryCode: stored.country.code, digits: stored.digits })
+    setFieldErrors({})
+    setEditMode(true)
+  }
 
   React.useEffect(() => {
     const fetchProfile = async () => {
@@ -7247,6 +7284,18 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
 
   const handleSave = async (e) => {
     e.preventDefault()
+    const phoneCountry = findPhoneCountry(phone.countryCode)
+    const tinDigits = parseTin(formData.tin)
+    const errors = {}
+    if (!phone.digits) errors.contact_phone = 'Phone is required'
+    else if (!isValidPhoneNumber(phone.digits, phoneCountry)) errors.contact_phone = `Enter a complete ${phoneCountry.name} number, e.g. +${phoneCountry.dial} ${phoneCountry.example}`
+    if (tinDigits && !isValidTin(tinDigits)) errors.tin = `Enter a 9-digit TIN, with an optional 3- or 5-digit branch code, e.g. ${TIN_EXAMPLE}`
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      document.getElementById(errors.tin ? 'tin' : 'contact_phone')?.focus()
+      return
+    }
+
     setSaving(true)
     setMessage(null)
 
@@ -7254,7 +7303,12 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, category_ids: selectedCategories.map((category) => category.id) }),
+        body: JSON.stringify({
+          ...formData,
+          tin: formatTin(tinDigits),
+          contact_phone: formatPhoneNumber(phone.digits, phoneCountry),
+          category_ids: selectedCategories.map((category) => category.id),
+        }),
       })
 
       if (response.ok) {
@@ -7381,7 +7435,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
             </div>
 
             <div className="profile-action-row">
-              <button type="button" className="btn btn-primary profile-edit-btn" onClick={() => setEditMode(true)}>
+              <button type="button" className="btn btn-primary profile-edit-btn" onClick={startEdit}>
                 <Edit2 size={16} /> Edit Profile
               </button>
               {profile.status === 'For Compliance' && (
@@ -7454,12 +7508,22 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
 
             <div className="form-group">
               <label htmlFor="tin">TIN Number</label>
-              <input
-                type="text"
+              <GroupedDigitsInput
                 id="tin"
-                value={formData.tin || ''}
-                onChange={(e) => setFormData({ ...formData, tin: e.target.value })}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder={`e.g. ${TIN_EXAMPLE}`}
+                aria-invalid={fieldErrors.tin ? true : undefined}
+                aria-describedby={fieldErrors.tin ? 'tin-error' : undefined}
+                digits={parseTin(formData.tin)}
+                format={formatTin}
+                parse={(raw) => ({ digits: parseTin(raw) })}
+                onChange={({ digits }) => {
+                  setFormData((current) => ({ ...current, tin: formatTin(digits) }))
+                  setFieldErrors((current) => ({ ...current, tin: '' }))
+                }}
               />
+              <FieldError id="tin-error">{fieldErrors.tin}</FieldError>
             </div>
 
             <div className="form-group full-width">
@@ -7484,12 +7548,20 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
 
             <div className="form-group">
               <label htmlFor="contact_phone">Phone</label>
-              <input
-                type="tel"
+              <PhoneField
                 id="contact_phone"
-                value={formData.contact_phone || ''}
-                onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+                countryCode={phone.countryCode}
+                digits={phone.digits}
+                onChange={(next) => {
+                  setPhone(next)
+                  setFieldErrors((current) => ({ ...current, contact_phone: '' }))
+                }}
+                inputProps={{
+                  'aria-invalid': fieldErrors.contact_phone ? true : undefined,
+                  'aria-describedby': fieldErrors.contact_phone ? 'contact_phone-error' : undefined,
+                }}
               />
+              <FieldError id="contact_phone-error">{fieldErrors.contact_phone}</FieldError>
             </div>
 
             <div className="form-group">
@@ -7773,6 +7845,7 @@ const AppLayout = () => {
         <ErrorBoundary resetKey={location.pathname} homeHref="/">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/process" element={<ProcessGuide />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -2,6 +2,10 @@ import React from 'react'
 import { apiFetch } from '../lib/apiClient'
 import Modal from './ui/Modal'
 import { FieldError, RequiredLegend, RequiredMark } from './ui/FormParts'
+import PhoneField from './ui/PhoneField'
+import GroupedDigitsInput from './ui/GroupedDigitsInput'
+import { TIN_EXAMPLE, formatTin, isValidTin, parseTin } from '../lib/tin'
+import { DEFAULT_PHONE_COUNTRY, findPhoneCountry, formatPhoneNumber, isValidPhoneNumber } from '../lib/phone'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
@@ -27,10 +31,6 @@ function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
-function validatePhone(phone) {
-  return /^(\+63|63|0)?[0-9\s\-]{7,15}$/.test(phone)
-}
-
 export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const [step, setStep] = React.useState(1)
   const [categories, setCategories] = React.useState([])
@@ -40,15 +40,19 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     companyName: '',
     businessType: 'Sole Proprietorship',
     businessAddress: '',
+    // Digits only; shown and submitted grouped as 123-456-789-000.
     tin: '',
     contactPerson: '',
     email: '',
+    // National digits only; the dial code comes from phoneCountry.
     contactNumber: '',
+    phoneCountry: DEFAULT_PHONE_COUNTRY,
     productsServices: '',
     username: '',
     password: '',
     confirmPassword: '',
   })
+  const phoneCountry = findPhoneCountry(form.phoneCountry)
   const [requiredFiles, setRequiredFiles] = React.useState({
     mayor_permit: null,
     business_permit: null,
@@ -128,9 +132,12 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     if (nextStep >= 2) {
       if (!form.companyName.trim()) add('companyName', 'Company Name is required')
       if (!form.businessAddress.trim()) add('businessAddress', 'Business Address is required')
+      if (!form.tin) add('tin', 'TIN Number is required')
+      else if (!isValidTin(form.tin)) add('tin', `Enter a 9-digit TIN, with an optional 3- or 5-digit branch code, e.g. ${TIN_EXAMPLE}`)
       if (!form.contactPerson.trim()) add('contactPerson', 'Contact Person is required')
       if (!form.email.trim() || !validateEmail(form.email.trim())) add('email', 'Email address must be valid')
-      if (!form.contactNumber.trim() || !validatePhone(form.contactNumber.trim())) add('contactNumber', 'Phone number must be valid')
+      if (!form.contactNumber) add('contactNumber', 'Phone Number is required')
+      else if (!isValidPhoneNumber(form.contactNumber, phoneCountry)) add('contactNumber', `Enter a complete ${phoneCountry.name} number, e.g. +${phoneCountry.dial} ${phoneCountry.example}`)
     }
 
     if (nextStep >= 3) {
@@ -183,7 +190,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
   const fieldError = (key) => <FieldError id={`reg-${key}-error`}>{fieldErrors[key]}</FieldError>
   // The step a field lives on, so the summary can say where to fix it.
   const FIELD_STEP = {
-    companyName: 1, businessAddress: 1, contactPerson: 1, email: 1, contactNumber: 1, username: 1, password: 1, confirmPassword: 1,
+    companyName: 1, businessAddress: 1, tin: 1, contactPerson: 1, email: 1, contactNumber: 1, username: 1, password: 1, confirmPassword: 1,
     productsServices: 2, categories: 2,
   }
   const errorEntries = errors.map((message) => {
@@ -226,9 +233,9 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     formData.append('companyName', form.companyName.trim())
     formData.append('businessType', form.businessType)
     formData.append('businessAddress', form.businessAddress.trim())
-    formData.append('tin', form.tin.trim())
+    formData.append('tin', formatTin(form.tin))
     formData.append('contactPerson', form.contactPerson.trim())
-    formData.append('contactNumber', form.contactNumber.trim())
+    formData.append('contactNumber', formatPhoneNumber(form.contactNumber, phoneCountry))
     formData.append('email', form.email.trim())
     formData.append('productsServices', form.productsServices.trim())
     selectedCategoryIds.forEach((categoryId) => formData.append('category_ids', categoryId))
@@ -268,6 +275,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           contactPerson: '',
           email: '',
           contactNumber: '',
+          phoneCountry: DEFAULT_PHONE_COUNTRY,
           productsServices: '',
           username: '',
           password: '',
@@ -379,7 +387,17 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             </label>
             <label className="form-field">
               {fieldLabel('tin', 'TIN Number')}
-              <input {...fieldA11y('tin')} value={form.tin} onChange={(event) => updateField('tin', event.target.value)} placeholder="e.g. 123-456-789-000" required />
+              <GroupedDigitsInput
+                {...fieldA11y('tin')}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder={`e.g. ${TIN_EXAMPLE}`}
+                required
+                digits={form.tin}
+                format={formatTin}
+                parse={(raw) => ({ digits: parseTin(raw) })}
+                onChange={({ digits }) => updateField('tin', digits)}
+              />
               {fieldError('tin')}
             </label>
             <label className="form-field">
@@ -392,11 +410,21 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               <input {...fieldA11y('email')} type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="supplier@example.com" required />
               {fieldError('email')}
             </label>
-            <label className="form-field">
+            {/* A div, not a label: the field holds two controls (country code and number). */}
+            <div className="form-field">
               {fieldLabel('contactNumber', 'Phone Number')}
-              <input {...fieldA11y('contactNumber')} value={form.contactNumber} onChange={(event) => updateField('contactNumber', event.target.value)} placeholder="09XX-XXX-XXXX" required />
+              <PhoneField
+                id="reg-contactNumber"
+                countryCode={form.phoneCountry}
+                digits={form.contactNumber}
+                onChange={({ countryCode, digits }) => {
+                  setForm((current) => ({ ...current, phoneCountry: countryCode }))
+                  updateField('contactNumber', digits)
+                }}
+                inputProps={{ ...fieldA11y('contactNumber'), required: true }}
+              />
               {fieldError('contactNumber')}
-            </label>
+            </div>
           </div>
         </section>
         <section className="section-card account-setup-card">
@@ -594,9 +622,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
             <p><strong>Company Name:</strong> {form.companyName || '—'}</p>
             <p><strong>Business Type:</strong> {form.businessType}</p>
             <p><strong>Business Address:</strong> {form.businessAddress || '—'}</p>
+            <p><strong>TIN:</strong> {formatTin(form.tin) || '—'}</p>
             <p><strong>Contact Person:</strong> {form.contactPerson || '—'}</p>
             <p><strong>Email:</strong> {form.email || '—'}</p>
-            <p><strong>Phone:</strong> {form.contactNumber || '—'}</p>
+            <p><strong>Phone:</strong> {formatPhoneNumber(form.contactNumber, phoneCountry) || '—'}</p>
           </div>
           <div className="review-block">
             <h3>Products & Services</h3>

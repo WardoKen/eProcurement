@@ -9003,3 +9003,144 @@ textarea:focus-visible,
 @media (max-width: 360px) {
   .public-wordmark span { display: none; }
 }
+
+/* ── PROCESS GUIDE (/process) ──────────────────────────────────────────────
+   Public walkthrough opened from the home page's "View the process" link.
+   Reuses the institutional home surface (hero, navy panel, role strip,
+   bulletin) and adds the stage-by-stage record list. */
+.process-hero h1 { max-width: 560px; }
+
+.process-index .activity-timeline a { color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
+.process-index .activity-timeline a:hover { color: #e2bf72; text-decoration: underline; text-underline-offset: 3px; }
+.process-index :where(a):focus-visible { outline-color: var(--focus-ring-on-dark); }
+.activity-timeline .is-unavailable > span { border-style: dashed; color: #8eaaac; }
+.activity-timeline .is-unavailable a { color: #c7d7d9; }
+
+.process-section-head > h2 { max-width: 520px; margin: 0 0 24px; color: var(--navy); font-family: Georgia, 'Times New Roman', serif; font-size: 31px; letter-spacing: -.025em; line-height: 1.1; }
+
+.process-stage-list { list-style: none; margin: 0; padding: 0; border-top: 3px solid var(--navy); }
+.process-stage { display: grid; grid-template-columns: 72px minmax(0, 1fr) 290px; gap: 28px; align-items: start; padding: 28px 0; border-bottom: 1px solid var(--border-strong); scroll-margin-top: 96px; }
+.process-stage:target .process-stage-marker { color: var(--gold-hover); }
+.process-stage-marker { color: var(--navy); font-family: Georgia, 'Times New Roman', serif; font-size: 44px; font-weight: 700; letter-spacing: -.04em; line-height: 1; }
+
+.process-guide .process-stage-role { margin: 0 0 6px; color: var(--teal); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.process-guide .process-stage h3 { margin: 0 0 8px; color: var(--navy); font-family: Georgia, 'Times New Roman', serif; font-size: 23px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.process-guide .process-stage-summary { max-width: 620px; color: var(--text-secondary); font-size: 14px; line-height: 1.65; }
+.process-stage-steps { display: grid; gap: 8px; max-width: 620px; margin: 16px 0 0; padding: 0; list-style: none; }
+.process-stage-steps li { position: relative; padding-left: 20px; color: var(--text); font-size: 13px; line-height: 1.55; }
+.process-stage-steps li::before { content: ''; position: absolute; left: 2px; top: .55em; width: 7px; height: 7px; background: var(--gold); }
+
+.process-stage-record { display: grid; gap: 10px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border-strong); border-left: 3px solid var(--gold); border-radius: 2px; }
+.process-stage-record .activity-label { color: var(--text-secondary); }
+.process-record-row strong { display: block; color: var(--navy); font-size: 14px; line-height: 1.35; }
+.process-record-arrow { color: var(--teal); transform: rotate(90deg); }
+.process-record-statuses { padding-top: 12px; border-top: 1px solid var(--border); }
+.process-record-statuses ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.process-record-statuses li { padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 3px; background: #fafaf7; color: var(--navy); font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; }
+.process-status-scope { color: var(--teal); font-weight: 700; }
+.process-guide .process-record-note { padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+
+.process-stage.is-unavailable .process-stage-marker { color: var(--text-secondary); }
+.process-stage.is-unavailable .process-stage-role { color: var(--text-secondary); }
+.process-stage.is-unavailable .process-stage-record { background: transparent; border-style: dashed; border-left: 3px dashed var(--border-strong); }
+.process-stage.is-unavailable .process-stage-steps li::before { background: var(--border-strong); }
+
+.process-guide .process-bulletin-intro { padding: 16px 22px 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+.official-bulletin .process-requirement { display: flex; align-items: center; gap: 10px; padding: 11px 22px; }
+.process-requirement svg { flex: 0 0 auto; color: var(--teal); }
+.process-guide .process-requirement p { color: var(--navy); font-size: 13px; font-weight: 600; }
+
+.process-cta { padding: 34px; color: #edf3f1; background: var(--navy); border: 1px solid #071a25; border-radius: 3px; box-shadow: 12px 12px 0 rgba(183, 144, 63, 0.22); }
+.process-cta .hero-kicker { color: #e2bf72; }
+.process-guide .process-cta h2 { margin: 0; color: #fff; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; letter-spacing: -.025em; line-height: 1.15; }
+.process-guide .process-cta p:not(.hero-kicker) { margin-top: 14px; color: #b8cbcd; font-size: 14px; line-height: 1.6; }
+.process-cta .process-cta-link { color: #e2bf72; }
+.process-cta .process-cta-link:hover { color: #fff; }
+.process-cta :where(a):focus-visible { outline-color: var(--focus-ring-on-dark); }
+
+@media (max-width: 900px) {
+  .process-stage { grid-template-columns: 56px minmax(0, 1fr); gap: 18px 20px; }
+  .process-stage-record { grid-column: 2; }
+  .process-stage-marker { font-size: 36px; }
+}
+
+@media (max-width: 640px) {
+  .process-stage { grid-template-columns: 1fr; gap: 14px; padding: 22px 0; }
+  .process-stage-record { grid-column: auto; }
+  .process-stage-marker { font-size: 30px; }
+  .process-section-head > h2 { font-size: 26px; }
+  .process-cta { padding: 26px 22px; box-shadow: 8px 8px 0 rgba(183, 144, 63, 0.22); }
+}
+
+/* ── END USER LIVE STATUS: collapsible PR records ──────────────────────────
+   The record header is the toggle; the body (facts, timeline, details) is
+   hidden while collapsed. */
+.buyer-status-record { padding: 0; overflow: hidden; }
+.buyer-status-toggle { width: 100%; padding: 14px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.buyer-status-toggle:hover { background: var(--teal-tint); }
+.buyer-status-toggle:focus-visible { outline-offset: -3px; }
+.buyer-status-record-title { display: grid; gap: 3px; min-width: 0; }
+.buyer-status-record-head .buyer-status-record-meta { color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.buyer-status-record-aside { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.buyer-status-chevron { color: var(--navy); transition: transform var(--duration-base) var(--ease-standard); }
+.buyer-status-record.is-open .buyer-status-chevron { transform: rotate(180deg); }
+.buyer-status-record.is-open .buyer-status-toggle { border-bottom: 1px solid #e5edef; }
+.buyer-status-record-body { padding: 0 16px 16px; }
+.buyer-status-record-body > .buyer-status-facts:first-child { margin-top: 0; border-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .buyer-status-chevron { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .buyer-status-record-aside { width: 100%; justify-content: space-between; }
+}
+
+/* ── PHONE FIELD: country calling code + grouped national number ───────────
+   The native <select> is transparent and stretched over a compact "PH +63"
+   face, so the closed control stays narrow but keeps native keyboard and
+   screen-reader behaviour. The two controls share one border. */
+.phone-field { display: flex; align-items: stretch; min-width: 0; }
+.phone-field-country { position: relative; flex: 0 0 auto; display: flex; }
+.phone-field-country-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: #f3f5f1;
+  color: var(--navy);
+  white-space: nowrap;
+}
+.phone-field .phone-field-country-face span { font-size: 14px; }
+.phone-field .phone-field-country-face .phone-field-country-code { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.phone-field .phone-field-country-face .phone-field-dial { font-weight: 700; font-variant-numeric: tabular-nums; }
+.phone-field-country-face svg { color: var(--text-secondary); }
+.phone-field .phone-field-country select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.phone-field-country:hover .phone-field-country-face { background: var(--teal-tint); }
+.phone-field-country:focus-within .phone-field-country-face {
+  border-color: var(--teal);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  position: relative;
+  z-index: 1;
+}
+.phone-field .phone-field-country + input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+.phone-field:has(input[aria-invalid="true"]) .phone-field-country-face { border-color: var(--danger); }

@@ -1,6 +1,6 @@
 // App shell: landmarks, current-page state, breadcrumbs, locked items.
 import { describe, expect, it } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { installApi, renderAt, signIn } from '../harness'
 import { adminUser, supplierUser } from '../fixtures'
 
@@ -10,6 +10,17 @@ describe('app shell', () => {
     renderAt('/')
     expect(screen.getByRole('link', { name: /skip to main content/i })).toHaveAttribute('href', '#main-content')
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+  })
+
+  it('opens the process guide from the home page', async () => {
+    installApi({})
+    const { user } = renderAt('/')
+
+    await user.click(screen.getByRole('link', { name: /view the process/i }))
+    expect(screen.getByRole('heading', { level: 1, name: /how a request becomes a quotation/i })).toBeInTheDocument()
+    const index = screen.getByRole('navigation', { name: 'Process stages' })
+    expect(within(index).getByRole('link', { name: /bac review and pr numbering/i })).toHaveAttribute('href', '#stage-review')
+    expect(screen.getAllByText(/not yet tracked in eprocure/i)).toHaveLength(1)
   })
 
   it('marks the active Admin tab and shows breadcrumbs off the dashboard', async () => {

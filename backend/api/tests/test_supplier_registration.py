@@ -9,7 +9,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from api.models import Category, Notification, PurchaseRequest, PurchaseRequestItem, Quotation, RFQ, RFQItem, Role, Supplier, SupplierCategory, SupplierDocument, User
-from api.supplier_registration import get_required_business_document_key, validate_supplier_payload
+from api.supplier_registration import get_required_business_document_key, is_valid_phone_number, validate_supplier_payload
 from api.views import hash_password
 
 
@@ -77,6 +77,17 @@ class SupplierRegistrationValidationTests(SimpleTestCase):
         self.assertIn('Phone number must be valid', errors)
         self.assertIn('Email address must be valid', errors)
         self.assertIn('At least one category must be selected', errors)
+
+    def test_phone_numbers_in_grouped_international_form_are_accepted(self):
+        # The registration form sends "+<dial code> <grouped national number>".
+        for number in ('+63 917 123 4567', '+63 32 463 9313', '+1 415 555 0123', '+65 8123 4567', '09171234567', '0917-123-4567'):
+            with self.subTest(number=number):
+                self.assertTrue(is_valid_phone_number(number))
+
+    def test_malformed_phone_numbers_are_rejected(self):
+        for number in ('', 'abc', '+63', '123456', '+63 917 123 4567 8901 23', '917+1234567', '+ 63 917 123 4567'):
+            with self.subTest(number=number):
+                self.assertFalse(is_valid_phone_number(number))
 
     def test_business_type_specific_document_is_required(self):
         self.assertEqual(get_required_business_document_key('Sole Proprietorship'), 'dti_registration')

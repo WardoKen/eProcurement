@@ -24,7 +24,7 @@ exports[`supplier registration wizard > submits the full registration as multipa
   ],
   [
     "contactNumber",
-    "09171234567",
+    "+63 917 123 4567",
   ],
   [
     "email",
