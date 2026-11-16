@@ -159,7 +159,7 @@ for (const [user, path, label, steps = []] of scenarios) {
         body: JSON.stringify(body ?? { message: 'not mocked' }),
       })
     }
-    if (url.includes('fonts.googleapis') || url.includes('fonts.gstatic') || url.includes('recaptcha')) return req.abort()
+    if (url.includes('fonts.googleapis') || url.includes('fonts.gstatic')) return req.abort()
     return req.continue()
   })
   if (user) {

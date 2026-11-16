@@ -2996,12 +2996,6 @@ def purchase_request_details(request, pr_id):
     })
 
 
-@csrf_exempt
-@require_POST
-def verify_recaptcha(request):
-    return JsonResponse({'success': True})
-
-
 # ─── PR Item Category Assignment ─────────────────────────────────────────────
 
 @require_GET

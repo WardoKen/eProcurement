@@ -54,5 +54,4 @@ urlpatterns = [
     path('suppliers/<int:supplier_id>/notifications/', views.supplier_notifications, name='supplier_notifications'),
     path('notifications/<int:notification_id>/read/', views.supplier_mark_notification_read, name='mark_notification_read'),
     path('pr/<int:pr_id>/details/', views.purchase_request_details, name='pr_details'),
-    path('verify-recaptcha/', views.verify_recaptcha, name='verify_recaptcha'),
 ]

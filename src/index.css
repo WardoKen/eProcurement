@@ -3433,13 +3433,6 @@ summary:focus-visible {
   font-size: 12px;
 }
 
-.g-recaptcha-box {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 10px;
-}
-
 .dashboard-header {
   margin-bottom: 16px;
 }

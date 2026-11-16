@@ -218,9 +218,6 @@ pre-verified steps):
   API endpoints are decorated `@csrf_exempt` throughout `backend/api/views.py`;
   authentication and authorization rely on the session cookie and
   server-side role checks alone, not a CSRF token.
-- **reCAPTCHA is not verified server-side.** The `verify-recaptcha`
-  endpoint always returns success - the reCAPTCHA widget on supplier
-  registration is currently a display element, not an enforced check.
 - **Supplier matching is rule-based, not machine learning.** A supplier is
   "matched" to a PR category when it's registered for that category,
   approved, and has its required documents verified - deliberately, not as

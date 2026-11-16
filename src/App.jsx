@@ -202,114 +202,6 @@ const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
   }
 }
 
-const verifyRecaptchaToken = async (token) => {
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-  if (!token) return false
-
-  const response = await apiFetch(`${apiBaseUrl}/api/verify-recaptcha`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  })
-
-  const result = await response.json()
-  return response.ok && result.success
-}
-
-const RecaptchaWidget = ({ onChange, error }) => {
-  const containerRef = React.useRef(null)
-  const widgetIdRef = React.useRef(null)
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || ''
-
-  React.useEffect(() => {
-    if (!siteKey) return undefined
-
-    let cancelled = false
-
-    const renderWidget = () => {
-      if (cancelled || !containerRef.current || !window.grecaptcha?.render) return
-
-      try {
-        if (widgetIdRef.current !== null && window.grecaptcha?.reset) {
-          window.grecaptcha.reset(widgetIdRef.current)
-        }
-
-        widgetIdRef.current = window.grecaptcha.render(containerRef.current, {
-          sitekey: siteKey,
-          callback: (token) => onChange(token),
-          'expired-callback': () => onChange(''),
-          'error-callback': () => onChange(''),
-        })
-      } catch (renderError) {
-        console.error('reCAPTCHA render failed', renderError)
-      }
-    }
-
-    const startRender = () => {
-      if (window.grecaptcha?.render) {
-        renderWidget()
-        return
-      }
-
-      if (window.grecaptcha?.ready) {
-        window.grecaptcha.ready(() => {
-          if (!cancelled) renderWidget()
-        })
-        return
-      }
-
-      const existingScript = document.querySelector('script[src*="recaptcha/api.js"]')
-      if (existingScript) {
-        if (existingScript.dataset.loaded === 'true' || window.grecaptcha?.render) {
-          renderWidget()
-        } else {
-          existingScript.addEventListener('load', () => {
-            if (!cancelled) renderWidget()
-          }, { once: true })
-        }
-        return
-      }
-
-      const script = document.createElement('script')
-      script.id = 'recaptcha-script'
-      script.src = 'https://www.google.com/recaptcha/api.js?render=explicit'
-      script.async = true
-      script.defer = true
-      script.onload = () => {
-        script.dataset.loaded = 'true'
-        if (!cancelled) renderWidget()
-      }
-      script.onerror = () => console.error('Failed to load the reCAPTCHA script')
-      document.body.appendChild(script)
-    }
-
-    startRender()
-
-    return () => {
-      cancelled = true
-      if (widgetIdRef.current !== null && window.grecaptcha?.reset) {
-        try {
-          window.grecaptcha.reset(widgetIdRef.current)
-        } catch (resetError) {
-          console.error('reCAPTCHA reset failed', resetError)
-        }
-      }
-    }
-  }, [onChange, siteKey])
-
-  return (
-    <div className="form-field captcha-field">
-      <div ref={containerRef} className="g-recaptcha-box" />
-      {!siteKey && (
-        <div style={{ color: '#b91c1c', fontSize: '0.9rem', marginTop: 6 }}>
-          Add a reCAPTCHA site key in VITE_RECAPTCHA_SITE_KEY to enable this widget.
-        </div>
-      )}
-      {error && <div style={{ color: '#b91c1c', fontSize: '0.9rem', marginTop: 6 }}>{error}</div>}
-    </div>
-  )
-}
-
 const Home = () => (
   <div className="page-content institutional-home">
     <section className="procurement-hero">
@@ -863,12 +755,17 @@ const FAQ = () => (
 
           <details className="faq-item">
             <summary><strong>How do I access my account?</strong></summary>
-            <p>Visit the login page and enter your credentials. If you don't have an account, you can register as either an end user (university/department) or supplier. Make sure to use the correct login role.</p>
+            <p>Go to the login page, choose your role (End User or Supplier), and enter your username and password. Suppliers create their own account with "Register as Supplier" on the login page. End User accounts are created by the BAC Secretariat; End Users cannot register themselves.</p>
+          </details>
+
+          <details className="faq-item">
+            <summary><strong>I received an email asking me to set my password. What is it?</strong></summary>
+            <p>When the BAC Secretariat creates an End User account for you, eProcure emails your username and a link to set your own password. Open the link, choose a password, then log in with your username and the new password. The link works for 3 days; if it has expired, use "Forgot Password" on the login page to get a new one.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>I forgot my password. What should I do?</strong></summary>
-            <p>Click "Forgot Password" on the login page and enter your username or registered email. If an account is found, we'll email you a link to reset your password yourself - no need to contact the BAC office.</p>
+            <p>Click "Forgot Password" on the login page and enter your username or registered email. If an account is found, we'll email you a link to reset your password yourself - no need to contact the BAC office. The link expires after 30 minutes and can be used once.</p>
           </details>
         </section>
 
@@ -878,17 +775,17 @@ const FAQ = () => (
           
           <details className="faq-item">
             <summary><strong>How do I submit a Purchase Request?</strong></summary>
-            <p>Log in to your end user account and navigate to the Dashboard. Upload your signed PR document (PDF or image). The OCR system will automatically extract key information. BAC staff will review and number the request before supplier matching begins.</p>
+            <p>Log in to your End User account and, on the Dashboard, upload your signed PR under "Submit a Purchase Request". eProcure reads the details from the document (OCR) so you can check them before submitting. The BAC Secretariat then reviews the request and assigns its PR number before supplier matching begins.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>What file formats are accepted for PR uploads?</strong></summary>
-            <p>We accept PDF, JPG, PNG, and other common image formats. Ensure your PR document is clearly scanned or printed for best OCR accuracy.</p>
+            <p>PDF, JPG, JPEG, or PNG, up to 10 MB. Make sure the PR is clearly scanned or photographed so the details are read correctly.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>How can I track my Purchase Request status?</strong></summary>
-            <p>After submitting a PR, it will appear in your Live Status tab. You'll see real-time updates as the BAC reviews and matches it with qualified suppliers.</p>
+            <p>Every PR you submit appears in the Live Status tab, where you can open each one to see its current status and PR number. eProcure also emails you when the BAC receives your PR and when it is placed under review with a PR number, and may email you about later status changes, depending on the BAC's notification settings.</p>
           </details>
 
           <details className="faq-item">
@@ -903,27 +800,27 @@ const FAQ = () => (
           
           <details className="faq-item">
             <summary><strong>How do I register as a supplier?</strong></summary>
-            <p>Click "Supplier Registration" on the login page and complete the registration form with your company details, contact information, and upload required documents (DTI, BIR, business permit, PhilGEPS, etc.). BAC will review your submission and notify you of approval status.</p>
+            <p>Click "Register as Supplier" on the login page and complete the registration form: company details, contact information (with your phone number and TIN), the procurement categories you supply, and the required documents. The BAC reviews your submission, and you'll receive an email once your registration is approved.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>What documents are required for supplier registration?</strong></summary>
-            <p>Required documents include: DTI/SEC Registration, Business Permit, BIR 2303 form, Tax Clearance, CDA Certificate (if applicable), and PhilGEPS Certificate. All documents must be valid and current.</p>
+            <p>Required: Mayor's Permit, Business Permit, PhilGEPS Registration, BIR Certificate of Registration (Form 2303), and Tax Clearance, plus the registration that matches your business type - DTI for a sole proprietorship, SEC for a corporation or partnership, or CDA for a cooperative. You may also attach up to 10 other eligibility documents. Each file must be a PDF, JPG, JPEG, or PNG of up to 10 MB, and all documents must be valid and current.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>My account is showing "Pending Review". What does this mean?</strong></summary>
-            <p>Your registration is being verified by BAC administrators. This typically takes 3-5 business days. Once approved, you'll receive an email notification and can immediately access all procurement opportunities.</p>
+            <p>Your registration is waiting to be verified by the BAC. Once it is approved, you'll receive an email at your registered address and can start receiving RFQs. If your status changes to "For Compliance", the BAC needs additional or corrected documents - contact the BAC office for the details.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>How do I respond to a Request for Quotation (RFQ)?</strong></summary>
-            <p>Open the RFQ under "RFQs", download the generated RFQ PDF, then print it. Fill in the required supplier fields (brand/model, unit prices, totals, contact information), sign it, scan or photograph it as a single PDF, and upload the completed document in the "Completed RFQ Submission" area of that same RFQ.</p>
+            <p>When the BAC sends you an RFQ, you'll receive it by email with the RFQ PDF attached, and it also appears under "RFQs" in your portal. Print the RFQ, fill in the supplier fields (brand/model, unit prices, totals, contact information), and sign it. Then scan it as a single PDF (up to 10 MB) and upload it under "Completed RFQ Submission" on that RFQ's page.</p>
           </details>
 
           <details className="faq-item">
             <summary><strong>Can I change my completed RFQ after uploading it?</strong></summary>
-            <p>While the RFQ is still open for a response, you can use "Replace Submission" to upload a corrected version. Your original submission is kept for the BAC's records. Once the BAC finalizes the RFQ, contact them directly for any changes.</p>
+            <p>Yes, while the RFQ is still open for a response. Use "Replace Submission" on the RFQ's page to upload a corrected PDF; it replaces your earlier upload. Once the RFQ is closed, contact the BAC office for any changes.</p>
           </details>
         </section>
 
