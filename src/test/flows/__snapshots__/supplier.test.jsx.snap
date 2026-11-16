@@ -74,5 +74,13 @@ exports[`supplier registration wizard > submits the full registration as multipa
     "dti_registration",
     "file:dti.pdf",
   ],
+  [
+    "other_eligibility",
+    "file:audited-fs.pdf",
+  ],
+  [
+    "other_eligibility",
+    "file:omnibus.pdf",
+  ],
 ]
 `;

@@ -49,17 +49,19 @@ describe('end user accounts', () => {
     const api = installApi({
       ...baseRoutes,
       'GET /api/buyer-accounts/': { json: [] },
-      'POST /api/register/': { json: { message: 'created' } },
+      'POST /api/register/': { json: { success: true, welcome_email_sent: true, email: 'ana@ctu.edu.ph' } },
     })
     const { user } = renderAt('/admin')
     await user.click(screen.getAllByRole('button', { name: /end user accounts/i })[0])
 
-    await user.type(await screen.findByPlaceholderText('End User name'), ' Ana Cruz ')
+    // No password fields: the End User sets their own from the setup email.
+    expect(await screen.findByText(/one-time link to set their own password/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText('End User name'), ' Ana Cruz ')
     await user.type(screen.getByPlaceholderText('enduser.username'), 'ana.cruz')
     await user.type(screen.getByPlaceholderText('enduser@office.edu'), 'ana@ctu.edu.ph')
     await user.type(screen.getByPlaceholderText('Procurement Office'), 'ICT Office')
-    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'secret123')
-    await user.type(screen.getByPlaceholderText('Re-enter password'), 'secret123')
     await user.click(screen.getByRole('button', { name: /create end user account/i }))
 
     await waitFor(() => expect(api.find('POST', '/api/register/')).toHaveLength(1))
@@ -68,14 +70,18 @@ describe('end user accounts', () => {
       fullName: 'Ana Cruz',
       email: 'ana@ctu.edu.ph',
       unitOffice: 'ICT Office',
-      password: 'secret123',
       role: 'buyer',
     })
+    expect(await screen.findByText('End User account created. A setup email was sent to ana@ctu.edu.ph.')).toBeInTheDocument()
   })
 
-  it('mismatched passwords never reach the server', async () => {
+  it('tells the admin when the setup email could not be sent', async () => {
     signIn(adminUser)
-    const api = installApi({ ...baseRoutes, 'GET /api/buyer-accounts/': { json: [] } })
+    installApi({
+      ...baseRoutes,
+      'GET /api/buyer-accounts/': { json: [] },
+      'POST /api/register/': { status: 201, json: { success: true, welcome_email_sent: false, email: 'ana@ctu.edu.ph' } },
+    })
     const { user } = renderAt('/admin')
     await user.click(screen.getAllByRole('button', { name: /end user accounts/i })[0])
 
@@ -83,12 +89,9 @@ describe('end user accounts', () => {
     await user.type(screen.getByPlaceholderText('enduser.username'), 'ana.cruz')
     await user.type(screen.getByPlaceholderText('enduser@office.edu'), 'ana@ctu.edu.ph')
     await user.type(screen.getByPlaceholderText('Procurement Office'), 'ICT Office')
-    await user.type(screen.getByPlaceholderText('At least 8 characters'), 'secret123')
-    await user.type(screen.getByPlaceholderText('Re-enter password'), 'secret999')
     await user.click(screen.getByRole('button', { name: /create end user account/i }))
 
-    expect((await screen.findAllByText(/passwords do not match/i)).length).toBeGreaterThan(0)
-    expect(api.find('POST', '/api/register/')).toHaveLength(0)
+    expect(await screen.findByText(/the setup email to ana@ctu\.edu\.ph could not be sent/i)).toBeInTheDocument()
   })
 
   it('deletes an account after confirmation', async () => {
@@ -132,7 +135,7 @@ describe('PR settings', () => {
 
   it('saves the PR notification settings', async () => {
     signIn(adminUser)
-    const settings = { enabled: true, notify_in_review: true, notify_matched: true, notify_approved: true, notify_rejected: true, mute_automatic_transitions: false }
+    const settings = { enabled: true, notify_submitted: true, notify_in_review: true, notify_matched: true, notify_approved: true, notify_rejected: true, mute_automatic_transitions: false }
     const api = installApi({
       ...baseRoutes,
       'GET /api/admin/pr-notification-settings/': { json: settings },

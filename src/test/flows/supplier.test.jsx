@@ -1,7 +1,7 @@
 // Processes 1, 8, 11 for suppliers: registration, quotation (completed RFQ)
 // submission, and the supplier dashboard.
 import { describe, expect, it } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { installApi, pdfFile, renderAt, signIn } from '../harness'
 import { supplierRfq, supplierUser } from '../fixtures'
 
@@ -145,11 +145,58 @@ describe('supplier registration wizard', () => {
     for (const [index, name] of names.entries()) {
       await user.upload(inputs[index], pdfFile(name))
     }
+    await user.upload(screen.getByLabelText('Other Eligibility Requirements'), [pdfFile('audited-fs.pdf'), pdfFile('omnibus.pdf')])
     await user.click(screen.getByRole('button', { name: /^continue$/i }))
     await user.click(await screen.findByRole('button', { name: /submit registration/i }))
 
     await waitFor(() => expect(api.find('POST', '/api/suppliers/register')).toHaveLength(1))
     expect(api.find('POST', '/api/suppliers/register')[0].body).toMatchSnapshot()
+  })
+
+  it('tracks attached documents and shows a rejected file on its card', async () => {
+    installApi({ 'GET /api/categories/': { json: [{ id: 1, name: 'IT Equipment' }] } })
+    const { user } = renderAt('/supplier/register')
+
+    await user.type(screen.getByLabelText(/company \/ supplier name/i), 'Acme Supplies, Inc.')
+    await user.type(screen.getByLabelText(/business address/i), 'Cebu City')
+    await user.type(screen.getByLabelText(/tin number/i), '123456789000')
+    await user.type(screen.getByLabelText(/contact person/i), 'Jo Reyes')
+    await user.type(screen.getByLabelText(/email address/i), 'sales@acme.ph')
+    await user.type(screen.getByLabelText(/phone number/i), '9171234567')
+    await user.type(screen.getByLabelText(/^username/i), 'acme')
+    await user.type(screen.getByLabelText(/^password/i), 'secret123')
+    await user.type(screen.getByLabelText(/^confirm password/i), 'secret123')
+    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+    await user.type(await screen.findByLabelText(/^products \/ services/i), 'Computers')
+    await user.click(await screen.findByRole('checkbox', { name: 'IT Equipment' }))
+    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+
+    expect(await screen.findByText('0 of 6 required documents attached')).toBeInTheDocument()
+    const mayor = screen.getByLabelText("Mayor's Permit")
+    await user.upload(mayor, pdfFile('mayor.pdf'))
+    expect(screen.getByText('1 of 6 required documents attached')).toBeInTheDocument()
+    expect(screen.getByText('mayor.pdf')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: "Remove Mayor's Permit file" }))
+    expect(screen.getByText('0 of 6 required documents attached')).toBeInTheDocument()
+
+    const permit = screen.getByLabelText('Business Permit')
+    fireEvent.change(permit, { target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] } })
+    expect(permit).toHaveAttribute('aria-invalid', 'true')
+    expect(document.getElementById(permit.getAttribute('aria-describedby').split(' ').pop())).toHaveTextContent(/notes\.txt/)
+
+    // Other Eligibility Requirements takes several files, skipping duplicates.
+    const other = screen.getByLabelText('Other Eligibility Requirements')
+    const audited = pdfFile('audited-fs.pdf')
+    await user.upload(other, [audited, pdfFile('omnibus.pdf')])
+    await user.upload(other, [audited, pdfFile('net-worth.pdf')])
+    const otherList = screen.getByRole('list', { name: 'Other Eligibility Requirements files' })
+    expect(within(otherList).getAllByRole('listitem').map((item) => item.querySelector('strong').textContent))
+      .toEqual(['audited-fs.pdf', 'omnibus.pdf', 'net-worth.pdf'])
+    expect(screen.getByText('3 attached')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Remove omnibus.pdf' }))
+    expect(within(otherList).getAllByRole('listitem')).toHaveLength(2)
   })
 
   it('switches country and regroups the phone number', async () => {

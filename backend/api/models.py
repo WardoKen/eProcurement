@@ -209,6 +209,9 @@ class PRNotificationSettings(models.Model):
 
     key = models.CharField(max_length=20, primary_key=True, default='global')
     enabled = models.BooleanField(default=True)
+    # The "received by the BAC" confirmation sent when an End User submits a
+    # PR (not a status transition, so it sits outside _PR_STATUS_NOTIFY_FIELDS).
+    notify_submitted = models.BooleanField(default=True)
     notify_in_review = models.BooleanField(default=True)
     notify_matched = models.BooleanField(default=True)
     notify_approved = models.BooleanField(default=True)

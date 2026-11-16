@@ -145,6 +145,68 @@ class SupplierRegistrationValidationTests(SimpleTestCase):
         self.assertNotIn('has an unsupported file type', errors)
 
 
+class SupplierRegistrationOtherDocumentsTests(TestCase):
+    """Other Eligibility Requirements: several optional files per registration."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        override = override_settings(BASE_DIR=self._tmp.name)
+        override.enable()
+        self.addCleanup(override.disable)
+        Role.objects.get_or_create(name='supplier')
+        self.category = Category.objects.create(name='Office Supplies')
+
+    def _post(self, **extra_files):
+        def pdf(name):
+            return SimpleUploadedFile(name, _PDF_BYTES, content_type='application/pdf')
+
+        data = {
+            'companyName': 'Acme Supply', 'businessType': 'Sole Proprietorship', 'businessAddress': '123 Main',
+            'contactPerson': 'Jane Doe', 'contactNumber': '+63 917 123 4567', 'email': 'jane@example.com',
+            'productsServices': 'Office supplies', 'category_ids': str(self.category.id),
+            'mayor_permit': pdf('mayor.pdf'), 'business_permit': pdf('business.pdf'),
+            'philgeps_registration': pdf('philgeps.pdf'), 'bir_registration': pdf('bir.pdf'),
+            'tax_clearance': pdf('tax.pdf'), 'dti_registration': pdf('dti.pdf'),
+        }
+        data.update(extra_files)
+        return self.client.post('/api/suppliers/register', data=data, format='multipart')
+
+    @staticmethod
+    def _pdfs(count):
+        return [SimpleUploadedFile(f'extra-{index}.pdf', _PDF_BYTES, content_type='application/pdf') for index in range(count)]
+
+    def test_every_other_eligibility_file_is_saved(self):
+        response = self._post(other_eligibility=self._pdfs(3))
+
+        self.assertEqual(response.status_code, 201, response.content)
+        supplier = Supplier.objects.get(email='jane@example.com')
+        saved = SupplierDocument.objects.filter(supplier=supplier, doc_type='other_eligibility')
+        self.assertEqual(sorted(saved.values_list('original_name', flat=True)), ['extra-0.pdf', 'extra-1.pdf', 'extra-2.pdf'])
+
+    def test_more_than_the_limit_is_rejected(self):
+        response = self._post(other_eligibility=self._pdfs(11))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('You can attach up to 10 other eligibility documents', response.json()['errors'])
+        self.assertFalse(Supplier.objects.exists())
+
+    def test_each_other_eligibility_file_is_validated(self):
+        bad = SimpleUploadedFile('notes.txt', b'plain text', content_type='text/plain')
+        response = self._post(other_eligibility=self._pdfs(1) + [bad])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Supplier.objects.exists())
+
+    def test_legacy_additional_files_are_validated_too(self):
+        bad = SimpleUploadedFile('notes.txt', b'plain text', content_type='text/plain')
+        response = self._post(additionalFiles=[bad])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Supplier.objects.exists())
+
+
 class SupplierAdminReviewTests(TestCase):
     def test_supplier_registration_creates_login_account(self):
         role = Role.objects.get_or_create(name='supplier')[0]
@@ -362,6 +424,69 @@ class SupplierAdminReviewTests(TestCase):
         self.assertEqual(supplier.status, 'Approved')
 
 
+class SupplierApprovalEmailTests(TestCase):
+    """Approving a supplier emails their registered address (Django's test
+    runner swaps in the in-memory mail backend, so nothing is really sent)."""
+
+    def setUp(self):
+        _login_as(self.client, 'admin')
+
+    def _set_status(self, supplier, status, remarks=''):
+        return self.client.patch(
+            f'/api/suppliers/{supplier.id}/status/',
+            data=json.dumps({'status': status, 'remarks': remarks}),
+            content_type='application/json',
+        )
+
+    def test_approval_emails_the_registered_address(self):
+        from django.core import mail
+
+        supplier = Supplier.objects.create(
+            company_name='Acme Supply', contact_person='Jane Doe', email='sales@acme.example', status='Pending Review',
+        )
+        response = self._set_status(supplier, 'Approved')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['approval_email_sent'])
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['sales@acme.example'])
+        self.assertIn('approved', message.subject.lower())
+        self.assertIn('Jane Doe', message.body)
+        self.assertIn('Acme Supply', message.body)
+        self.assertIn(f'{settings.FRONTEND_ORIGIN}/login', message.body)
+
+    def test_reconfirming_an_approved_supplier_sends_nothing(self):
+        from django.core import mail
+
+        supplier = Supplier.objects.create(company_name='Acme Supply', email='sales@acme.example', status='Approved')
+        response = self._set_status(supplier, 'Approved')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['approval_email_sent'])
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_other_decisions_send_no_approval_email(self):
+        from django.core import mail
+
+        supplier = Supplier.objects.create(company_name='Acme Supply', email='sales@acme.example', status='Pending Review')
+        self._set_status(supplier, 'For Compliance', remarks='Upload a clearer PhilGEPS certificate.')
+        self._set_status(supplier, 'Rejected', remarks='Incomplete documents.')
+
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_a_mail_server_failure_still_approves_the_supplier(self):
+        supplier = Supplier.objects.create(company_name='Acme Supply', email='sales@acme.example', status='Pending Review')
+        with patch('api.views.EmailMessage.send', side_effect=OSError('SMTP unreachable')), \
+                self.assertLogs('api.views', level='ERROR'):
+            response = self._set_status(supplier, 'Approved')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['approval_email_sent'])
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.status, 'Approved')
+
+
 class AccountDeletionTests(TestCase):
     def setUp(self):
         _login_as(self.client, 'admin')
@@ -509,6 +634,46 @@ class RFQWorkflowTests(TestCase):
         self.assertEqual(mail.outbox[0].attachments, [])
 
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_rfq_email_is_written_from_the_rfq_not_typed_by_the_admin(self):
+        from django.core import mail
+
+        response = self.client.post(
+            f'/api/pr/{self.pr.id}/rfq/',
+            data=json.dumps({
+                'supplier_id': self.supplier.id,
+                'mode_of_procurement': 'Small Value Procurement',
+                'quotation_basis': 'LINE',
+                'additional_notes': 'Delivery within 15 calendar days.',
+                # A typed subject/message is no longer used.
+                'subject': 'Typed subject', 'message': 'Typed message',
+                'send': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        rfq = RFQ.objects.get(id=response.json()['id'])
+        email = mail.outbox[0]
+        self.assertEqual(email.subject, f'Request for Quotation {rfq.rfq_no} - PR 2026-08-001 (Air Conditioning)')
+        for expected in (
+            'Good day, Juan Dela Cruz.',
+            'CoolTech Climate Solutions Inc.',
+            f'RFQ No.: {rfq.rfq_no}',
+            'PR No.: 2026-08-001',
+            'Category: Air Conditioning',
+            'Items: 1',
+            'Mode of procurement: Small Value Procurement',
+            'Per line item',
+            'Delivery within 15 calendar days.',
+            f'select {rfq.rfq_no}',
+            'Completed RFQ Submission',
+        ):
+            self.assertIn(expected, email.body)
+        self.assertNotIn('Typed', email.subject + email.body)
+        # What the supplier received is kept on the RFQ.
+        self.assertEqual((rfq.subject, rfq.message), (email.subject, email.body))
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_cannot_create_second_rfq_for_supplier_after_sending(self):
         sent = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
@@ -529,7 +694,7 @@ class RFQWorkflowTests(TestCase):
     def test_second_post_without_rfq_id_reuses_existing_draft(self):
         first = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'First', 'message': 'M'}),
+            data=json.dumps({'supplier_id': self.supplier.id, 'additional_notes': 'First'}),
             content_type='application/json',
         )
         self.assertEqual(first.status_code, 201)
@@ -537,13 +702,13 @@ class RFQWorkflowTests(TestCase):
 
         second = self.client.post(
             f'/api/pr/{self.pr.id}/rfq/',
-            data=json.dumps({'supplier_id': self.supplier.id, 'subject': 'Second', 'message': 'M'}),
+            data=json.dumps({'supplier_id': self.supplier.id, 'additional_notes': 'Second'}),
             content_type='application/json',
         )
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()['id'], rfq_id)
         self.assertEqual(RFQ.objects.filter(purchase_request=self.pr, supplier=self.supplier).count(), 1)
-        self.assertEqual(RFQ.objects.get(id=rfq_id).subject, 'Second')
+        self.assertEqual(RFQ.objects.get(id=rfq_id).additional_notes, 'Second')
 
     def test_rfq_rejects_supplier_without_matching_category(self):
         other_supplier = Supplier.objects.create(company_name='Other Supplier', email='other@example.com', status='Approved')

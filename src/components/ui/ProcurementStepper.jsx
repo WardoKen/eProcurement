@@ -1,42 +1,55 @@
 import { Check } from 'lucide-react'
 
-// Visible position of one RFQ record in the RFQ → Quotation → Evaluation → PO
-// workflow. Display only: it reads the RFQ's stored status and never changes
-// it. Evaluation and PO Issuance are shown as not yet available because
-// eProcure has no backend for them yet (see docs/ui-audit.md §3).
-const STEPS = [
-  { key: 'prepared', label: 'RFQ Prepared' },
-  { key: 'sent', label: 'RFQ Sent' },
-  { key: 'quotation', label: 'Quotation Received' },
-  { key: 'evaluation', label: 'Evaluation', unavailable: true },
-  { key: 'po', label: 'PO Issuance', unavailable: true },
-]
-
-// Index of the step in progress for each stored RFQ status. A sent RFQ has
-// finished "RFQ Sent" and is waiting on the quotation.
-const CURRENT_INDEX = {
-  draft: 0,
-  sent: 2,
-  quotation_received: 3,
-  completed: 3,
+// Visible position of one RFQ record in the RFQ → Quotation workflow, the part
+// of procurement eProcure handles. Display only: it reads the RFQ's stored
+// status and never changes it.
+//
+// The same RFQ is described from two sides. The BAC sees its own progress
+// (prepare, send, receive); a supplier sees what it has received and what it
+// still has to do.
+const WORKFLOWS = {
+  bac: {
+    steps: [
+      { key: 'prepared', label: 'RFQ Prepared' },
+      { key: 'sent', label: 'RFQ Sent' },
+      { key: 'quotation', label: 'Quotation Received' },
+    ],
+    // Index of the step in progress for each stored RFQ status. A sent RFQ has
+    // finished "RFQ Sent" and is waiting on the quotation; once a quotation is
+    // in (or the RFQ is completed) every step is done.
+    currentIndex: { draft: 0, sent: 2, quotation_received: 3, completed: 3 },
+    currentText: { 0: 'Being prepared', 2: 'Awaiting supplier' },
+    doneText: {},
+    upcomingText: {},
+  },
+  supplier: {
+    steps: [
+      { key: 'received', label: 'RFQ Received' },
+      { key: 'complete', label: 'Fill In & Sign' },
+      { key: 'upload', label: 'Upload Quotation' },
+    ],
+    // A supplier only ever sees an RFQ once it is sent, so "RFQ Received" is
+    // already done and filling in the form is the next action.
+    currentIndex: { sent: 1, quotation_received: 3, completed: 3 },
+    currentText: { 1: 'Your action needed' },
+    doneText: { 0: 'From the BAC', 1: 'Done', 2: 'Submitted to the BAC' },
+    upcomingText: { 2: 'Not uploaded yet' },
+  },
 }
 
-const CURRENT_TEXT = { 0: 'Being prepared', 2: 'Awaiting supplier' }
-
-export default function ProcurementStepper({ status, label = 'RFQ workflow progress' }) {
-  const current = status in CURRENT_INDEX ? CURRENT_INDEX[status] : -1
+export default function ProcurementStepper({ status, audience = 'bac', label = 'RFQ workflow progress' }) {
+  const workflow = WORKFLOWS[audience] || WORKFLOWS.bac
+  const current = status in workflow.currentIndex ? workflow.currentIndex[status] : -1
   return (
     <ol className="procurement-stepper" aria-label={label}>
-      {STEPS.map((step, index) => {
+      {workflow.steps.map((step, index) => {
         let state = 'upcoming'
-        if (step.unavailable) state = 'unavailable'
-        else if (index < current || (index === current && status === 'completed')) state = 'done'
+        if (index < current) state = 'done'
         else if (index === current) state = 'current'
         const stateText = {
-          done: 'Completed',
-          current: CURRENT_TEXT[index] || 'In progress',
-          upcoming: 'Not started',
-          unavailable: 'Not yet available in eProcure',
+          done: workflow.doneText[index] || 'Completed',
+          current: workflow.currentText[index] || 'In progress',
+          upcoming: workflow.upcomingText[index] || 'Not started',
         }[state]
         return (
           <li

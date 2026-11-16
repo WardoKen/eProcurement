@@ -97,6 +97,22 @@ describe('password reset', () => {
     ])
   })
 
+  it('a welcome-email link reads as setting a first password', async () => {
+    const api = installApi({ 'POST /api/reset-password/': { json: { message: 'ok' } } })
+    const { user } = renderAt('/reset-password?token=abc123&setup=1')
+
+    expect(screen.getByRole('heading', { name: 'Set your password' })).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText(/^new password/i), 'newsecret1')
+    await user.type(screen.getByPlaceholderText(/confirm new password/i), 'newsecret1')
+    await user.click(screen.getByRole('button', { name: 'Set Password' }))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/login'))
+    expect(await screen.findByText(/your password is set/i)).toBeInTheDocument()
+    expect(api.mutations()).toEqual([
+      { method: 'POST', path: '/api/reset-password/', body: { token: 'abc123', new_password: 'newsecret1' } },
+    ])
+  })
+
   it('mismatched passwords never reach the server', async () => {
     const api = installApi({})
     const { user } = renderAt('/reset-password?token=abc123')

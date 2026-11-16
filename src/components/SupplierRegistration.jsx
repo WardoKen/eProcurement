@@ -4,9 +4,10 @@ import Modal from './ui/Modal'
 import { FieldError, RequiredLegend, RequiredMark } from './ui/FormParts'
 import PhoneField from './ui/PhoneField'
 import GroupedDigitsInput from './ui/GroupedDigitsInput'
+import DocumentUploadCard from './ui/DocumentUploadCard'
 import { TIN_EXAMPLE, formatTin, isValidTin, parseTin } from '../lib/tin'
 import { DEFAULT_PHONE_COUNTRY, findPhoneCountry, formatPhoneNumber, isValidPhoneNumber } from '../lib/phone'
-import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
+import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, validateFile } from '../lib/fileValidation'
 
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 const REQUIREMENT_KIND = UPLOAD_KINDS.SUPPLIER_REQUIREMENT
@@ -18,6 +19,17 @@ const businessDocLabels = {
   'Partnership': 'SEC Registration',
   'Cooperative': 'CDA Registration',
   'Others': null,
+}
+
+// Extra supporting documents a supplier may attach; the backend enforces the
+// same cap (MAX_OTHER_ELIGIBILITY_FILES in supplier_registration.py).
+const MAX_OTHER_ELIGIBILITY_FILES = 10
+
+const BUSINESS_DOC_HINTS = {
+  'Sole Proprietorship': 'DTI Business Name Registration certificate',
+  'Corporation': 'SEC Certificate of Incorporation',
+  'Partnership': 'SEC Certificate of Registration',
+  'Cooperative': 'CDA Certificate of Registration',
 }
 
 function getBusinessDocKey(businessType) {
@@ -63,7 +75,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     sec_registration: null,
     cda_registration: null,
   })
-  const [otherEligibilityFile, setOtherEligibilityFile] = React.useState(null)
+  const [otherEligibilityFiles, setOtherEligibilityFiles] = React.useState([])
   const [errors, setErrors] = React.useState([])
   const [fieldErrors, setFieldErrors] = React.useState({})
   const errorSummaryRef = React.useRef(null)
@@ -100,7 +112,10 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     if (file) {
       const check = validateFile(file, REQUIREMENT_KIND)
       if (!check.ok) {
-        setErrors([`${file.name}: ${check.error}`])
+        // Shown on the document's own card and in the summary above.
+        const message = `${file.name}: ${check.error}`
+        setErrors([message])
+        setFieldErrors((current) => ({ ...current, [key]: message }))
         return
       }
     }
@@ -109,16 +124,30 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     if (fieldErrors[key]) setFieldErrors((current) => ({ ...current, [key]: '' }))
   }
 
-  function handleOtherEligibilityFileChange(file) {
-    if (file) {
+  // Adds the valid files from a pick or drop; invalid ones, duplicates of an
+  // attached file, and any past the cap are left out and reported together.
+  function handleOtherEligibilityFilesAdd(picked) {
+    const sameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
+    const problems = []
+    const accepted = []
+    picked.forEach((file) => {
       const check = validateFile(file, REQUIREMENT_KIND)
-      if (!check.ok) {
-        setErrors([`${file.name}: ${check.error}`])
-        return
-      }
+      if (!check.ok) problems.push(`${file.name}: ${check.error}`)
+      else if (![...otherEligibilityFiles, ...accepted].some((existing) => sameFile(existing, file))) accepted.push(file)
+    })
+    const room = MAX_OTHER_ELIGIBILITY_FILES - otherEligibilityFiles.length
+    if (accepted.length > room) {
+      problems.push(`Only ${MAX_OTHER_ELIGIBILITY_FILES} other eligibility documents can be attached; ${accepted.length - room} not added.`)
     }
-    setOtherEligibilityFile(file)
-    setErrors([])
+    setOtherEligibilityFiles((current) => [...current, ...accepted.slice(0, Math.max(0, room))])
+    const message = problems.join(' ')
+    setErrors(message ? [message] : [])
+    setFieldErrors((current) => ({ ...current, other_eligibility: message }))
+  }
+
+  function handleOtherEligibilityFileRemove(index) {
+    setOtherEligibilityFiles((current) => current.filter((_, position) => position !== index))
+    setFieldErrors((current) => ({ ...current, other_eligibility: '' }))
   }
 
   function validateStep(nextStep) {
@@ -247,9 +276,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
       if (file) formData.append(key, file, file.name)
     })
 
-    if (otherEligibilityFile) {
-      formData.append('other_eligibility', otherEligibilityFile, otherEligibilityFile.name)
-    }
+    otherEligibilityFiles.forEach((file) => formData.append('other_eligibility', file, file.name))
 
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${apiBase.replace(/\/$/, '')}/api/suppliers/register`)
@@ -292,7 +319,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
           sec_registration: null,
           cda_registration: null,
         })
-        setOtherEligibilityFile(null)
+        setOtherEligibilityFiles([])
         setUploadProgress(0)
       } else {
         try {
@@ -319,12 +346,12 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     && category.name.toLowerCase().includes(categorySearchTerm.trim().toLowerCase())
   ))
   const documentCards = [
-    { key: 'mayor_permit', label: "Mayor's Permit" },
-    { key: 'business_permit', label: 'Business Permit' },
-    { key: 'philgeps_registration', label: 'PhilGEPS' },
-    { key: 'bir_registration', label: 'BIR Registration' },
-    { key: 'tax_clearance', label: 'Tax Clearance' },
-    ...(businessDocLabel ? [{ key: getBusinessDocKey(form.businessType), label: businessDocLabel }] : []),
+    { key: 'mayor_permit', label: "Mayor's Permit", hint: 'Current-year permit from your city or municipality' },
+    { key: 'business_permit', label: 'Business Permit', hint: 'Valid business permit for the current year' },
+    { key: 'philgeps_registration', label: 'PhilGEPS', hint: 'PhilGEPS Certificate of Registration' },
+    { key: 'bir_registration', label: 'BIR Registration', hint: 'BIR Certificate of Registration (Form 2303)' },
+    { key: 'tax_clearance', label: 'Tax Clearance', hint: 'Valid tax clearance issued by the BIR' },
+    ...(businessDocLabel ? [{ key: getBusinessDocKey(form.businessType), label: businessDocLabel, hint: BUSINESS_DOC_HINTS[form.businessType] }] : []),
   ]
 
   const renderStepIndicator = () => (
@@ -544,62 +571,63 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     }
 
     if (step === 3) {
+      const attachedCount = documentCards.filter((doc) => requiredFiles[doc.key]).length
+      const allAttached = attachedCount === documentCards.length
+      const acceptLabel = `${acceptedTypesLabel(REQUIREMENT_KIND)} · up to 10 MB`
       return (
         <section className="section-card">
           <div className="section-header">
             <h2>Document Uploads</h2>
             <span className="section-badge">Step 3</span>
           </div>
-          <p className="helper-text">Upload the required BAC eligibility documents. Accepted file types: {acceptedTypesLabel(REQUIREMENT_KIND)}. Maximum size is 10 MB per file.</p>
-          <div className="upload-grid">
-            {documentCards.map((doc) => (
-              <label key={doc.key} className="upload-card">
-                <div className="upload-card-top">
-                  <div>
-                    <h3>{doc.label}</h3>
-                    <p>PDF, JPG, JPEG, PNG</p>
-                  </div>
-                  <span className="upload-card-badge">Required</span>
-                </div>
-                <input
-                  type="file"
-                  id={`reg-${doc.key}`}
-                  accept={REQUIREMENT_ACCEPT}
-                  aria-invalid={fieldErrors[doc.key] ? true : undefined}
-                  aria-describedby={fieldErrors[doc.key] ? `reg-${doc.key}-error` : undefined}
-                  onChange={(event) => handleRequiredFileChange(doc.key, event.target.files[0])}
-                />
-                {requiredFiles[doc.key] ? (
-                  <div className="file-chip">
-                    <span>✓ {requiredFiles[doc.key].name} · {fileTypeLabel(requiredFiles[doc.key])} • {formatFileSize(requiredFiles[doc.key].size)}</span>
-                    <button type="button" onClick={() => handleRequiredFileChange(doc.key, null)}>Remove</button>
-                  </div>
-                ) : (
-                  <div className="upload-placeholder">Choose file</div>
-                )}
-                {fieldError(doc.key)}
-              </label>
-            ))}
+          <div className={`doc-checklist-summary${allAttached ? ' is-complete' : ''}`}>
+            <div className="doc-checklist-summary-text">
+              <span className="doc-checklist-kicker">BAC eligibility documents</span>
+              <strong>{attachedCount} of {documentCards.length} required documents attached</strong>
+              <p>Upload a clear scan or photo of each current document. One file per document; {acceptLabel}.</p>
+            </div>
+            <div
+              className="doc-checklist-meter"
+              role="progressbar"
+              aria-label="Required documents attached"
+              aria-valuemin={0}
+              aria-valuemax={documentCards.length}
+              aria-valuenow={attachedCount}
+            >
+              <span style={{ width: `${(attachedCount / documentCards.length) * 100}%` }} />
+            </div>
           </div>
 
-          <label className="form-field upload-card optional-card">
-            <div className="upload-card-top">
-              <div>
-                <h3>Other Eligibility Requirements</h3>
-                <p>Optional supporting documents</p>
-              </div>
-              <span className="upload-card-badge optional">Optional</span>
-            </div>
-            <input type="file" accept={REQUIREMENT_ACCEPT} onChange={(event) => handleOtherEligibilityFileChange(event.target.files[0])} />
-            {otherEligibilityFile ? (
-              <div className="file-chip">
-                <span>✓ {otherEligibilityFile.name} · {fileTypeLabel(otherEligibilityFile)} • {formatFileSize(otherEligibilityFile.size)}</span>
-                <button type="button" onClick={() => setOtherEligibilityFile(null)}>Remove</button>
-              </div>
-            ) : (
-              <div className="upload-placeholder">Choose file</div>
-            )}
-          </label>
+          <div className="upload-grid">
+            {documentCards.map((doc) => (
+              <DocumentUploadCard
+                key={doc.key}
+                id={`reg-${doc.key}`}
+                title={doc.label}
+                hint={doc.hint}
+                file={requiredFiles[doc.key]}
+                error={fieldErrors[doc.key]}
+                accept={REQUIREMENT_ACCEPT}
+                acceptLabel={acceptLabel}
+                onSelect={(file) => handleRequiredFileChange(doc.key, file)}
+                onRemove={() => handleRequiredFileChange(doc.key, null)}
+              />
+            ))}
+            <DocumentUploadCard
+              id="reg-other_eligibility"
+              title="Other Eligibility Requirements"
+              hint="Any additional supporting documents the BAC asked for. Add as many as you need."
+              required={false}
+              multiple
+              files={otherEligibilityFiles}
+              maxFiles={MAX_OTHER_ELIGIBILITY_FILES}
+              error={fieldErrors.other_eligibility}
+              accept={REQUIREMENT_ACCEPT}
+              acceptLabel={acceptLabel}
+              onSelect={handleOtherEligibilityFilesAdd}
+              onRemove={handleOtherEligibilityFileRemove}
+            />
+          </div>
         </section>
       )
     }
@@ -638,7 +666,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               {documentCards.filter((doc) => requiredFiles[doc.key]).map((doc) => (
                 <li key={doc.key}>{doc.label}: {requiredFiles[doc.key].name}</li>
               ))}
-              {otherEligibilityFile && <li>Other Eligibility Requirements: {otherEligibilityFile.name}</li>}
+              {otherEligibilityFiles.map((file, index) => <li key={`${file.name}-${index}`}>Other Eligibility Requirements: {file.name}</li>)}
             </ul>
           </div>
         </div>

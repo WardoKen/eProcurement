@@ -584,3 +584,88 @@ class PrListSourceDocumentTests(TestCase):
         response = self.client.get('/api/pr/list/')
         record = response.json()[0]
         self.assertTrue(record['source_file_url'].endswith('/uploads/mypr.pdf'))
+
+
+class EndUserWelcomeEmailTests(TestCase):
+    """Creating an End User without a password emails them their username and
+    a one-time link to set their own password (no password is ever sent)."""
+
+    def setUp(self):
+        Role.objects.get_or_create(name='buyer')
+        _login_as(self.client, 'admin')
+
+    def _create(self, **overrides):
+        payload = {
+            'username': 'ana.cruz', 'fullName': 'Ana Cruz', 'email': 'ana@ctu.edu.ph',
+            'unitOffice': 'ICT Office', 'role': 'buyer',
+        }
+        payload.update(overrides)
+        return self.client.post('/api/register/', data=json.dumps(payload), content_type='application/json')
+
+    @staticmethod
+    def _token_from(body):
+        import re
+        match = re.search(r'/reset-password\?token=([\w-]+)&setup=1', body)
+        return match.group(1) if match else None
+
+    def test_new_end_user_gets_username_and_a_working_set_password_link(self):
+        from django.core import mail
+
+        response = self._create()
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(response.json()['welcome_email_sent'])
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ['ana@ctu.edu.ph'])
+        self.assertIn('Good day, Ana Cruz.', email.body)
+        self.assertIn('Username: ana.cruz', email.body)
+        self.assertIn('expires in 3 days', email.body)
+        token = self._token_from(email.body)
+        self.assertTrue(token)
+
+        # No password works until the link is used...
+        self.client.logout()
+        login = self.client.post('/api/login/', data=json.dumps({'username': 'ana.cruz', 'password': '', 'role': 'buyer'}), content_type='application/json')
+        self.assertNotEqual(login.status_code, 200)
+
+        # ...then the chosen password does, and the link is spent.
+        reset = self.client.post('/api/reset-password/', data=json.dumps({'token': token, 'new_password': 'MyOwnPass9'}), content_type='application/json')
+        self.assertEqual(reset.status_code, 200, reset.content)
+        login = self.client.post('/api/login/', data=json.dumps({'username': 'ana.cruz', 'password': 'MyOwnPass9', 'role': 'buyer'}), content_type='application/json')
+        self.assertEqual(login.status_code, 200, login.content)
+        again = self.client.post('/api/reset-password/', data=json.dumps({'token': token, 'new_password': 'AnotherPass9'}), content_type='application/json')
+        self.assertEqual(again.status_code, 400)
+
+    def test_set_password_link_lasts_three_days(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from api.models import PasswordResetToken
+
+        self._create()
+        token = PasswordResetToken.objects.get(user__username='ana.cruz')
+        remaining = token.expires_at - timezone.now()
+        self.assertTrue(timedelta(days=2, hours=23) < remaining <= timedelta(days=3))
+
+    def test_an_end_user_without_email_cannot_be_invited(self):
+        response = self._create(email='')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username='ana.cruz').exists())
+
+    def test_a_mail_server_failure_still_creates_the_account(self):
+        from unittest.mock import patch
+
+        with patch('api.views.EmailMessage.send', side_effect=OSError('SMTP unreachable')), \
+                self.assertLogs('api.views', level='ERROR'):
+            response = self._create()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['welcome_email_sent'])
+        self.assertTrue(User.objects.filter(username='ana.cruz').exists())
+
+    def test_other_roles_still_need_a_password(self):
+        Role.objects.get_or_create(name='admin')
+        response = self._create(username='second-admin', role='admin')
+
+        self.assertEqual(response.status_code, 400)

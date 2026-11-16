@@ -133,10 +133,20 @@ describe('ProcurementStepper', () => {
     expect(current).toHaveTextContent(currentLabel)
   })
 
-  it('never shows evaluation or PO as available', () => {
-    render(<ProcurementStepper status="completed" />)
-    expect(screen.getByText('Evaluation').closest('li')).toHaveTextContent('Not yet available in eProcure')
-    expect(screen.getByText('PO Issuance').closest('li')).toHaveTextContent('Not yet available in eProcure')
+  it('shows only the steps eProcure handles, all done once a quotation is in', () => {
+    render(<ProcurementStepper status="quotation_received" />)
+    const steps = screen.getAllByRole('listitem')
+    expect(steps.map((step) => step.querySelector('.procurement-step-label').textContent))
+      .toEqual(['RFQ Prepared', 'RFQ Sent', 'Quotation Received'])
+    steps.forEach((step) => expect(step).toHaveTextContent('Completed'))
+    expect(screen.queryByText(/evaluation|po issuance/i)).not.toBeInTheDocument()
+  })
+
+  it('tells a supplier their quotation was submitted once it is uploaded', () => {
+    render(<ProcurementStepper status="quotation_received" audience="supplier" />)
+    const steps = screen.getAllByRole('listitem')
+    expect(screen.queryByRole('listitem', { current: 'step' })).not.toBeInTheDocument()
+    expect(steps[2]).toHaveTextContent(/upload quotation.*submitted to the bac/i)
   })
 })
 

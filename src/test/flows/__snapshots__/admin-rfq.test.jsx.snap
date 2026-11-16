@@ -5,26 +5,11 @@ exports[`supplier matching and RFQ distribution > saves, then sends, an RFQ to a
   "additional_notes": "",
   "category": "IT Equipment",
   "generate_pdf": true,
-  "message": "Dear Jo Reyes,
-
-Greetings.
-
-The Cebu Technological University is requesting a quotation for the items/services specified in Purchase Request 2026-11-001.
-
-Please provide your quotation based on the specifications and quantities indicated.
-
-Kindly submit your quotation through the eProcure system or through the designated submission process.
-
-Thank you.
-
-Regards,
-BAC Secretariat",
   "mode_of_procurement": "Small Value Procurement",
   "preview": true,
   "quotation_basis": "LOT",
   "selection_type": "category_match",
   "send": false,
-  "subject": "Request for Quotation - PR 2026-11-001",
   "supplier_id": 7,
 }
 `;
@@ -34,27 +19,12 @@ exports[`supplier matching and RFQ distribution > saves, then sends, an RFQ to a
   "additional_notes": "",
   "category": "IT Equipment",
   "generate_pdf": true,
-  "message": "Dear Jo Reyes,
-
-Greetings.
-
-The Cebu Technological University is requesting a quotation for the items/services specified in Purchase Request 2026-11-001.
-
-Please provide your quotation based on the specifications and quantities indicated.
-
-Kindly submit your quotation through the eProcure system or through the designated submission process.
-
-Thank you.
-
-Regards,
-BAC Secretariat",
   "mode_of_procurement": "Small Value Procurement",
   "preview": false,
   "quotation_basis": "LOT",
   "rfq_id": 9,
   "selection_type": "category_match",
   "send": true,
-  "subject": "Request for Quotation - PR 2026-11-001",
   "supplier_id": 7,
 }
 `;

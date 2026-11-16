@@ -310,3 +310,121 @@ class PrNotificationSettingsGatingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('Matched', mail.outbox[0].body)
+
+
+class PrReceivedAndNumberAssignedEmailTests(TestCase):
+    """The two End User emails at the start of a PR's life: "received by the
+    BAC" on submission (create_pr) and "PR No. assigned / under review" when
+    the BAC finalizes its review (pr_update with finalize_review)."""
+
+    def setUp(self):
+        role = Role.objects.get_or_create(name='buyer')[0]
+        self.buyer = User.objects.create(
+            username='requestor9', password_hash='x', role=role, is_active=True,
+            full_name='Ana Cruz', email='requestor9@ctu.edu.ph',
+        )
+
+    def _submit(self, **fields):
+        _login_as(self.client, 'buyer', user=self.buyer)
+        payload = {
+            'entityName': 'CTU-Tuburan Campus', 'officeSection': 'ICT Office',
+            'purpose': 'Replacement printers for the registrar', 'grand_total': '12500.50',
+            'submittedBy': 'requestor9', 'prNumberMode': 'automatic',
+        }
+        payload.update(fields)
+        return self.client.post('/api/pr/', data=json.dumps({'fields': payload}), content_type='application/json')
+
+    def _settings(self, **values):
+        row = PRNotificationSettings.objects.get(key='global')
+        for field, value in values.items():
+            setattr(row, field, value)
+        row.save()
+
+    def test_submission_emails_a_received_confirmation_to_the_submitter(self):
+        response = self._submit()
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ['requestor9@ctu.edu.ph'])
+        self.assertIn('received by the BAC', email.subject)
+        self.assertIn(f"Reference #{response.json()['id']}", email.subject)
+        self.assertIn('Good day, Ana Cruz.', email.body)
+        self.assertIn('queued for BAC review', email.body)
+        self.assertIn('ICT Office', email.body)
+        self.assertIn('PHP 12,500.50', email.body)
+        self.assertIn('/login', email.body)
+
+    def test_received_email_goes_to_the_signed_in_user_not_the_named_submitter(self):
+        other = User.objects.create(
+            username='someone-else', password_hash='x', role=self.buyer.role, is_active=True,
+            email='someone-else@ctu.edu.ph',
+        )
+        self._submit(submittedBy=other.username)
+
+        self.assertEqual([email.to for email in mail.outbox], [['requestor9@ctu.edu.ph']])
+
+    def test_received_email_follows_the_admin_switches(self):
+        self._settings(notify_submitted=False)
+        self._submit()
+        self._settings(notify_submitted=True, enabled=False)
+        self._submit(purpose='Second request')
+
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(PurchaseRequest.objects.count(), 2)
+
+    def test_a_mail_server_failure_does_not_block_the_submission(self):
+        from unittest.mock import patch
+
+        with patch('api.views.EmailMessage.send', side_effect=OSError('SMTP unreachable')), \
+                self.assertLogs('api.views', level='ERROR'):
+            response = self._submit()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+
+    def _finalize(self, pr, finalize=True):
+        _login_as(self.client, 'admin')
+        return self.client.patch(
+            f'/api/pr/{pr.id}/edit/',
+            data=json.dumps({
+                'entity_name': pr.entity_name, 'office_section': 'ICT Office', 'purpose': 'Printers',
+                'items': [{'item_description': 'Printer', 'quantity': 2, 'unit_cost': 6250}],
+                'finalize_review': finalize,
+            }),
+            content_type='application/json',
+        )
+
+    def test_finalizing_the_review_emails_the_assigned_pr_number(self):
+        pr = PurchaseRequest.objects.create(
+            entity_name='CTU-Tuburan Campus', submitted_by='requestor9', status=PurchaseRequest.STATUS_UPLOADED,
+        )
+        response = self._finalize(pr)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        pr_no = response.json()['pr_no']
+        self.assertTrue(pr_no)
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ['requestor9@ctu.edu.ph'])
+        self.assertEqual(email.subject, f'PR No. {pr_no} assigned: your Purchase Request is under BAC review')
+        self.assertIn(f'assigned it PR No. {pr_no}', email.body)
+        self.assertIn('In Review', email.body)
+        self.assertIn('What happens next', email.body)
+
+    def test_saving_edits_without_finalizing_sends_nothing(self):
+        pr = PurchaseRequest.objects.create(
+            entity_name='CTU-Tuburan Campus', submitted_by='requestor9', status=PurchaseRequest.STATUS_UPLOADED,
+        )
+        self._finalize(pr, finalize=False)
+
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_number_assigned_email_follows_the_in_review_switch(self):
+        self._settings(notify_in_review=False)
+        pr = PurchaseRequest.objects.create(
+            entity_name='CTU-Tuburan Campus', submitted_by='requestor9', status=PurchaseRequest.STATUS_UPLOADED,
+        )
+        self._finalize(pr)
+
+        self.assertEqual(len(mail.outbox), 0)

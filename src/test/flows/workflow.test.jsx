@@ -1,4 +1,4 @@
-// Every RFQ record shows where it is in RFQ → Quotation → Evaluation → PO.
+// Every RFQ record shows where it is in RFQ Prepared → RFQ Sent → Quotation Received.
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import { installApi, renderAt, signIn } from '../harness'
@@ -7,7 +7,7 @@ import { adminUser, numberedPr, prDetails, supplierMatch, supplierRfq, supplierU
 const currentStep = (list) => within(list).getAllByRole('listitem').find((item) => item.getAttribute('aria-current') === 'step')
 
 describe('RFQ workflow indicator', () => {
-  it('supplier RFQ detail shows the quotation as the step in progress', async () => {
+  it('supplier RFQ detail is worded for the supplier, with filling in the RFQ as their next step', async () => {
     signIn(supplierUser)
     installApi({
       'GET /api/suppliers/7/profile/': { json: { company_name: 'Acme' } },
@@ -19,10 +19,14 @@ describe('RFQ workflow indicator', () => {
     await user.click(screen.getAllByRole('button', { name: /^rfqs$/i })[0])
     await user.click(await screen.findByRole('button', { name: /view rfq rfq-2026-001/i }))
 
-    const stepper = screen.getByRole('list', { name: /progress of rfq-2026-001/i })
-    expect(currentStep(stepper)).toHaveTextContent(/quotation received.*awaiting supplier/i)
-    expect(within(stepper).getByText('PO Issuance').closest('li')).toHaveTextContent(/not yet available/i)
-    expect(screen.getByText(/current status:/i)).toHaveTextContent('Awaiting Supplier Response')
+    const stepper = screen.getByRole('list', { name: /your progress on rfq-2026-001/i })
+    const steps = within(stepper).getAllByRole('listitem')
+    expect(steps.map((step) => step.querySelector('.procurement-step-label').textContent))
+      .toEqual(['RFQ Received', 'Fill In & Sign', 'Upload Quotation'])
+    expect(currentStep(stepper)).toHaveTextContent(/fill in & sign.*your action needed/i)
+    expect(steps[2]).toHaveTextContent(/not uploaded yet/i)
+    expect(screen.getByText(/current status:/i)).toHaveTextContent('Awaiting Your Quotation')
+    expect(screen.queryByText(/awaiting supplier/i)).not.toBeInTheDocument()
   })
 
   it('RFQ Preparation moves from "not saved" to a prepared draft after Save', async () => {
@@ -43,7 +47,7 @@ describe('RFQ workflow indicator', () => {
     await user.click(await screen.findByRole('button', { name: /request quotation/i }))
 
     expect(screen.getByText(/current status:/i)).toHaveTextContent('Not saved yet')
-    await waitFor(() => expect(screen.getByDisplayValue('Request for Quotation - PR 2026-11-001')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: /email to supplier/i })
     await user.type(document.querySelector('input[list="procurement-mode-options"]'), 'Shopping')
     await user.click(screen.getByRole('button', { name: /^save rfq/i }))
 

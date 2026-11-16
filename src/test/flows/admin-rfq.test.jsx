@@ -54,7 +54,9 @@ describe('supplier matching and RFQ distribution', () => {
       if (!input) throw new Error('mode input not rendered')
       return input
     })
-    await waitFor(() => expect(screen.getByDisplayValue('Request for Quotation - PR 2026-11-001')).toBeInTheDocument())
+    // The email is written automatically: no subject/message to fill in.
+    expect(await screen.findByRole('heading', { name: /email to supplier/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/rfq message/i)).not.toBeInTheDocument()
     await user.type(mode, 'Small Value Procurement')
     await user.click(screen.getByRole('button', { name: /^save rfq/i }))
 
@@ -77,7 +79,7 @@ describe('supplier matching and RFQ distribution', () => {
     const { user } = renderAt('/admin')
     await openMatching(user)
     await user.click(screen.getByRole('button', { name: /request quotation/i }))
-    await waitFor(() => expect(screen.getByDisplayValue('Request for Quotation - PR 2026-11-001')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: /email to supplier/i })
     await user.type(document.querySelector('input[list="procurement-mode-options"]'), 'Shopping')
     await user.click(screen.getByRole('button', { name: /^save rfq/i }))
     await waitFor(() => expect(api.find('POST', '/api/pr/43/rfq/')).toHaveLength(1))

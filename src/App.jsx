@@ -977,6 +977,7 @@ const Login = () => {
   const [submitting, setSubmitting] = React.useState(false)
   const toast = useToast()
   const resetSucceeded = searchParams.get('reset') === 'success'
+  const setupSucceeded = searchParams.get('reset') === 'setup'
   const roleLabels = { admin: 'Admin', buyer: 'End User', supplier: 'Supplier' }
 
   const handleSubmit = async (e) => {
@@ -1093,6 +1094,11 @@ const Login = () => {
           {resetSucceeded && (
             <div className="alert alert-success" role="status">
               Your password has been reset. Please log in with your new password.
+            </div>
+          )}
+          {setupSucceeded && (
+            <div className="alert alert-success" role="status">
+              Your password is set. Log in with your username and new password.
             </div>
           )}
           {formError && (
@@ -1253,6 +1259,9 @@ const ResetPassword = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = (searchParams.get('token') || '').trim()
+  // The link in a new End User's welcome email: same flow, first password.
+  const isSetup = searchParams.get('setup') === '1'
+  const heading = isSetup ? 'Set your password' : 'Reset password'
   const [password, setPassword] = React.useState('')
   const [confirmPassword, setConfirmPassword] = React.useState('')
   const [error, setError] = React.useState('')
@@ -1290,7 +1299,7 @@ const ResetPassword = () => {
         setError(result?.message || 'This password reset link is invalid or has expired.')
         return
       }
-      navigate('/login?reset=success')
+      navigate(isSetup ? '/login?reset=setup' : '/login?reset=success')
     } catch (err) {
       console.error(err)
       setError('Unable to reach the server. Please try again.')
@@ -1304,9 +1313,11 @@ const ResetPassword = () => {
       <div className="login-page">
         <div className="login-container">
           <div className="login-form-container">
-            <h2>Reset password</h2>
+            <h2>{heading}</h2>
             <div className="alert alert-error" role="alert">
-              {error || 'This password reset link is invalid or missing. Please request a new one.'}
+              {error || (isSetup
+                ? 'This account setup link is invalid or has expired. Request a new link below, using your username or email.'
+                : 'This password reset link is invalid or missing. Please request a new one.')}
             </div>
             <div className="form-actions login-actions">
               <button type="button" className="btn-login" onClick={() => navigate('/forgot-password')}>Request a New Link</button>
@@ -1321,7 +1332,10 @@ const ResetPassword = () => {
     <div className="login-page">
       <div className="login-container">
         <div className="login-form-container">
-          <h2>Reset password</h2>
+          <h2>{heading}</h2>
+          {isSetup && (
+            <p className="login-form-intro">Choose a password for your eProcure End User account. You will use it with your username to sign in.</p>
+          )}
           <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="form-field">
               <label htmlFor="reset-password">New password<RequiredMark /></label>
@@ -1361,7 +1375,7 @@ const ResetPassword = () => {
             )}
             <div className="form-actions login-actions">
               <button type="button" className="btn-outline" onClick={() => navigate('/login')}>Cancel</button>
-              <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Saving...' : 'Reset Password'}</button>
+              <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Saving...' : isSetup ? 'Set Password' : 'Reset Password'}</button>
             </div>
           </form>
         </div>
@@ -1723,8 +1737,6 @@ const bustCache = (url) => {
 
 const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   const [rfq, setRfq] = React.useState(null)
-  const [subject, setSubject] = React.useState('')
-  const [message, setMessage] = React.useState('')
   const [abc, setAbc] = React.useState('')
   const [quotationBasis, setQuotationBasis] = React.useState('LOT')
   const [modeOfProcurement, setModeOfProcurement] = React.useState('')
@@ -1769,8 +1781,6 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         const existing = forSupplier.find((item) => item.status !== 'sent') || forSupplier.find((item) => item.status === 'sent')
         if (existing) {
           setRfq(existing)
-          setSubject(existing.subject)
-          setMessage(existing.message)
           setAbc(existing.abc || computedAbc)
           setQuotationBasis(existing.quotation_basis === 'LINE' ? 'LINE' : 'LOT')
           setModeOfProcurement(existing.mode_of_procurement || '')
@@ -1781,19 +1791,10 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           }
         } else {
           setAbc(computedAbc)
-          setSubject(`Request for Quotation - PR ${prDetails?.pr_no || prId}`)
-          setMessage(
-            `Dear ${supplier.contact_person || supplier.company_name},\n\n` +
-            'Greetings.\n\n' +
-            `The ${prDetails?.entity_name || 'requesting office'} is requesting a quotation for the items/services specified in Purchase Request ${prDetails?.pr_no || prId}.\n\n` +
-            'Please provide your quotation based on the specifications and quantities indicated.\n\n' +
-            'Kindly submit your quotation through the eProcure system or through the designated submission process.\n\n' +
-            'Thank you.\n\nRegards,\nBAC Secretariat'
-          )
         }
       })
       .catch(() => {})
-  }, [computedAbc, prId, rfqApiBase, prDetails?.entity_name, prDetails?.pr_no, supplier.company_name, supplier.contact_person, supplier.email, supplier.id, supplier.matched_category])
+  }, [computedAbc, prId, rfqApiBase, supplier.email, supplier.id, supplier.matched_category])
 
   React.useEffect(() => {
     apiFetch(`${rfqApiBase}/api/procurement-modes/`)
@@ -1803,16 +1804,16 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   }, [rfqApiBase])
 
   const items = groupItems
-  const canPrepare = Boolean(modeOfProcurement.trim() && subject.trim() && message.trim())
+  const canPrepare = Boolean(modeOfProcurement.trim())
+  const prLabel = prDetails?.pr_no || prId
 
   // Save applies the current edits and always refreshes the RFQ preview.
-  // Send delivers the saved RFQ (with its PDF) to the supplier by email.
+  // Send emails the saved RFQ (with its PDF) to the supplier; the backend
+  // writes that email from the RFQ's details, so there is nothing to type.
   const persistRfq = async (action) => {
     const send = action === 'send'
     if (!canPrepare) {
-      setError(!modeOfProcurement.trim()
-        ? 'Please enter a mode of procurement.'
-        : 'Subject and RFQ message are required.')
+      setError('Please enter a mode of procurement.')
       return
     }
     if (send) {
@@ -1824,9 +1825,10 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         setError('The selected supplier has no email address on file.')
         return
       }
+      // The RFQ number is assigned on send, so the title names the supplier.
       const confirmed = await confirm({
-        title: `Send RFQ ${rfq.rfq_no}?`,
-        message: `The RFQ and its PDF will be emailed to ${supplier.company_name} at ${supplier.email}.`,
+        title: `Send RFQ to ${supplier.company_name}?`,
+        message: `The RFQ PDF and response instructions will be emailed to ${supplier.company_name} at ${supplier.email}.`,
         consequence: 'Once sent, this RFQ can no longer be edited. Save any last changes before sending.',
         confirmLabel: 'Send RFQ',
       })
@@ -1846,8 +1848,6 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           // backend scopes the RFQ to that group's items only.
           category: groupCategory || supplier.matched_category || rfq?.category || '',
           rfq_id: rfq?.id,
-          subject,
-          message,
           quotation_basis: quotationBasis,
           mode_of_procurement: modeOfProcurement,
           additional_notes: additionalNotes,
@@ -1859,8 +1859,6 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.message || `Unable to ${send ? 'send' : 'save'} RFQ (HTTP ${response.status})`)
       setRfq(data)
-      setSubject(data.subject)
-      setMessage(data.message)
       setAbc(data.abc || computedAbc)
       setQuotationBasis(data.quotation_basis === 'LINE' ? 'LINE' : 'LOT')
       setModeOfProcurement(data.mode_of_procurement || '')
@@ -1884,7 +1882,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       <WorkflowStepper current="rfq" />
       <div className="supplier-header" style={{ marginTop: 20 }}>
         <h1>RFQ Preparation</h1>
-        <p>Edit the RFQ details, click <strong>Save RFQ</strong> to apply changes and refresh the preview, then <strong>Send RFQ to Supplier</strong> to deliver it.</p>
+        <p>Fill in the RFQ details and click <strong>Save RFQ</strong> to refresh the PDF preview. Then click <strong>Send RFQ to Supplier</strong>: eProcure emails the PDF with response instructions.</p>
       </div>
       <p className="record-status">
         <span>RFQ for <strong>{supplier.company_name}</strong>{groupCategory ? <> · {groupCategory}</> : null}</span>
@@ -1978,10 +1976,36 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
         </div>
         {items.length === 0 && <p>No requested items found.</p>}
       </div>
-      <div className="card rfq-review-card">
-        <label className="form-field"><span>Subject</span><input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={`Request for Quotation - PR ${prDetails?.pr_no || prId}`} disabled={isSent} /></label>
-        <label className="form-field"><span>RFQ Message</span><textarea rows="12" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Enter the RFQ message" disabled={isSent} /></label>
-      </div>
+      <section className="card rfq-review-card rfq-email-card" aria-labelledby="rfq-email-heading">
+        <h2 id="rfq-email-heading"><Mail size={18} aria-hidden="true" /> Email to Supplier</h2>
+        {isSent ? (
+          <>
+            <p className="helper-text">
+              Sent to <strong>{supplier.email}</strong>
+              {rfq.sent_at ? ` on ${new Date(rfq.sent_at).toLocaleString()}` : ''}, with the RFQ PDF attached.
+            </p>
+            <dl className="rfq-email-summary">
+              <div><dt>Subject</dt><dd>{rfq.subject}</dd></div>
+            </dl>
+            {rfq.message && (
+              <details className="rfq-email-sent">
+                <summary>View the email that was sent</summary>
+                <pre>{rfq.message}</pre>
+              </details>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="helper-text">eProcure writes this email for you when you send the RFQ. There is nothing to type here.</p>
+            <dl className="rfq-email-summary">
+              <div><dt>To</dt><dd>{supplier.company_name} {supplier.email ? <>&lt;{supplier.email}&gt;</> : <strong>(no email on file)</strong>}</dd></div>
+              <div><dt>Subject</dt><dd>Request for Quotation <em>[RFQ No., assigned on send]</em> - PR {prLabel}{groupCategory ? ` (${groupCategory})` : ''}</dd></div>
+              <div><dt>Attachment</dt><dd>The RFQ PDF from the preview below</dd></div>
+              <div><dt>Includes</dt><dd>RFQ and PR numbers, category, number of items, mode of procurement, quotation basis{additionalNotes.trim() ? ', your additional notes' : ''}, and step-by-step instructions for uploading the completed RFQ in eProcure</dd></div>
+            </dl>
+          </>
+        )}
+      </section>
       <div className="form-actions">
         <button type="button" className="btn-secondary" onClick={onBack} disabled={busy}>Back to Matching</button>
         {!isSent && (
@@ -3150,12 +3174,10 @@ const Admin = () => {
   const [previewDoc, setPreviewDoc] = React.useState(null)
   const [previewVisible, setPreviewVisible] = React.useState(false)
   const [navCollapsed, setNavCollapsed] = React.useState(false)
-  const [buyerAccountForm, setBuyerAccountForm] = React.useState({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
+  const [buyerAccountForm, setBuyerAccountForm] = React.useState({ username: '', fullName: '', email: '', unitOffice: '' })
   const [buyerAccountSaving, setBuyerAccountSaving] = React.useState(false)
   const [buyerAccountMessage, setBuyerAccountMessage] = React.useState('')
   const [buyerAccountError, setBuyerAccountError] = React.useState('')
-  const [buyerFieldErrors, setBuyerFieldErrors] = React.useState({})
-  const [showBuyerPassword, setShowBuyerPassword] = React.useState(false)
   const [buyerAccounts, setBuyerAccounts] = React.useState([])
   const [buyerAccountsLoading, setBuyerAccountsLoading] = React.useState(false)
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
@@ -3194,17 +3216,6 @@ const Admin = () => {
     event.preventDefault()
     setBuyerAccountMessage('')
     setBuyerAccountError('')
-    setBuyerFieldErrors({})
-    if (buyerAccountForm.password !== buyerAccountForm.confirmPassword) {
-      setBuyerFieldErrors({ confirmPassword: 'Passwords do not match.' })
-      document.getElementById('buyer-confirm-password')?.focus()
-      return
-    }
-    if (buyerAccountForm.password.length < 8) {
-      setBuyerFieldErrors({ password: 'Password must be at least 8 characters long.' })
-      document.getElementById('buyer-password')?.focus()
-      return
-    }
 
     setBuyerAccountSaving(true)
     try {
@@ -3216,15 +3227,22 @@ const Admin = () => {
           fullName: buyerAccountForm.fullName.trim(),
           email: buyerAccountForm.email.trim(),
           unitOffice: buyerAccountForm.unitOffice.trim(),
-          password: buyerAccountForm.password,
           role: 'buyer',
         }),
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result.message || 'Unable to create End User account.')
-      setBuyerAccountMessage('End User account created successfully.')
-      toast.success(`End User account created for ${buyerAccountForm.fullName.trim() || buyerAccountForm.username.trim()}.`)
-      setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '', password: '', confirmPassword: '' })
+      const createdName = buyerAccountForm.fullName.trim() || buyerAccountForm.username.trim()
+      if (result.welcome_email_sent === false) {
+        // The account exists; only the email failed. "Forgot password" on the
+        // sign-in page sends a fresh link once email works again.
+        setBuyerAccountMessage(`End User account created, but the setup email to ${result.email} could not be sent. Ask them to use "Forgot password" on the sign-in page once email is working.`)
+        toast.error(`Account created for ${createdName}, but the setup email could not be sent.`)
+      } else {
+        setBuyerAccountMessage(`End User account created. A setup email was sent to ${result.email || buyerAccountForm.email.trim()}.`)
+        toast.success(`End User account created for ${createdName}. Setup email sent.`)
+      }
+      setBuyerAccountForm({ username: '', fullName: '', email: '', unitOffice: '' })
       loadBuyerAccounts()
     } catch (error) {
       setBuyerAccountError(error?.message || 'Unable to create End User account.')
@@ -3504,7 +3522,15 @@ const Admin = () => {
       setDocumentStatusDrafts({})
       setSupplierError('')
       setReviewAction(null)
-      toast.success(`${supplierRegistrations.find((item) => item.id === supplierId)?.company_name || 'Supplier'} marked ${nextStatus}.`)
+      const supplierName = supplierRegistrations.find((item) => item.id === supplierId)?.company_name || 'Supplier'
+      // approval_email_sent is only true/false on a fresh approval.
+      if (payload?.approval_email_sent === true) {
+        toast.success(`${supplierName} approved. An approval email was sent to ${payload.email}.`)
+      } else if (payload?.approval_email_sent === false) {
+        toast.error(`${supplierName} approved, but the approval email to ${payload.email || 'the supplier'} could not be sent. Check the email settings on the server.`)
+      } else {
+        toast.success(`${supplierName} marked ${nextStatus}.`)
+      }
     } catch (error) {
       console.error(error)
       setSupplierError(error?.message || `Failed to ${actionName} supplier`)
@@ -4629,45 +4655,10 @@ const Admin = () => {
                   <span>Unit / Office<RequiredMark /></span>
                   <input required value={buyerAccountForm.unitOffice} onChange={(event) => setBuyerAccountForm((prev) => ({ ...prev, unitOffice: event.target.value }))} placeholder="Procurement Office" />
                 </label>
-                <div className="form-field buyer-password-field">
-                  <label htmlFor="buyer-password">Password<RequiredMark /></label>
-                  <div className="password-input-wrapper">
-                    <input
-                      id="buyer-password"
-                      required
-                      type={showBuyerPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      minLength={8}
-                      value={buyerAccountForm.password}
-                      onChange={(event) => { setBuyerAccountForm((prev) => ({ ...prev, password: event.target.value })); if (buyerFieldErrors.password) setBuyerFieldErrors({}) }}
-                      placeholder="At least 8 characters"
-                      aria-invalid={buyerFieldErrors.password ? true : undefined}
-                      aria-describedby={buyerFieldErrors.password ? 'buyer-password-error' : 'buyer-password-hint'}
-                    />
-                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)} aria-pressed={showBuyerPassword} aria-label={showBuyerPassword ? 'Hide passwords' : 'Show passwords'}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
-                  </div>
-                  <p className="field-hint" id="buyer-password-hint">At least 8 characters. Share it with the End User securely.</p>
-                  <FieldError id="buyer-password-error">{buyerFieldErrors.password}</FieldError>
-                </div>
-                <div className="form-field buyer-password-field">
-                  <label htmlFor="buyer-confirm-password">Confirm Password<RequiredMark /></label>
-                  <div className="password-input-wrapper">
-                    <input
-                      id="buyer-confirm-password"
-                      required
-                      type={showBuyerPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      minLength={8}
-                      value={buyerAccountForm.confirmPassword}
-                      onChange={(event) => { setBuyerAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value })); if (buyerFieldErrors.confirmPassword) setBuyerFieldErrors({}) }}
-                      placeholder="Re-enter password"
-                      aria-invalid={buyerFieldErrors.confirmPassword ? true : undefined}
-                      aria-describedby={buyerFieldErrors.confirmPassword ? 'buyer-confirm-error' : undefined}
-                    />
-                    <button type="button" className="password-toggle" onClick={() => setShowBuyerPassword((current) => !current)} aria-pressed={showBuyerPassword} aria-label={showBuyerPassword ? 'Hide passwords' : 'Show passwords'}>{showBuyerPassword ? 'Hide' : 'Show'}</button>
-                  </div>
-                  <FieldError id="buyer-confirm-error">{buyerFieldErrors.confirmPassword}</FieldError>
-                </div>
+                <p className="buyer-account-invite-note">
+                  <Mail size={16} aria-hidden="true" />
+                  <span>No password needed here. The End User gets an email with their username and a one-time link to set their own password. The link expires in 3 days.</span>
+                </p>
                 {buyerAccountError && <div className="alert alert-error" role="alert">{buyerAccountError}</div>}
                 {buyerAccountMessage && <div className="alert alert-success" role="status">{buyerAccountMessage}</div>}
                 <div className="form-actions">
@@ -4850,7 +4841,8 @@ const Admin = () => {
                     <div className="settings-toggle-list">
                       <span className="form-field-label">Notify when a PR reaches</span>
                       {[
-                        ['notify_in_review', 'In Review'],
+                        ['notify_submitted', 'Submitted (received by the BAC)'],
+                        ['notify_in_review', 'In Review (PR number assigned)'],
                         ['notify_matched', 'Matched'],
                         ['notify_approved', 'Approved'],
                         ['notify_rejected', 'Rejected'],
@@ -6461,12 +6453,16 @@ const SupplierAccessStatus = ({ status, isRejected, isCompliance, isPending }) =
   </div>
 )
 
-const rfqSupplierStatusLabel = (rfq) => rfq?.status_label || ({
+// Worded for the supplier reading it. The API's status_label is written for
+// the BAC ("Awaiting Supplier Response"), so it is only a fallback here.
+const SUPPLIER_RFQ_STATUS_LABELS = {
   draft: 'Draft',
-  sent: 'Awaiting Supplier Response',
-  quotation_received: 'Response Submitted',
-  completed: 'Completed',
-}[rfq?.status] || rfq?.status || 'Unknown')
+  sent: 'Awaiting Your Quotation',
+  quotation_received: 'Quotation Submitted',
+  completed: 'Closed',
+}
+
+const rfqSupplierStatusLabel = (rfq) => SUPPLIER_RFQ_STATUS_LABELS[rfq?.status] || rfq?.status_label || rfq?.status || 'Unknown'
 
 const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
   const [rfqs, setRfqs] = React.useState([])
@@ -6545,7 +6541,7 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
   )
 }
 
-const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, onChange }) => {
+const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, onChange, backLabel = 'Back to RFQs' }) => {
   const [uploadedRfq, setUploadedRfq] = React.useState(null)
   const [file, setFile] = React.useState(null)
   const [uploading, setUploading] = React.useState(false)
@@ -6585,13 +6581,13 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
 
   return (
     <div className="supplier-content-inner">
-      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} aria-hidden="true" /> Back to RFQs</button>
+      <button type="button" className="back-link" onClick={onBack}><ChevronLeft size={18} aria-hidden="true" /> {backLabel}</button>
       <div className="supplier-header">
         <h2>Request for Quotation</h2>
         <p>{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
       </div>
       <p className="record-status">Current status: <strong>{rfqSupplierStatusLabel(rfq)}</strong></p>
-      <ProcurementStepper status={rfq.status} label={`Progress of ${rfq.rfq_no}`} />
+      <ProcurementStepper status={rfq.status} audience="supplier" label={`Your progress on ${rfq.rfq_no}`} />
       {error && <div className="alert alert-error">{error}</div>}
       {notice && <div className="alert alert-success">{notice}</div>}
 
@@ -6604,8 +6600,13 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
           <div><strong>Status: </strong><span>{rfqSupplierStatusLabel(rfq)}</span></div>
           {rfq.submitted_at && <div><strong>Submitted: </strong><span>{new Date(rfq.submitted_at).toLocaleString()}</span></div>}
         </div>
-        <h3>RFQ Message</h3>
-        <div className="supplier-readonly-card" style={{ whiteSpace: 'pre-wrap' }}>{rfq.message}</div>
+        <h3>How to respond</h3>
+        <ol className="rfq-respond-steps">
+          <li>Download the RFQ PDF below and print it.</li>
+          <li>Fill in the brand/model, unit prices, totals and your contact details, then sign it.</li>
+          <li>Scan the completed RFQ as a single PDF.</li>
+          <li>Upload it under <strong>Completed RFQ Submission</strong> on this page.</li>
+        </ol>
       </div>
 
       <div className="card rfq-review-card">
@@ -7660,7 +7661,7 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
   if (loading) return <SkeletonRows count={5} />
 
   if (selectedRfq) {
-    return <SupplierRFQDetail rfq={selectedRfq} supplierId={supplierId} apiBaseUrl={apiBaseUrl} onBack={() => setSelectedRfq(null)} />
+    return <SupplierRFQDetail rfq={selectedRfq} supplierId={supplierId} apiBaseUrl={apiBaseUrl} onBack={() => setSelectedRfq(null)} backLabel="Back to Notifications" />
   }
 
   const today = new Date()

@@ -513,7 +513,7 @@ button.link-like {
   .table-empty-row td { display: block; }
 }
 
-/* ── Procurement stepper (RFQ → Quotation → Evaluation → PO) ────────────── */
+/* ── Procurement stepper (RFQ Prepared → RFQ Sent → Quotation Received) ─── */
 
 .procurement-stepper {
   display: grid;
@@ -559,10 +559,6 @@ button.link-like {
 
 .procurement-step.is-current { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); background: var(--teal-tint); }
 .procurement-step.is-current .procurement-step-marker { border-color: var(--teal); color: var(--teal); }
-
-.procurement-step.is-unavailable { border-style: dashed; background: transparent; }
-.procurement-step.is-unavailable .procurement-step-marker { border-style: dashed; }
-.procurement-step.is-unavailable .procurement-step-label { color: var(--text-secondary); }
 
 /* ── Status record header (current status on every record) ─────────────── */
 

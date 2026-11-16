@@ -3,9 +3,9 @@ import { ArrowRight, ChevronRight, FileText } from 'lucide-react'
 
 // Public walkthrough of the procurement workflow, opened from the home page's
 // "View the process" link. Static content only: the stages and status names
-// mirror PurchaseRequest.STATUS_CHOICES and RFQ.STATUS_CHOICES in the backend,
-// and Evaluation / PO Issuance are marked as not yet handled in eProcure (the
-// same rule ProcurementStepper follows).
+// mirror PurchaseRequest.STATUS_CHOICES and RFQ.STATUS_CHOICES in the backend.
+// Only the stages eProcure handles are listed (up to the supplier quotation),
+// matching ProcurementStepper.
 const ROLES = {
   enduser: 'End User',
   bac: 'BAC Secretariat',
@@ -82,20 +82,6 @@ const STAGES = [
     output: 'Signed quotation on record',
     statuses: [{ label: 'Quotation Received', scope: 'RFQ' }, { label: 'Completed', scope: 'RFQ' }],
   },
-  {
-    id: 'evaluation',
-    title: 'Evaluation and Purchase Order',
-    role: 'bac',
-    summary: 'The BAC compares quotations and issues the Purchase Order. These steps happen outside eProcure for now.',
-    steps: [
-      'Quotations are evaluated under the BAC\'s usual procedure.',
-      'The Purchase Order is issued through existing office channels.',
-    ],
-    input: 'Received quotations',
-    output: 'Award and Purchase Order',
-    statuses: [],
-    unavailable: true,
-  },
 ]
 
 const REQUIREMENTS = [
@@ -133,11 +119,11 @@ export default function ProcessGuide() {
           </div>
           <ol className="activity-timeline">
             {STAGES.map((stage, index) => (
-              <li key={stage.id} className={stage.unavailable ? 'is-unavailable' : undefined}>
+              <li key={stage.id}>
                 <span>{stageNumber(index)}</span>
                 <div>
                   <a href={`#stage-${stage.id}`}>{stage.title}</a>
-                  <small>{stage.unavailable ? 'Not yet handled in eProcure' : ROLES[stage.role]}</small>
+                  <small>{ROLES[stage.role]}</small>
                 </div>
               </li>
             ))}
@@ -149,7 +135,7 @@ export default function ProcessGuide() {
         {Object.entries(ROLES).map(([key, label], index) => {
           const owned = STAGES
             .map((stage, stageIndex) => ({ stage, stageIndex }))
-            .filter(({ stage }) => stage.role === key && !stage.unavailable)
+            .filter(({ stage }) => stage.role === key)
           return (
             <article key={key}>
               <span className="role-index">{stageNumber(index)}</span>
@@ -173,15 +159,13 @@ export default function ProcessGuide() {
             <li
               key={stage.id}
               id={`stage-${stage.id}`}
-              className={`process-stage${stage.unavailable ? ' is-unavailable' : ''}`}
+              className="process-stage"
               aria-labelledby={`stage-${stage.id}-title`}
             >
               <div className="process-stage-marker" aria-hidden="true">{stageNumber(index)}</div>
 
               <div className="process-stage-body">
-                <p className="process-stage-role">
-                  {stage.unavailable ? 'Outside eProcure' : ROLES[stage.role]}
-                </p>
+                <p className="process-stage-role">{ROLES[stage.role]}</p>
                 <h3 id={`stage-${stage.id}-title`}>{stage.title}</h3>
                 <p className="process-stage-summary">{stage.summary}</p>
                 <ul className="process-stage-steps">
@@ -199,20 +183,16 @@ export default function ProcessGuide() {
                   <span className="activity-label">Produces</span>
                   <strong>{stage.output}</strong>
                 </div>
-                {stage.statuses.length > 0 ? (
-                  <div className="process-record-statuses">
-                    <span className="activity-label">Status shown</span>
-                    <ul>
-                      {stage.statuses.map((status) => (
-                        <li key={`${status.scope}-${status.label}`}>
-                          <span className="process-status-scope">{status.scope}</span> {status.label}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="process-record-note">Not yet tracked in eProcure</p>
-                )}
+                <div className="process-record-statuses">
+                  <span className="activity-label">Status shown</span>
+                  <ul>
+                    {stage.statuses.map((status) => (
+                      <li key={`${status.scope}-${status.label}`}>
+                        <span className="process-status-scope">{status.scope}</span> {status.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </aside>
             </li>
           ))}

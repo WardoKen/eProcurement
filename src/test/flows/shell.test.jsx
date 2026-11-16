@@ -20,7 +20,8 @@ describe('app shell', () => {
     expect(screen.getByRole('heading', { level: 1, name: /how a request becomes a quotation/i })).toBeInTheDocument()
     const index = screen.getByRole('navigation', { name: 'Process stages' })
     expect(within(index).getByRole('link', { name: /bac review and pr numbering/i })).toHaveAttribute('href', '#stage-review')
-    expect(screen.getAllByText(/not yet tracked in eprocure/i)).toHaveLength(1)
+    expect(within(index).getAllByRole('link')).toHaveLength(5)
+    expect(screen.queryByText(/evaluation|purchase order|not yet/i)).not.toBeInTheDocument()
   })
 
   it('marks the active Admin tab and shows breadcrumbs off the dashboard', async () => {

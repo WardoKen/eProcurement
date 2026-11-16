@@ -888,6 +888,9 @@ def create_pr(request):
     except Exception as exc:
         return json_error('Failed to save Purchase Request', 500)
 
+    # Sent to the signed-in submitter, not whoever the payload names.
+    _notify_pr_received(pr, request.auth_user)
+
     return JsonResponse({
         'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status,
         'created_at': pr.created_at.isoformat(),
@@ -1191,27 +1194,32 @@ def _notify_pr_status_change(pr, old_status, new_status, *, is_automatic=False):
     if not _is_status_notification_enabled(notification_settings, new_status):
         return
 
-    submitted_by = (pr.submitted_by or '').strip()
-    if not submitted_by:
-        return
-
-    user = User.objects.filter(username=submitted_by, is_active=True).first()
-    if user is None or not user.email:
-        logger.info(
-            "Skipping PR status email for PR %s: no active user with an email on file for submitted_by=%r",
-            pr.pr_no or pr.id, submitted_by,
-        )
+    user = _pr_submitter(pr)
+    if user is None:
         return
 
     old_label = PR_STATUS_LABELS.get(old_status, old_status)
     new_label = PR_STATUS_LABELS.get(new_status, new_status)
     pr_label = pr.pr_no or f'#{pr.id}'
+    stage = _PR_STATUS_EMAIL_STAGE.get(new_status, 'under_review')
 
-    body_lines = [
-        f'The status of your Purchase Request {pr_label} has changed.',
+    if new_status == PurchaseRequest.STATUS_IN_REVIEW and pr.pr_no:
+        # The BAC finalizing its review is when the official number is
+        # assigned - the End User needs it to follow up with the BAC.
+        subject = f'PR No. {pr.pr_no} assigned: your Purchase Request is under BAC review'
+        intro = [
+            f'The BAC Secretariat has reviewed your Purchase Request and assigned it PR No. {pr.pr_no}.',
+            'Please use this PR number whenever you follow up with the BAC.',
+        ]
+    else:
+        subject = f'Purchase Request {pr_label} status update: {new_label}'
+        intro = [f'The status of your Purchase Request {pr_label} has changed.']
+
+    body_lines = intro + [
         '',
         f'Previous status: {old_label}',
         f'New status: {new_label}',
+        BUYER_PR_STAGE_DESCRIPTIONS[stage],
     ]
     if new_status == PurchaseRequest.STATUS_REJECTED:
         body_lines.append('')
@@ -1219,24 +1227,111 @@ def _notify_pr_status_change(pr, old_status, new_status, *, is_automatic=False):
             'This Purchase Request was rejected. Please contact the BAC Secretariat for the '
             'reason and next steps before resubmitting.'
         )
-    body_lines.append('')
-    body_lines.append('This is an automated notification from eProcure. Please do not reply to this email.')
+    next_step = _PR_STATUS_NEXT_STEP.get(new_status)
+    if next_step:
+        body_lines += ['', f'What happens next: {next_step}']
 
+    _send_pr_email(pr, user, subject, body_lines)
+
+
+# Status -> Live Status stage, for reusing that page's wording in emails.
+_PR_STATUS_EMAIL_STAGE = {
+    PurchaseRequest.STATUS_UPLOADED: 'submitted',
+    PurchaseRequest.STATUS_IN_REVIEW: 'under_review',
+    PurchaseRequest.STATUS_MATCHED: 'supplier_matching',
+    PurchaseRequest.STATUS_APPROVED: 'completed',
+    PurchaseRequest.STATUS_REJECTED: 'rejected',
+}
+
+_PR_STATUS_NEXT_STEP = {
+    PurchaseRequest.STATUS_IN_REVIEW: 'the BAC will group the line items by category and match them with eligible suppliers.',
+    PurchaseRequest.STATUS_MATCHED: 'the BAC will send Requests for Quotation (RFQs) to the matched suppliers.',
+}
+
+
+def _pr_submitter(pr):
+    """The active End User account that submitted ``pr`` and has an email on
+    file, or None (logged) - there is no FK, only the ``submitted_by`` username."""
+    submitted_by = (pr.submitted_by or '').strip()
+    if not submitted_by:
+        return None
+    user = User.objects.filter(username=submitted_by, is_active=True).first()
+    if user is None or not user.email:
+        logger.info(
+            "Skipping PR email for PR %s: no active user with an email on file for submitted_by=%r",
+            pr.pr_no or pr.id, submitted_by,
+        )
+        return None
+    return user
+
+
+def _send_pr_email(pr, user, subject, body_lines) -> bool:
+    """Send one PR email to ``user`` in the shared layout: greeting, the
+    caller's lines, the PR's details, and where to track it. Best-effort:
+    failures are logged and reported as False, never raised."""
+    from decimal import Decimal
+
+    pr_label = pr.pr_no or f'#{pr.id}'
+    purpose = (pr.purpose or '').strip()
+    if len(purpose) > 160:
+        purpose = purpose[:157].rstrip() + '...'
+    details = [
+        f'PR No.: {pr.pr_no or "To be assigned by the BAC"}',
+        f'Reference: #{pr.id}',
+        f'Entity: {pr.entity_name or "-"}',
+    ]
+    if pr.office_section:
+        details.append(f'Office/Section: {pr.office_section}')
+    if purpose:
+        details.append(f'Purpose: {purpose}')
+    try:
+        details.append(f'Total: PHP {Decimal(str(pr.grand_total or 0)):,.2f}')
+    except (ArithmeticError, ValueError):
+        pass
+
+    body = [f'Good day, {user.full_name or user.username}.', ''] + list(body_lines) + [
+        '',
+        'Purchase Request details',
+        *[f'  {line}' for line in details],
+        '',
+        f'Track it any time: sign in at {settings.FRONTEND_ORIGIN}/login and open Live Status.',
+        '',
+        'This is an automated notification from eProcure. Please do not reply to this email.',
+    ]
     email = EmailMessage(
-        subject=f'Purchase Request {pr_label} status update: {new_label}',
-        body='\n'.join(body_lines),
+        subject=subject,
+        body='\n'.join(body),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[user.email],
     )
     try:
-        email.send(fail_silently=True)
+        return email.send(fail_silently=False) > 0
     except Exception:
-        logger.exception("Failed to send PR status change email for PR %s", pr_label)
+        logger.exception("Failed to send PR email for PR %s", pr_label)
+        return False
+
+
+def _notify_pr_received(pr, user):
+    """Confirm to the End User who just submitted ``pr`` that the BAC has
+    received it. ``user`` is the signed-in submitter. Best-effort, like the
+    status emails, and gated by the same settings (enabled + notify_submitted)."""
+    notification_settings = get_pr_notification_settings()
+    if not (notification_settings.enabled and notification_settings.notify_submitted):
+        return False
+    if user is None or not user.is_active or not user.email:
+        return False
+    return _send_pr_email(pr, user, f'Purchase Request received by the BAC (Reference #{pr.id})', [
+        'The BAC Secretariat has received your Purchase Request. It is now queued for BAC review.',
+        '',
+        'What happens next: the BAC will check the document and its signatures, then assign the '
+        'official PR number. You will get another email when that is done.',
+    ])
 
 
 def _serialize_pr_notification_settings(settings_row):
     return {
         'enabled': settings_row.enabled,
+        'notify_submitted': settings_row.notify_submitted,
         'notify_in_review': settings_row.notify_in_review,
         'notify_matched': settings_row.notify_matched,
         'notify_approved': settings_row.notify_approved,
@@ -1246,7 +1341,7 @@ def _serialize_pr_notification_settings(settings_row):
 
 
 _PR_NOTIFICATION_BOOLEAN_FIELDS = [
-    'enabled', 'notify_in_review', 'notify_matched', 'notify_approved', 'notify_rejected',
+    'enabled', 'notify_submitted', 'notify_in_review', 'notify_matched', 'notify_approved', 'notify_rejected',
     'mute_automatic_transitions',
 ]
 
@@ -1331,6 +1426,7 @@ def pr_update(request, pr_id: int):
     if not isinstance(items, list):
         return json_error('Items must be a list', 400)
 
+    old_status = pr.status
     try:
         from decimal import Decimal
         with transaction.atomic():
@@ -1386,6 +1482,11 @@ def pr_update(request, pr_id: int):
     except (ArithmeticError, ValueError, TypeError):
         return json_error('Invalid Purchase Request values', 400)
 
+    # Finalizing the review assigns the PR number and moves the PR to In
+    # Review; tell the End User (after the transaction, so a rollback never
+    # emails a number that was not kept).
+    _notify_pr_status_change(pr, old_status, pr.status)
+
     return JsonResponse({'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status, 'grand_total': float(pr.grand_total)})
 
 
@@ -1415,17 +1516,27 @@ def register(request):
     email = data.get('email', '').strip()
     unit_office = data.get('unitOffice', '').strip()
 
-    if not username or not password:
-        return json_error('Username and password are required', 400)
-
     if role_name not in ('admin', 'buyer', 'supplier'):
         role_name = 'buyer'
+
+    # End User accounts are created without a password: the user receives a
+    # one-time link to choose their own, so no password is ever typed by the
+    # admin or sent by email. Other roles still need one up front.
+    invite = role_name == 'buyer' and not password
+    if not username:
+        return json_error('Username is required', 400)
+    if invite and not email:
+        return json_error('An email address is required to send the account setup link.', 400)
+    if not invite and not password:
+        return json_error('Username and password are required', 400)
 
     role = Role.objects.filter(name=role_name).first()
     if not role:
         return json_error('Invalid role selected', 400)
 
-    password_hash = hash_password(password)
+    # An invited account gets a random password nobody knows until the link is used.
+    password_hash = hash_password(password or secrets.token_urlsafe(32))
+    raw_token = None
     try:
         with transaction.atomic():
             user = User.objects.create(
@@ -1437,10 +1548,62 @@ def register(request):
                 role=role,
                 is_active=True,
             )
+            if role_name == 'buyer' and email:
+                raw_token = secrets.token_urlsafe(32)
+                PasswordResetToken.objects.create(
+                    user=user,
+                    token_hash=hashlib.sha256(raw_token.encode('utf-8')).hexdigest(),
+                    expires_at=timezone.now() + ACCOUNT_SETUP_TOKEN_TTL,
+                )
     except IntegrityError:
         return json_error('Username already exists', 409)
 
-    return JsonResponse({'success': True, 'userId': user.id, 'role': role_name}, status=201)
+    welcome_email_sent = _send_end_user_welcome_email(user, raw_token) if raw_token else None
+
+    return JsonResponse({
+        'success': True, 'userId': user.id, 'role': role_name,
+        'welcome_email_sent': welcome_email_sent, 'email': user.email,
+    }, status=201)
+
+
+# How long the set-password link in an End User's welcome email stays valid.
+# Longer than a reset link (30 minutes): a new user may not read it right away.
+ACCOUNT_SETUP_TOKEN_TTL = timedelta(days=3)
+
+
+def _send_end_user_welcome_email(user, raw_token) -> bool:
+    """Email a new End User their username and a one-time link to set their
+    password. Best-effort: a failure is logged and reported, never raised,
+    so the account still exists and the admin can follow up."""
+    setup_link = f"{settings.FRONTEND_ORIGIN}/reset-password?token={raw_token}&setup=1"
+    email = EmailMessage(
+        subject='Your eProcure End User account is ready',
+        body='\n'.join([
+            f'Good day, {user.full_name or user.username}.',
+            '',
+            'The BAC Secretariat has created an eProcure End User account for you. You can use it to '
+            'submit signed Purchase Requests and follow their progress.',
+            '',
+            f'Username: {user.username}',
+            '',
+            'Set your password using the link below. It can be used once and expires in 3 days:',
+            setup_link,
+            '',
+            f'Afterwards, sign in at {settings.FRONTEND_ORIGIN}/login with your username and the password you chose.',
+            'If the link has expired, use "Forgot password" on the sign-in page to get a new one.',
+            '',
+            'If you were not expecting this account, you can ignore this email.',
+            '',
+            'This is an automated notification from eProcure. Please do not reply to this email.',
+        ]),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    try:
+        return email.send(fail_silently=False) > 0
+    except Exception:
+        logger.exception('Failed to send welcome email to user %s', user.username)
+        return False
 
 
 @require_GET
@@ -2060,15 +2223,16 @@ def supplier_register(request):
     }
 
     business_document_key = get_required_business_document_key(payload['businessType'])
+    # Every uploaded file is validated, including each file of the keys that
+    # accept several (the optional documents and the legacy additionalFiles).
+    multi_file_keys = set(OPTIONAL_UPLOAD_KEYS) | {'additionalFiles', 'otherEligibilityFiles'}
     files = {}
-    for key in REQUIRED_UPLOAD_KEYS + OPTIONAL_UPLOAD_KEYS + [business_document_key] + ['additional_docs', 'otherEligibilityFiles']:
+    for key in REQUIRED_UPLOAD_KEYS + OPTIONAL_UPLOAD_KEYS + [business_document_key] + ['additional_docs', 'otherEligibilityFiles', 'additionalFiles']:
         if not key:
             continue
         uploaded = request.FILES.getlist(key)
         if uploaded:
-            files[key] = uploaded[0]
-        elif key == 'otherEligibilityFiles':
-            files[key] = request.FILES.getlist('otherEligibilityFiles')
+            files[key] = uploaded if key in multi_file_keys else uploaded[0]
 
     errors = validate_supplier_payload(payload, files=files, categories=list(Category.objects.filter(is_active=True).values_list('name', flat=True)))
     if invalid_category_ids:
@@ -2131,16 +2295,17 @@ def supplier_register(request):
             for key in REQUIRED_UPLOAD_KEYS + OPTIONAL_UPLOAD_KEYS + [business_document_key]:
                 if not key:
                     continue
-                uploaded = request.FILES.get(key)
-                if not uploaded:
-                    continue
-                stored_path = _save_supplier_upload(uploaded)
-                SupplierDocument.objects.create(
-                    supplier=supplier,
-                    doc_type=key,
-                    filename=stored_path,
-                    original_name=uploaded.name,
-                )
+                key_files = request.FILES.getlist(key) if key in OPTIONAL_UPLOAD_KEYS else [request.FILES.get(key)]
+                for uploaded in key_files:
+                    if not uploaded:
+                        continue
+                    stored_path = _save_supplier_upload(uploaded)
+                    SupplierDocument.objects.create(
+                        supplier=supplier,
+                        doc_type=key,
+                        filename=stored_path,
+                        original_name=uploaded.name,
+                    )
 
             additional_doc_names = request.POST.getlist('additionalDocNames')
             uploaded_additional_files = request.FILES.getlist('additionalFiles')
@@ -2169,6 +2334,42 @@ def supplier_register(request):
         return JsonResponse({'success': False, 'message': 'Failed to save supplier registration.', 'error': str(exc)}, status=500)
 
     return JsonResponse({'success': True, 'id': supplier.id, 'message': 'Supplier registration submitted successfully. It is now pending review.'}, status=201)
+
+
+def _send_supplier_approved_email(supplier) -> bool:
+    """Tell an approved supplier, at their registered email, that they can
+    now sign in and receive RFQs. Returns whether the email was handed to the
+    mail server; a failure is logged and never blocks the approval itself."""
+    recipient = (supplier.email or '').strip()
+    if not recipient:
+        return False
+
+    login_link = f"{settings.FRONTEND_ORIGIN}/login"
+    contact = supplier.contact_person or supplier.company_name
+    email = EmailMessage(
+        subject='Your eProcure supplier registration has been approved',
+        body='\n'.join([
+            f'Good day, {contact}.',
+            '',
+            f'The BAC Secretariat has reviewed and approved the supplier registration of {supplier.company_name}.',
+            'You can now sign in to the eProcure supplier portal to receive Requests for Quotation (RFQs) '
+            'matched to your registered categories and submit your quotations.',
+            '',
+            f'Sign in here: {login_link}',
+            '',
+            "Please keep your compliance documents (such as your Mayor's Permit, Tax Clearance and PhilGEPS "
+            'registration) current in your Company Profile.',
+            '',
+            'This is an automated notification from eProcure. Please do not reply to this email.',
+        ]),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[recipient],
+    )
+    try:
+        return email.send(fail_silently=False) > 0
+    except Exception:
+        logger.exception('Failed to send approval email to supplier %s', supplier.id)
+        return False
 
 
 @csrf_exempt
@@ -2209,6 +2410,9 @@ def supplier_update_status(request, supplier_id: int):
             document.verification_status = str(document_status).strip()
             document.save(update_fields=['verification_status'])
 
+    # None when no email was due (not a fresh approval); otherwise whether
+    # the approval email went out, so the admin screen can say so.
+    approval_email_sent = None
     if status == 'Approved' and not was_approved:
         Notification.objects.create(
             supplier=supplier,
@@ -2216,6 +2420,7 @@ def supplier_update_status(request, supplier_id: int):
             title='Supplier Profile Approved',
             message='Your supplier profile has been approved by the BAC admin.',
         )
+        approval_email_sent = _send_supplier_approved_email(supplier)
 
     documents = [
         {
@@ -2231,6 +2436,8 @@ def supplier_update_status(request, supplier_id: int):
         'status': supplier.status,
         'remarks': supplier.review_remarks,
         'documents': documents,
+        'approval_email_sent': approval_email_sent,
+        'email': supplier.email,
     })
 
 
@@ -3370,15 +3577,9 @@ def admin_rfq(request, pr_id):
             )
         rfq = existing_for_group
 
+    # The email itself is written by _rfq_email_content when the RFQ is sent;
+    # a draft only carries a working subject.
     default_subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
-    default_message = (
-        f"Dear {supplier.contact_person or supplier.company_name},\n\n"
-        "Greetings.\n\n"
-        f"The {pr.entity_name} is requesting a quotation for the items/services specified in Purchase Request "
-        f"{pr.pr_no or pr.id}. Please provide your quotation based on the specifications and quantities indicated.\n\n"
-        "Kindly submit your quotation through the eProcure system or through the designated submission process.\n\n"
-        "Thank you.\n\nRegards,\nBAC Secretariat"
-    )
 
     valid_quotation_bases = {choice[0] for choice in RFQ.QUOTATION_BASIS_CHOICES}
 
@@ -3416,8 +3617,8 @@ def admin_rfq(request, pr_id):
                 supplier=supplier,
                 category=group_category,
                 created_by=request.auth_user,
-                subject=str(payload.get('subject') or default_subject).strip(),
-                message=str(payload.get('message') or default_message).strip(),
+                subject=default_subject,
+                message='',
                 abc=pr_abc,
                 additional_notes=str(payload.get('additional_notes') or '').strip(),
                 mode_of_procurement=mode_of_procurement,
@@ -3426,8 +3627,6 @@ def admin_rfq(request, pr_id):
             )
             _sync_rfq_items(rfq, group_items)
     else:
-        rfq.subject = str(payload.get('subject') or rfq.subject).strip()
-        rfq.message = str(payload.get('message') or rfq.message).strip()
         # A draft re-syncs to the current PR grand total (this is also the value
         # persisted when it is issued below). An already-issued RFQ keeps its
         # historical ABC.
@@ -3464,11 +3663,12 @@ def admin_rfq(request, pr_id):
         rfq.save(update_fields=['pdf_file', 'updated_at'])
 
     if should_send:
-        if not rfq.subject or not rfq.message:
-            return json_error('RFQ subject and message are required.', 400)
         if not supplier.email or '@' not in supplier.email:
             return json_error("RFQ could not be sent. Please verify the supplier's email address and email configuration.", 400)
 
+        # Written from the RFQ's own details now that its number exists, and
+        # kept on the RFQ as the record of what the supplier received.
+        rfq.subject, rfq.message = _rfq_email_content(rfq, pr, supplier)
         email = EmailMessage(
             subject=rfq.subject,
             body=rfq.message,
@@ -3502,6 +3702,57 @@ def admin_rfq(request, pr_id):
         rfq.save(update_fields=['subject', 'message', 'mode_of_procurement', 'quotation_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
 
     return JsonResponse(_rfq_payload(rfq, request), status=201 if rfq_created else 200)
+
+
+def _rfq_email_content(rfq, pr, supplier):
+    """Subject and body of the email that issues ``rfq`` to ``supplier``.
+
+    Built from the RFQ itself (number, PR, category, items, mode, basis and
+    the BAC's additional notes) so it always matches the attached PDF, and
+    it tells the supplier exactly how to respond through eProcure.
+    """
+    pr_label = pr.pr_no or pr.id
+    category = rfq.category.name if rfq.category_id else (pr.category or '')
+    item_count = rfq.rfq_items.count()
+    subject = f'Request for Quotation {rfq.rfq_no} - PR {pr_label}' + (f' ({category})' if category else '')
+    if rfq.quotation_basis == RFQ.QUOTATION_BASIS_LINE:
+        basis = 'Per line item - you may quote for one or more of the items'
+    else:
+        basis = 'By lot - quote for every item listed, or the quotation may be disqualified'
+
+    lines = [
+        f'Good day, {supplier.contact_person or supplier.company_name}.',
+        '',
+        f'The BAC Secretariat of {pr.entity_name} invites {supplier.company_name} to submit a quotation '
+        'for the items in the attached Request for Quotation (RFQ).',
+        '',
+        f'RFQ No.: {rfq.rfq_no}',
+        f'PR No.: {pr_label}',
+    ]
+    if category:
+        lines.append(f'Category: {category}')
+    lines += [
+        f'Items: {item_count}',
+        f'Mode of procurement: {rfq.mode_of_procurement or "-"}',
+        f'Quotation basis: {basis}',
+    ]
+    notes = (rfq.additional_notes or '').strip()
+    if notes:
+        lines += ['', 'Notes from the BAC Secretariat:', notes]
+    lines += [
+        '',
+        'How to respond',
+        '  1. Open the attached RFQ PDF and print it.',
+        '  2. Fill in the brand/model, unit prices, totals and your contact details, then sign it.',
+        '  3. Scan the completed RFQ as a single PDF.',
+        f'  4. Sign in at {settings.FRONTEND_ORIGIN}/login, open RFQs, select {rfq.rfq_no}, '
+        'and upload the PDF under "Completed RFQ Submission".',
+        '',
+        'If anything in the RFQ is unclear, please contact the BAC Secretariat before submitting.',
+        '',
+        'This is an automated notification from eProcure. Please do not reply to this email.',
+    ]
+    return subject, '\n'.join(lines)
 
 
 # ─── Manual / unregistered supplier RFQs ───────────────────────────────────────

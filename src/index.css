@@ -5720,73 +5720,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   gap: 14px;
 }
 
-.upload-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: #fcfdff;
+.upload-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
-.upload-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: 10px;
-}
-
-.upload-card h3 {
-  margin-bottom: 4px;
-  font-size: 15px;
-}
-
-.upload-card p {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.upload-card-badge {
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: #e0e7ff;
-  color: #4338ca;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.upload-card-badge.optional {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.upload-placeholder {
-  color: var(--muted);
-  font-size: 14px;
-  padding: 10px 0;
-}
-
-.file-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-radius: 10px;
-  background: #ecfdf3;
-  color: #166534;
-  padding: 10px 12px;
-  font-size: 13px;
-}
-
-.file-chip button {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-weight: 600;
-}
 
 .review-grid {
   display: grid;
@@ -6413,8 +6350,13 @@ textarea:focus {
 .buyer-account-form .alert,
 .buyer-account-form .form-actions,
 .buyer-account-form .number-preview,
-.buyer-account-form .settings-toggle-list {
+.buyer-account-form .settings-toggle-list,
+.buyer-account-form .required-legend {
   grid-column: 1 / -1;
+}
+
+.buyer-account-form .required-legend {
+  margin: 0;
 }
 
 .buyer-account-form .number-preview {
@@ -9013,8 +8955,6 @@ textarea:focus-visible,
 .process-index .activity-timeline a { color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
 .process-index .activity-timeline a:hover { color: #e2bf72; text-decoration: underline; text-underline-offset: 3px; }
 .process-index :where(a):focus-visible { outline-color: var(--focus-ring-on-dark); }
-.activity-timeline .is-unavailable > span { border-style: dashed; color: #8eaaac; }
-.activity-timeline .is-unavailable a { color: #c7d7d9; }
 
 .process-section-head > h2 { max-width: 520px; margin: 0 0 24px; color: var(--navy); font-family: Georgia, 'Times New Roman', serif; font-size: 31px; letter-spacing: -.025em; line-height: 1.1; }
 
@@ -9038,12 +8978,7 @@ textarea:focus-visible,
 .process-record-statuses ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
 .process-record-statuses li { padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 3px; background: #fafaf7; color: var(--navy); font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; }
 .process-status-scope { color: var(--teal); font-weight: 700; }
-.process-guide .process-record-note { padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 
-.process-stage.is-unavailable .process-stage-marker { color: var(--text-secondary); }
-.process-stage.is-unavailable .process-stage-role { color: var(--text-secondary); }
-.process-stage.is-unavailable .process-stage-record { background: transparent; border-style: dashed; border-left: 3px dashed var(--border-strong); }
-.process-stage.is-unavailable .process-stage-steps li::before { background: var(--border-strong); }
 
 .process-guide .process-bulletin-intro { padding: 16px 22px 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
 .official-bulletin .process-requirement { display: flex; align-items: center; gap: 10px; padding: 11px 22px; }
@@ -9144,3 +9079,144 @@ textarea:focus-visible,
   letter-spacing: .02em;
 }
 .phone-field:has(input[aria-invalid="true"]) .phone-field-country-face { border-color: var(--danger); }
+
+/* ── SUPPLIER REGISTRATION: document checklist (step 3) ────────────────────
+   A summary meter over a grid of DocumentUploadCard slots. Each slot shows a
+   dashed drop zone until a file is attached, then the file row. */
+.doc-checklist-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  align-items: center;
+  gap: 16px 28px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--gold);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.doc-checklist-summary.is-complete { border-left-color: var(--teal); }
+.doc-checklist-kicker { display: block; margin-bottom: 4px; color: var(--teal); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.doc-checklist-summary strong { display: block; color: var(--navy); font-size: 15px; }
+.section-card .doc-checklist-summary p { margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.doc-checklist-meter { height: 8px; overflow: hidden; border-radius: 999px; background: #e7ece7; }
+.doc-checklist-meter span { display: block; height: 100%; border-radius: inherit; background: var(--gold); transition: width var(--duration-base) var(--ease-standard); }
+.doc-checklist-summary.is-complete .doc-checklist-meter span { background: var(--teal); }
+
+.doc-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  transition: border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.doc-upload.is-attached { border-color: #9fcfc8; background: #fbfdfc; }
+.doc-upload.is-missing { border-color: var(--danger); }
+.doc-upload.is-dragging { border-color: var(--teal); box-shadow: 0 0 0 3px var(--ring); }
+
+.doc-upload-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.doc-upload-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 3px; background: #eef1ec; color: var(--navy); }
+.doc-upload.is-attached .doc-upload-icon { background: var(--teal); color: #fff; }
+.doc-upload-title { min-width: 0; }
+.section-card .doc-upload-title h3 { margin: 0; color: var(--navy); font-size: 15px; font-weight: 700; line-height: 1.3; }
+.section-card .doc-upload-title p { margin: 2px 0 0; color: var(--text-secondary); font-size: 12.5px; line-height: 1.45; }
+
+.doc-upload-tag { padding: 4px 8px; border: 1px solid transparent; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.doc-upload-tag.is-required { border-color: #ead9a6; background: var(--gold-tint); color: #6b4e07; }
+.doc-upload-tag.is-optional { border-color: var(--border-strong); background: #f3f5f1; color: var(--text-secondary); }
+.doc-upload-tag.is-attached { border-color: #9fcfc8; background: var(--teal-tint); color: var(--teal-soft); }
+
+.doc-upload-zone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1.5px dashed #b5beb2;
+  border-radius: 3px;
+  background: #f8f9f6;
+  color: var(--navy);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+}
+.doc-upload-zone svg { flex: 0 0 auto; color: var(--teal); }
+.doc-upload-zone:hover,
+.doc-upload.is-dragging .doc-upload-zone { border-color: var(--teal); background: var(--teal-tint); }
+.doc-upload:focus-within .doc-upload-zone { border-color: var(--teal); outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: var(--focus-ring-offset); }
+.doc-upload.is-missing .doc-upload-zone { border-color: var(--danger); background: var(--danger-tint); }
+.doc-upload-zone-text { display: grid; gap: 2px; min-width: 0; }
+.doc-upload-zone-text strong { font-size: 13.5px; font-weight: 600; }
+.doc-upload-zone-text u { color: var(--teal); text-underline-offset: 3px; }
+.doc-upload.is-missing .doc-upload-zone-text u { color: inherit; }
+.doc-upload-zone-text small { color: var(--text-secondary); font-size: 12px; }
+
+.doc-upload-file { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid #cfe5e1; border-radius: 3px; background: var(--teal-tint); }
+.doc-upload-type { flex: 0 0 auto; padding: 3px 6px; border-radius: 2px; background: var(--navy); color: #fff; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.doc-upload-file-text { display: grid; flex: 1 1 0; min-width: 0; }
+.doc-upload-file-text strong { overflow: hidden; color: var(--navy); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.doc-upload-file-text small { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+.doc-upload-actions { display: inline-flex; flex: 0 0 auto; gap: 4px; }
+.doc-upload-action { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 8px; border: 0; border-radius: 3px; background: transparent; color: var(--navy); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.doc-upload-action:hover { background: rgba(16, 47, 67, .08); }
+.doc-upload-action.is-danger { color: var(--danger); }
+.doc-upload-action.is-danger:hover { background: var(--danger-tint); }
+.doc-upload .field-error { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-checklist-meter span, .doc-upload, .doc-upload-zone { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .doc-checklist-summary { grid-template-columns: 1fr; }
+  .doc-upload-head { grid-template-columns: 36px minmax(0, 1fr); }
+  .doc-upload-tag { grid-column: 2; justify-self: start; }
+  .doc-upload-file { flex-wrap: wrap; }
+  .doc-upload-actions { width: 100%; justify-content: flex-end; }
+}
+
+/* Multi-file slot (Other Eligibility Requirements): a list of file rows with
+   the add zone below it. */
+.doc-upload-files { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.doc-upload-zone.is-compact { min-height: 52px; padding-block: 8px; }
+.section-card .doc-upload-limit { margin: 0; color: var(--text-secondary); font-size: 12.5px; }
+
+/* Create End User Account: replaces the old password fields. */
+.buyer-account-form .buyer-account-invite-note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #cfe5e1;
+  border-left: 3px solid var(--teal);
+  border-radius: 3px;
+  background: var(--teal-tint);
+  color: var(--navy);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.buyer-account-invite-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--teal); }
+
+/* ── RFQ Preparation: the automatic "Email to Supplier" summary, and the
+   supplier RFQ page's "How to respond" steps (both replace the old
+   free-text RFQ message). */
+.rfq-email-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+.rfq-email-card h2 svg { color: var(--teal); }
+.rfq-email-card .helper-text { margin: 0 0 12px; }
+.rfq-email-summary { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--border); }
+.rfq-email-summary > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.rfq-email-summary dt { color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.rfq-email-summary dd { margin: 0; color: var(--navy); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.rfq-email-summary dd em { color: var(--text-secondary); font-style: normal; }
+.rfq-email-sent { margin-top: 12px; }
+.rfq-email-sent summary { color: var(--teal); font-size: 13px; font-weight: 600; cursor: pointer; }
+.rfq-email-sent pre { margin: 10px 0 0; padding: 14px; max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 3px; background: #fafaf7; color: var(--text); font: 13px/1.55 var(--font-sans); white-space: pre-wrap; }
+.rfq-respond-steps { display: grid; gap: 6px; margin: 0; padding-left: 20px; color: var(--text); font-size: 14px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .rfq-email-summary > div { grid-template-columns: 1fr; gap: 2px; }
+}

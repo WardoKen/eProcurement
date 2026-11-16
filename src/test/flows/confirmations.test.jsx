@@ -1,7 +1,7 @@
 // Irreversible actions ask first and say what will happen. Cancelling sends
 // nothing. (The payloads themselves are pinned by the per-flow tests.)
 import { describe, expect, it } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { installApi, renderAt, signIn } from '../harness'
 import { adminUser, numberedPr, prDetails, supplierMatch, supplierProfile, supplierRow, unnumberedPr } from '../fixtures'
 
@@ -52,12 +52,12 @@ describe('confirmation steps', () => {
     await openPrMonitoring(user)
     await user.click(await screen.findByRole('button', { name: /continue matching/i }))
     await user.click(await screen.findByRole('button', { name: /request quotation/i }))
-    await waitFor(() => expect(screen.getByDisplayValue('Request for Quotation - PR 2026-11-001')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: /email to supplier/i })
     await user.type(document.querySelector('input[list="procurement-mode-options"]'), 'Shopping')
     await user.click(screen.getByRole('button', { name: /^save rfq/i }))
     await user.click(await screen.findByRole('button', { name: /send rfq to supplier/i }))
 
-    const dialog = await screen.findByRole('alertdialog', { name: /send rfq rfq-2026-001/i })
+    const dialog = await screen.findByRole('alertdialog', { name: /send rfq to acme supplies/i })
     expect(dialog).toHaveTextContent('sales@acme.ph')
     expect(dialog).toHaveAccessibleDescription(/can no longer be edited/i)
   })

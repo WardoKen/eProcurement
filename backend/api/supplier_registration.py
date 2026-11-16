@@ -25,7 +25,9 @@ REQUIRED_UPLOAD_KEYS = [
     'tax_clearance',
 ]
 
+# Optional keys may carry several files each (repeat the form field).
 OPTIONAL_UPLOAD_KEYS = ['other_eligibility']
+MAX_OTHER_ELIGIBILITY_FILES = 10
 BUSINESS_DOCUMENT_KEYS = {
     'Sole Proprietorship': 'dti_registration',
     'Corporation': 'sec_registration',
@@ -104,6 +106,10 @@ def validate_supplier_payload(payload: Dict[str, object], files: Dict[str, objec
     for key in REQUIRED_UPLOAD_KEYS:
         if not files.get(key):
             errors.append(f'{REQUIRED_DOCUMENTS.get(key, key)} is required')
+
+    other_files = files.get('other_eligibility') or []
+    if isinstance(other_files, list) and len(other_files) > MAX_OTHER_ELIGIBILITY_FILES:
+        errors.append(f'You can attach up to {MAX_OTHER_ELIGIBILITY_FILES} other eligibility documents')
 
     from .file_validation import UploadKind, FileValidationError, validate_upload
 

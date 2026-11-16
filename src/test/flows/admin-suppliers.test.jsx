@@ -51,6 +51,26 @@ describe('supplier verification', () => {
     })
   })
 
+  it('tells the admin whether the approval email went out', async () => {
+    for (const [sent, expected] of [
+      [true, /acme supplies, inc\. approved\. an approval email was sent to sales@acme\.ph/i],
+      [false, /approved, but the approval email to sales@acme\.ph could not be sent/i],
+    ]) {
+      signIn(adminUser)
+      installApi({
+        ...routes,
+        'PATCH /api/suppliers/7/status/': { json: { remarks: '', documents: [], approval_email_sent: sent, email: 'sales@acme.ph' } },
+      })
+      const { user, unmount } = renderAt('/admin')
+      const review = await openSupplierReview(user)
+      await user.click(within(review).getByRole('button', { name: /approve registration/i }))
+      await confirmDecision(user)
+
+      expect(await screen.findByText(expected)).toBeInTheDocument()
+      unmount()
+    }
+  })
+
   it('reject is blocked without remarks, then sends them', async () => {
     signIn(adminUser)
     const api = installApi(routes)
