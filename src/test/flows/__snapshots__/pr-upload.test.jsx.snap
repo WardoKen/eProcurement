@@ -35,6 +35,7 @@ exports[`End User PR upload and review > saves the reviewed record only after th
     ],
     "responsibilityCenterCode": "RC-100",
     "reviewOnly": true,
+    "signature_confirmations": [],
     "sourceFilename": "pr-2026.pdf",
     "submittedBy": "enduser1",
   },

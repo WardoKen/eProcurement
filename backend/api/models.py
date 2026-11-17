@@ -141,6 +141,10 @@ class PurchaseRequest(models.Model):
     # and ``declaration_acknowledged_at`` / ``created_at``.
     declaration_acknowledged = models.BooleanField(default=False)
     declaration_acknowledged_at = models.DateTimeField(null=True, blank=True)
+    # Required signatures the detector could not decide ("uncertain") that the
+    # submitter confirmed by hand against the document, for the BAC's review:
+    # [{"key", "label", "confirmed_by", "confirmed_at"}].
+    signature_confirmations = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

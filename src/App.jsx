@@ -1824,6 +1824,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
             <span>Mode of Procurement<RequiredMark /></span>
             <input
               type="text"
+              className="dropdown-control"
               list="procurement-mode-options"
               value={modeOfProcurement}
               onChange={(event) => setModeOfProcurement(event.target.value)}
@@ -1838,14 +1839,14 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
               {procurementModes.map((mode) => <option key={mode} value={mode} />)}
             </datalist>
           </label>
-          <label className="form-field"><span>ABC</span><input value={abc || computedAbc} readOnly /></label>
           <label className="form-field">
             <span>Quotation Basis</span>
-            <select value={quotationBasis} onChange={(event) => setQuotationBasis(event.target.value)} disabled={isSent}>
+            <select className="dropdown-control" value={quotationBasis} onChange={(event) => setQuotationBasis(event.target.value)} disabled={isSent}>
               <option value="LOT">Lot</option>
               <option value="LINE">Line</option>
             </select>
           </label>
+          <label className="form-field"><span>ABC</span><input value={abc || computedAbc} readOnly /></label>
         </div>
         <p className="helper-text" id="rfq-mode-hint" style={{ marginTop: 4 }}>
           {!modeOfProcurement.trim()
@@ -2296,14 +2297,14 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
               </label>
               <label className="form-field">
                 <span>Mode of Procurement *</span>
-                <input type="text" list="manual-rfq-modes" value={manualRfqMode} onChange={(e) => setManualRfqMode(e.target.value)} placeholder="Select a suggestion or type a mode" />
+                <input type="text" className="dropdown-control" list="manual-rfq-modes" value={manualRfqMode} onChange={(e) => setManualRfqMode(e.target.value)} placeholder="Select a suggestion or type a mode" />
                 <datalist id="manual-rfq-modes">
                   {manualRfqModes.map((mode) => <option key={mode} value={mode} />)}
                 </datalist>
               </label>
               <label className="form-field">
                 <span>Quotation Basis *</span>
-                <select value={manualRfqQuotationBasis} onChange={(e) => setManualRfqQuotationBasis(e.target.value)}>
+                <select className="dropdown-control" value={manualRfqQuotationBasis} onChange={(e) => setManualRfqQuotationBasis(e.target.value)}>
                   <option value="LOT">Lot</option>
                   <option value="LINE">Line</option>
                 </select>
@@ -3034,6 +3035,9 @@ const Admin = () => {
   const [editPrSourceUrl, setEditPrSourceUrl] = React.useState('')
   const [editPrSourceFilename, setEditPrSourceFilename] = React.useState('')
   const [editPrSignatureValidation, setEditPrSignatureValidation] = React.useState(null)
+  // Signatures the submitter confirmed by hand ("Please confirm") - shown to
+  // the BAC reviewer next to the live recheck.
+  const [editPrSignatureConfirmations, setEditPrSignatureConfirmations] = React.useState([])
   const [editPrSignatureChecking, setEditPrSignatureChecking] = React.useState(false)
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
@@ -3798,6 +3802,7 @@ const Admin = () => {
       setEditPrSourceUrl(details.source_file_url || '')
       setEditPrSourceFilename(details.source_filename || '')
       setEditPrSignatureValidation(null)
+      setEditPrSignatureConfirmations(Array.isArray(details.signature_confirmations) ? details.signature_confirmations : [])
       if (details.source_filename) {
         checkEditPrSignatures(details.source_filename, {
           requested_by_name: details.requested_by || '',
@@ -5203,6 +5208,7 @@ const Admin = () => {
                                 onRecheck={handleRecheckEditPrSignatures}
                                 rechecking={editPrSignatureChecking}
                                 hasDocument={Boolean(editPrSourceFilename)}
+                                confirmations={editPrSignatureConfirmations}
                               />
 
                               <div className="requested-items-block">

@@ -1627,6 +1627,7 @@ class SignaturePresenceValidationTests(TestCase):
         for path in self._written:
             Path(path).unlink(missing_ok=True)
             Path(str(path) + '.sigcheck.json').unlink(missing_ok=True)
+            Path(str(path) + '.textract.json').unlink(missing_ok=True)
 
     def _make_pr_pdf(self, name, signed):
         canvas_mod = __import__('reportlab.pdfgen.canvas', fromlist=['Canvas'])
@@ -1707,6 +1708,111 @@ class SignaturePresenceValidationTests(TestCase):
         response = self._post_pr(name)
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()['missing_signatures'], ['Funds Available'])
+
+    # ---- "Please confirm" (uncertain) signatures ---------------------------
+    @staticmethod
+    def _needs_confirmation(keys):
+        from api.views import signature_detection
+
+        signatories = {
+            key: {'state': 'uncertain' if key in keys else 'present', 'reason': 'ambiguous_ink'}
+            for key in signature_detection.ALL_SIGNATORIES
+        }
+        return {
+            'signatories': signatories,
+            'summary': signature_detection._summarise(signatories),
+            'regions': {},
+        }
+
+    def test_uncertain_signature_blocks_the_save_until_confirmed(self):
+        name = self._signed('sigtest-uncertain.pdf')
+        with patch('api.views.recheck_signature_validation', return_value=self._needs_confirmation(['funds_available'])):
+            response = self._post_pr(name)
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertEqual(body['uncertain_signatures'], ['Funds Available'])
+        self.assertEqual(body['missing_signatures'], [])
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_confirmed_uncertain_signature_saves_and_is_recorded(self):
+        name = self._signed('sigtest-confirmed.pdf')
+        with patch('api.views.recheck_signature_validation', return_value=self._needs_confirmation(['funds_available'])):
+            response = self._post_pr(name, extra={'signature_confirmations': ['funds_available']})
+        self.assertEqual(response.status_code, 201, response.content)
+        pr = PurchaseRequest.objects.get()
+        self.assertEqual(len(pr.signature_confirmations), 1)
+        record = pr.signature_confirmations[0]
+        self.assertEqual(record['key'], 'funds_available')
+        self.assertEqual(record['label'], 'Funds Available')
+        self.assertTrue(record['confirmed_by'].startswith('test-buyer'))
+        self.assertTrue(record['confirmed_at'])
+
+    def test_confirming_only_some_uncertain_signatures_is_not_enough(self):
+        name = self._signed('sigtest-partly-confirmed.pdf')
+        result = self._needs_confirmation(['funds_available', 'approved_by'])
+        with patch('api.views.recheck_signature_validation', return_value=result):
+            response = self._post_pr(name, extra={'signature_confirmations': ['funds_available']})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_a_blank_signature_cannot_be_confirmed_away(self):
+        name = self._make_pr_pdf('sigtest-blank-confirmed.pdf', signed={'requested_by': True, 'approved_by': True})
+        response = self._post_pr(
+            name, extra={'signature_confirmations': ['requested_by', 'funds_available', 'approved_by']},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['missing_signatures'], ['Funds Available'])
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_unknown_confirmation_keys_are_ignored(self):
+        name = self._signed('sigtest-bogus-confirm.pdf')
+        with patch('api.views.recheck_signature_validation', return_value=self._needs_confirmation(['funds_available'])):
+            response = self._post_pr(name, extra={'signature_confirmations': ['twg', 'anything']})
+        self.assertEqual(response.status_code, 422)
+
+    # ---- Scanned PRs: Textract blocks kept for Recheck ---------------------
+    SCAN_FIXTURE = Path(settings.BASE_DIR) / 'ocr' / 'tests' / 'fixtures' / 'Scanned Purchase Request.pdf'
+    SCAN_TEXTRACT = Path(settings.BASE_DIR) / 'ocr' / 'tests' / 'fixtures' / 'scan_textract.json'
+
+    def _copy_scan(self, name):
+        path = self.UPLOADS / name
+        path.write_bytes(self.SCAN_FIXTURE.read_bytes())
+        self._written.append(path)
+        return name
+
+    def test_upload_analysis_keeps_the_textract_blocks(self):
+        from api.views import run_signature_validation
+
+        name = self._copy_scan('sigtest-scan-upload.pdf')
+        blocks = json.loads(self.SCAN_TEXTRACT.read_text(encoding='utf-8'))['Blocks']
+        result = run_signature_validation(name, blocks, {})
+        self.assertTrue(result['summary']['can_save'])
+        saved = json.loads((self.UPLOADS / f'{name}.textract.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(saved['Blocks']), len(blocks))
+
+    def test_recheck_of_a_scan_uses_the_saved_textract_blocks(self):
+        # No regions sidecar (e.g. it predates this version): Recheck must
+        # re-analyse with the stored Textract geometry, not with no geometry.
+        name = self._copy_scan('sigtest-scan-recheck.pdf')
+        (self.UPLOADS / f'{name}.textract.json').write_bytes(self.SCAN_TEXTRACT.read_bytes())
+        response = self.client.post(
+            '/api/pr/recheck-signatures/', data=json.dumps({'filename': name}), content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        validation = response.json()['signature_validation']
+        self.assertTrue(validation['summary']['can_save'])
+        for key in ('requested_by', 'funds_available', 'approved_by', 'twg'):
+            self.assertEqual(validation['signatories'][key]['state'], 'present', key)
+
+    def test_recheck_of_a_scan_without_textract_blocks_asks_for_confirmation(self):
+        name = self._copy_scan('sigtest-scan-noocr.pdf')
+        response = self.client.post(
+            '/api/pr/recheck-signatures/', data=json.dumps({'filename': name}), content_type='application/json',
+        )
+        validation = response.json()['signature_validation']
+        self.assertFalse(validation['summary']['can_save'])
+        self.assertTrue(validation['summary']['needs_confirmation'])
+        self.assertEqual(validation['signatories']['requested_by']['reason'], 'no_ocr_geometry')
 
     def test_missing_document_does_not_hard_block_the_buyer(self):
         # No file on disk -> upload-time check + disabled button are the gate.

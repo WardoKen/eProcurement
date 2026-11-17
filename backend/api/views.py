@@ -171,18 +171,55 @@ def _read_sigcheck(filename: str) -> dict | None:
     return data
 
 
+def _textract_path(filename: str) -> Path:
+    safe = Path(str(filename or '')).name
+    return UPLOADS_DIR / f'{safe}.textract.json'
+
+
+def _write_textract_blocks(filename: str, blocks) -> None:
+    """Keep the upload's Textract blocks so a recheck never needs OCR again.
+
+    A scanned PR has no text layer; without these blocks a recheck could not
+    find the signature boxes at all.
+    """
+    if not filename or not blocks:
+        return
+    try:
+        with open(_textract_path(filename), 'w', encoding='utf-8') as handle:
+            json.dump({'Blocks': blocks}, handle)
+    except OSError:
+        pass
+
+
+def _read_textract_blocks(filename: str):
+    if not filename:
+        return None
+    try:
+        with open(_textract_path(filename), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    blocks = data.get('Blocks') if isinstance(data, dict) else None
+    return blocks if isinstance(blocks, list) and blocks else None
+
+
 def run_signature_validation(filename: str, textract_blocks, names: dict) -> dict:
     """Analyse the uploaded document and persist the regions + result sidecar."""
     file_path = UPLOADS_DIR / Path(str(filename or '')).name
     if not file_path.is_file():
         return signature_detection.blank_result(names)
+    _write_textract_blocks(filename, textract_blocks)
     result = signature_detection.analyze(file_path, textract_blocks, names=names)
     _write_sigcheck(filename, result.get('regions', {}), result)
     return result
 
 
 def recheck_signature_validation(filename: str, names: dict) -> dict:
-    """Re-measure signatures using the cached regions, or a fresh analysis."""
+    """Re-measure signatures using the cached regions, or a fresh analysis.
+
+    A fresh analysis reuses the Textract blocks saved at upload, so a scanned
+    document is located exactly as it was the first time.
+    """
     file_path = UPLOADS_DIR / Path(str(filename or '')).name
     if not file_path.is_file():
         return signature_detection.blank_result(names)
@@ -190,42 +227,66 @@ def recheck_signature_validation(filename: str, names: dict) -> dict:
     if sidecar and sidecar.get('regions'):
         result = signature_detection.reanalyze(file_path, sidecar['regions'], names=names)
     else:
-        result = signature_detection.analyze(file_path, None, names=names)
+        result = signature_detection.analyze(file_path, _read_textract_blocks(filename), names=names)
     _write_sigcheck(filename, result.get('regions', {}), result)
     return result
 
 
-def _signature_guard(filename: str, names: dict):
-    """Return an error payload when required signatures are not all present.
+def _signature_confirmations(fields: dict) -> set:
+    """Signatory keys the submitter confirmed by hand (from "Please confirm")."""
+    raw = (fields or {}).get('signature_confirmations') or (fields or {}).get('signatureConfirmations') or []
+    if not isinstance(raw, (list, tuple)):
+        return set()
+    return {str(key) for key in raw if str(key) in signature_detection.REQUIRED_SIGNATORIES}
 
-    ``None`` means the save may proceed. The check re-analyses the actual
-    document; a document that cannot be found on disk is not blocked here (the
-    upload-time check + disabled button are the front line), but any real
-    uploaded file referenced in a bypass attempt is re-verified.
+
+def _signature_guard(filename: str, names: dict, confirmations=frozenset()):
+    """Check the document's required signatures before a save.
+
+    Returns ``(error_payload, confirmed_keys)``. ``error_payload`` is ``None``
+    when the save may proceed. A required signature marked "uncertain" passes
+    only when the submitter confirmed it (``confirmations``); those keys are
+    returned so the save can record who confirmed what. Blank ("absent") and
+    unreadable signatures can never be confirmed away.
+
+    The check re-analyses the actual document; a document that cannot be found
+    on disk is not blocked here (the upload-time check + disabled button are the
+    front line), but any real uploaded file referenced in a bypass attempt is
+    re-verified.
     """
     file_path = UPLOADS_DIR / Path(str(filename or '')).name
     if not filename or not file_path.is_file():
-        return None
+        return None, []
     result = recheck_signature_validation(filename, names)
     summary = result.get('summary', {})
     if summary.get('can_save'):
-        return None
+        return None, []
+    uncertain_keys = list(summary.get('uncertain_keys') or [])
+    if summary.get('needs_confirmation') and set(uncertain_keys) <= set(confirmations or ()):
+        return None, uncertain_keys
     missing = summary.get('missing_signatures') or []
+    uncertain = summary.get('uncertain_signatures') or []
     unverifiable = summary.get('unverifiable_signatures') or []
-    if unverifiable and not missing:
+    if missing:
+        error = 'Purchase Request cannot be saved because one or more required signatures are missing.'
+    elif uncertain and not unverifiable:
+        error = (
+            'Please confirm the signatures marked "Please confirm" against the original document '
+            'before submitting.'
+        )
+    else:
         error = (
             'One or more required signatures could not be verified. '
             'Please review the original document and recheck signatures before saving.'
         )
-    else:
-        error = 'Purchase Request cannot be saved because one or more required signatures are missing.'
     return {
         'success': False,
         'error': error,
         'missing_signatures': missing,
+        'uncertain_signatures': uncertain,
         'unverifiable_signatures': unverifiable,
         'signature_validation': result,
-    }
+    }, []
 
 
 def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
@@ -820,9 +881,24 @@ def create_pr(request):
                     'created_at': recent.created_at.isoformat(),
                 }, status=200)
 
-        blocked = _signature_guard(source_filename, _signatory_names(fields))
+        blocked, confirmed_keys = _signature_guard(
+            source_filename, _signatory_names(fields), _signature_confirmations(fields),
+        )
         if blocked is not None:
             return JsonResponse(blocked, status=422)
+        confirmed_by = getattr(request.auth_user, 'username', '') or ''
+        confirmed_at = timezone.now().isoformat()
+        signature_confirmations = [
+            {
+                'key': key,
+                'label': signature_detection.DISPLAY_NAMES.get(key, key),
+                'confirmed_by': confirmed_by,
+                'confirmed_at': confirmed_at,
+            }
+            for key in confirmed_keys
+        ]
+    else:
+        signature_confirmations = []
 
     if review_only:
         assigned_pr_number = None
@@ -857,6 +933,7 @@ def create_pr(request):
                 grand_total=fields.get('grand_total') or 0,
                 declaration_acknowledged=bool(declaration_ack),
                 declaration_acknowledged_at=timezone.now() if declaration_ack else None,
+                signature_confirmations=signature_confirmations,
             )
 
             for item in items:
@@ -895,6 +972,7 @@ def create_pr(request):
         'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status,
         'created_at': pr.created_at.isoformat(),
         'declaration_acknowledged': pr.declaration_acknowledged,
+        'signature_confirmations': pr.signature_confirmations,
     }, status=201)
 
 
@@ -2977,6 +3055,7 @@ def purchase_request_details(request, pr_id):
         'pr_no': pr.pr_no,
         'source_filename': pr.source_filename,
         'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
+        'signature_confirmations': pr.signature_confirmations or [],
         'entity_name': pr.entity_name,
         'fund_cluster': pr.fund_cluster,
         'office_section': pr.office_section,

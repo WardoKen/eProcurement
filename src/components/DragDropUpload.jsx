@@ -6,6 +6,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  HelpCircle,
   RefreshCw,
   Search,
   Trash2,
@@ -142,7 +143,18 @@ const SIGNATURE_KEY_BY_BLOCK = {
 const SIGNATURE_STATUS_META = {
   present: { label: 'With Signature', className: 'sig-status-present', Icon: CheckCircle },
   absent: { label: 'Without Signature', className: 'sig-status-absent', Icon: XCircle },
+  uncertain: { label: 'Please Confirm', className: 'sig-status-uncertain', Icon: HelpCircle },
   unverifiable: { label: 'Unable to Verify', className: 'sig-status-unverifiable', Icon: AlertTriangle },
+}
+
+// Why the detector could not decide, in words the reviewer can act on.
+const UNCERTAIN_REASON_TEXT = {
+  no_ocr_geometry: 'the signature boxes could not be located on this document',
+  region_not_located: 'this signature box could not be located on the document',
+  region_too_small: 'this signature box could not be measured',
+  handwriting_weak_ink: 'handwriting was read here, but the ink is too faint to be sure',
+  weak_mark: 'there is a mark on the line, but it is too faint or small to be sure',
+  ambiguous_ink: 'there is some ink here, but not enough to be sure it is a signature',
 }
 
 const signatureStatusMeta = (state) => SIGNATURE_STATUS_META[state] || SIGNATURE_STATUS_META.unverifiable
@@ -192,7 +204,15 @@ export const SignatureBlock = ({ title, designationKey, nameKey, fields, onField
   </section>
 )
 
-export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, hasDocument }) => {
+export const SignatureValidationPanel = ({
+  validation,
+  onRecheck,
+  rechecking,
+  hasDocument,
+  confirmedKeys = [],
+  onConfirmChange,
+  confirmations = [],
+}) => {
   const summary = validation?.summary
   const signatories = validation?.signatories || {}
   const order = ['requested_by', 'funds_available', 'approved_by', 'twg']
@@ -200,7 +220,7 @@ export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, ha
 
   const statusTone = summary?.status === 'complete'
     ? 'sig-panel-complete'
-    : summary?.status === 'unverifiable'
+    : summary?.status === 'unverifiable' || summary?.status === 'needs_confirmation'
       ? 'sig-panel-unverifiable'
       : 'sig-panel-incomplete'
 
@@ -237,8 +257,24 @@ export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, ha
                       {' — '}
                       {row.state === 'present' && 'signature detected'}
                       {row.state === 'absent' && 'no signature detected'}
+                      {row.state === 'uncertain' && 'please confirm this signature'}
                       {row.state === 'unverifiable' && 'signature could not be verified'}
                     </span>
+                    {row.state === 'uncertain' && (
+                      <span className="sig-uncertain-reason">
+                        {`Check the original document: ${UNCERTAIN_REASON_TEXT[row.reason] || 'the detector could not decide'}.`}
+                      </span>
+                    )}
+                    {row.state === 'uncertain' && row.required && onConfirmChange && (
+                      <label className="sig-confirm">
+                        <input
+                          type="checkbox"
+                          checked={confirmedKeys.includes(row.key)}
+                          onChange={(event) => onConfirmChange(row.key, event.target.checked)}
+                        />
+                        {`I checked the document: ${row.label} is signed`}
+                      </label>
+                    )}
                   </div>
                 </li>
               )
@@ -257,6 +293,12 @@ export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, ha
                   <span> {summary.missing_signatures.join(', ')}</span>
                 </p>
               )}
+              {summary.uncertain_signatures?.length > 0 && (
+                <p className="sig-uncertain">
+                  Please confirm:
+                  <span> {summary.uncertain_signatures.join(', ')}</span>
+                </p>
+              )}
               {summary.unverifiable_signatures?.length > 0 && (
                 <p className="sig-missing">
                   Could not verify:
@@ -264,6 +306,14 @@ export const SignatureValidationPanel = ({ validation, onRecheck, rechecking, ha
                 </p>
               )}
             </div>
+          )}
+          {confirmations.length > 0 && (
+            <p className="sig-confirmed-note">
+              <strong>Confirmed by hand at submission: </strong>
+              {confirmations
+                .map((item) => `${item.label}${item.confirmed_by ? ` (by ${item.confirmed_by})` : ''}`)
+                .join(', ')}
+            </p>
           )}
         </>
       )}
@@ -339,7 +389,20 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const [rawText, setRawText] = useState('')
   const [editedFieldKeys, setEditedFieldKeys] = useState(new Set())
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [signatureValidation, setSignatureValidation] = useState(null)
+  const [signatureValidation, setSignatureValidationState] = useState(null)
+  // Required signatures marked "Please confirm" that the reviewer has checked
+  // against the document. Cleared whenever a new result arrives, so a
+  // confirmation never carries over to a different document or recheck.
+  const [signatureConfirmations, setSignatureConfirmations] = useState([])
+  const setSignatureValidation = (value) => {
+    setSignatureValidationState(value)
+    setSignatureConfirmations([])
+  }
+  const toggleSignatureConfirmation = (key, checked) => {
+    setSignatureConfirmations((current) => (
+      checked ? [...new Set([...current, key])] : current.filter((item) => item !== key)
+    ))
+  }
   const [rechecking, setRechecking] = useState(false)
   const [saveBlockedMessage, setSaveBlockedMessage] = useState('')
   const [declarationAcknowledged, setDeclarationAcknowledged] = useState(false)
@@ -658,6 +721,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           requested_items: items,
           grand_total: grand.toFixed(2),
           declaration_acknowledged: declarationAcknowledged === true,
+          signature_confirmations: signatureConfirmations,
         },
       }
 
@@ -676,7 +740,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           setSaveBlockedMessage(err.error || 'Please acknowledge the Purchase Request Submission Declaration before submitting.')
           return
         }
-        if (err?.error && (err.missing_signatures || err.unverifiable_signatures)) {
+        if (err?.error && (err.missing_signatures || err.uncertain_signatures || err.unverifiable_signatures)) {
           const missing = err.missing_signatures || []
           setSaveBlockedMessage(
             missing.length
@@ -708,7 +772,13 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   // the backend guard be the gate (it re-verifies on save) rather than trapping
   // the user behind a permanently-disabled button.
   const signaturesChecked = Boolean(signatureValidation?.summary)
-  const signaturesComplete = !signaturesChecked || signatureValidation.summary.can_save === true
+  const uncertainKeys = signatureValidation?.summary?.uncertain_keys || []
+  const unconfirmedCount = uncertainKeys.filter((key) => !signatureConfirmations.includes(key)).length
+  // "Please confirm" signatures pass once the reviewer has ticked each one;
+  // the backend re-checks the document and the confirmations on save.
+  const signaturesComplete = !signaturesChecked
+    || signatureValidation.summary.can_save === true
+    || (signatureValidation.summary.needs_confirmation === true && unconfirmedCount === 0)
 
   const lineItems = Array.isArray(fields.lineItems) ? fields.lineItems : []
   const requiredInfoComplete = Boolean(
@@ -723,10 +793,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
     { key: 'file', label: 'Supported document accepted', ok: documentAccepted },
     {
       key: 'sig',
-      label: sigSummary
-        ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected`
-        : 'Required signatures detected',
-      ok: signaturesComplete && (!sigSummary || sigSummary.can_save === true),
+      label: !sigSummary
+        ? 'Required signatures detected'
+        : sigSummary.needs_confirmation && unconfirmedCount > 0
+          ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected; confirm ${unconfirmedCount} marked "Please confirm"`
+          : sigSummary.needs_confirmation
+            ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected; ${uncertainKeys.length} confirmed by you`
+            : `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected`,
+      ok: signaturesComplete,
     },
   ]
   const systemChecksPass = systemChecks.every((check) => check.ok)
@@ -1105,6 +1179,8 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
               onRecheck={recheckSignatures}
               rechecking={rechecking}
               hasDocument={Boolean(fields.sourceFilename)}
+              confirmedKeys={signatureConfirmations}
+              onConfirmChange={toggleSignatureConfirmation}
             />
           )}
 

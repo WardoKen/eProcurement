@@ -14,12 +14,17 @@ BACKEND_ROOT = ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+
 from ocr.signature_detection import (  # noqa: E402
     APPROVED_BY,
     FUNDS_AVAILABLE,
     REQUESTED_BY,
     STATE_ABSENT,
     STATE_PRESENT,
+    STATE_UNCERTAIN,
     TWG,
     Region,
     analyze,
@@ -73,6 +78,27 @@ def _build_pr_pdf(path: Path, signed: dict | None = None) -> None:
         c.drawPath(path_obj, stroke=1, fill=0)
         c.setLineWidth(1)
 
+    def tall_loop(cx: float, baseline: float) -> None:
+        # A big looped capital rising well above the rule, then a short tail.
+        c.setLineWidth(1.4)
+        p = c.beginPath()
+        p.moveTo(cx, baseline - 2)
+        p.curveTo(cx + 26, baseline + 6, cx + 30, baseline + 30, cx + 16, baseline + 30)
+        p.curveTo(cx + 2, baseline + 30, cx + 6, baseline + 4, cx + 22, baseline - 3)
+        p.lineTo(cx + 60, baseline + 2)
+        c.drawPath(p, stroke=1, fill=0)
+        c.setLineWidth(1)
+
+    def crossing(cx: float, baseline: float) -> None:
+        # Steep strokes that cross the ruled line several times.
+        c.setLineWidth(1.3)
+        p = c.beginPath()
+        p.moveTo(cx, baseline + 12)
+        for i in range(1, 9):
+            p.lineTo(cx + i * 8.0, baseline + (12 if i % 2 == 0 else -14))
+        c.drawPath(p, stroke=1, fill=0)
+        c.setLineWidth(1)
+
     def mark(key: str, cx: float, baseline: float) -> None:
         spec = signed.get(key)
         if not spec:
@@ -81,6 +107,22 @@ def _build_pr_pdf(path: Path, signed: dict | None = None) -> None:
             scribble(cx, baseline, width=0.4, span=42.0, amp=7.0)
         elif spec == "initials":
             scribble(cx, baseline, width=1.2, span=22.0, amp=12.0)
+        elif spec == "pencil":
+            c.setStrokeGray(0.62)  # light graphite, well short of black
+            scribble(cx, baseline, width=0.6, span=70.0, amp=10.0)
+            c.setStrokeGray(0)
+        elif spec == "marker":
+            scribble(cx, baseline, width=4.0, span=80.0, amp=12.0)
+        elif spec == "loop":
+            tall_loop(cx, baseline)
+        elif spec == "crossing":
+            crossing(cx, baseline)
+        elif spec == "long":
+            # Runs 230pt from its own label - past the next column's label.
+            scribble(cx, baseline, span=230.0, amp=12.0)
+        elif spec == "leaning":
+            # Starts 30pt left of its own label, over the neighbour's column.
+            scribble(cx - 30.0, baseline, span=110.0, amp=12.0)
         else:
             scribble(cx, baseline)
 
@@ -418,3 +460,239 @@ def test_text_masks_do_not_under_mask_a_narrow_label_line():
     # width (~0.033 here) - well short of the label. The fix must cover it.
     assert mask_x1 >= char_boxes[label.index(":")][2]
     assert mask_x1 > 0.30 * line.x1  # sanity: meaningfully more than the old cap
+
+
+# ===========================================================================
+# Real CTU Purchase Request fixtures (Appendix 60 layout)
+# ===========================================================================
+# Purchase-Requests-TETETETTEST-2026.pdf is a digital PR with a text layer.
+# "Scanned Purchase Request.pdf" is a scan of the same signed form - image
+# only, so the detector depends on OCR geometry. scan_textract.json is the
+# Textract response the app received for that scan (the production path),
+# kept so this test needs neither AWS nor Tesseract and always runs.
+import itertools  # noqa: E402
+import json  # noqa: E402
+
+from scan_helpers import degrade_to_scan, textract_blocks_for  # noqa: E402
+
+FIXTURES = TESTS_DIR / "fixtures"
+DIGITAL_PR = FIXTURES / "Purchase-Requests-TETETETTEST-2026.pdf"
+SCANNED_PR = FIXTURES / "Scanned Purchase Request.pdf"
+SCANNED_TEXTRACT = FIXTURES / "scan_textract.json"
+REQUIRED = (REQUESTED_BY, FUNDS_AVAILABLE, APPROVED_BY)
+ALL_FOUR = REQUIRED + (TWG,)
+
+
+def _scan_blocks():
+    return json.loads(SCANNED_TEXTRACT.read_text(encoding="utf-8"))["Blocks"]
+
+
+def _assert_all_present(result):
+    for key in ALL_FOUR:
+        info = result["signatories"][key]
+        assert info["state"] == STATE_PRESENT, (key, info.get("reason"), info.get("metrics"))
+        # A clear pass, not a fallback of any kind.
+        assert "reason" not in info, (key, info.get("reason"))
+    assert result["summary"]["can_save"] is True
+    assert result["summary"]["needs_confirmation"] is False
+
+
+def test_digital_fixture_all_four_signatures_present():
+    _assert_all_present(analyze(DIGITAL_PR))
+
+
+def test_scanned_fixture_all_four_signatures_present_with_textract_geometry():
+    _assert_all_present(analyze(SCANNED_PR, _scan_blocks()))
+
+
+def test_scanned_fixture_recheck_from_stored_regions_matches():
+    first = analyze(SCANNED_PR, _scan_blocks())
+    _assert_all_present(reanalyze(SCANNED_PR, first["regions"]))
+
+
+def test_scanned_fixture_masks_never_cover_the_signatures():
+    # Textract reads each signature as a word ("fl"/"ft"). Before the fix every
+    # recognised word was masked, which erased the signatures themselves.
+    regions = analyze(SCANNED_PR, _scan_blocks())["regions"]
+    signature_words = [
+        b for b in _scan_blocks()
+        if b["BlockType"] == "WORD" and b.get("TextType") == "HANDWRITING"
+    ]
+    assert len(signature_words) == 4
+    for word in signature_words:
+        box = word["Geometry"]["BoundingBox"]
+        cx, cy = box["Left"] + box["Width"] / 2, box["Top"] + box["Height"] / 2
+        for region in regions.values():
+            for mx0, my0, mx1, my1 in region["masks"]:
+                assert not (mx0 <= cx <= mx1 and my0 <= cy <= my1), (word["Text"], region)
+
+
+def test_signature_word_tagged_printed_still_counts():
+    # Textract can mislabel a signature as PRINTED. Masks follow what the form
+    # is expected to print, never TextType, so the signature must still count.
+    blocks = _scan_blocks()
+    for block in blocks:
+        if block.get("TextType") == "HANDWRITING":
+            block["TextType"] = "PRINTED"
+    _assert_all_present(analyze(SCANNED_PR, blocks))
+
+
+def test_scanned_fixture_without_geometry_asks_for_confirmation():
+    # Textract failed: no text layer, no OCR boxes. Nothing is guessed.
+    result = analyze(SCANNED_PR, None)
+    for key in ALL_FOUR:
+        info = result["signatories"][key]
+        assert info["state"] == STATE_UNCERTAIN
+        assert info["reason"] == "no_ocr_geometry"
+    summary = result["summary"]
+    assert summary["can_save"] is False
+    assert summary["needs_confirmation"] is True
+    assert summary["uncertain_keys"] == list(REQUIRED)
+
+
+# ===========================================================================
+# Masking rules and states (unit level)
+# ===========================================================================
+def test_word_masks_cover_expected_printed_text_only():
+    from ocr.signature_detection import TextLine, _word_masks
+
+    row = TextLine(text="Printed Name : JUAN CRUZ", page=1, x0=0.10, y0=0.50, x1=0.40, y1=0.51)
+    words = [
+        TextLine(text="Signature", page=1, x0=0.10, y0=0.48, x1=0.16, y1=0.49, text_type="PRINTED"),
+        TextLine(text=":", page=1, x0=0.161, y0=0.48, x1=0.164, y1=0.49, text_type="PRINTED"),
+        # The signature, read as text and wrongly tagged PRINTED.
+        TextLine(text="fl", page=1, x0=0.25, y0=0.47, x1=0.30, y1=0.495, text_type="PRINTED"),
+        # A signature tagged HANDWRITING.
+        TextLine(text="Sb", page=1, x0=0.55, y0=0.47, x1=0.60, y1=0.495, text_type="HANDWRITING"),
+        # Printed name the extractor returned, and one it garbled (on the row).
+        TextLine(text="JUAN", page=1, x0=0.20, y0=0.50, x1=0.24, y1=0.51, text_type="PRINTED"),
+        TextLine(text="CRU2", page=1, x0=0.25, y0=0.50, x1=0.29, y1=0.51, text_type="PRINTED"),
+    ]
+    masks, handwriting = _word_masks(
+        words, [row], page=1, band_top=0.47, band_bottom=0.50,
+        printed_terms=frozenset({"juan"}),
+    )
+    masked = {(m[0], m[1]) for m in masks}
+    assert (0.10, 0.48) in masked      # label word
+    assert (0.161, 0.48) in masked     # its colon
+    assert (0.20, 0.50) in masked      # extracted printed name
+    assert (0.25, 0.50) in masked      # garbled name on the Printed Name row
+    assert (0.25, 0.47) not in masked  # signature tagged PRINTED - kept
+    assert (0.55, 0.47) not in masked  # signature tagged HANDWRITING - kept
+    assert handwriting == [(0.55, 0.47, 0.60, 0.495)]
+
+
+def test_handwriting_word_with_weak_ink_is_uncertain_not_present(tmp_path):
+    # OCR claims handwriting in the Funds box, but the box has no ink: the OCR
+    # label alone must never pass a signature.
+    clean = tmp_path / "blank.pdf"
+    _build_pr_pdf(clean, signed={REQUESTED_BY: True, APPROVED_BY: True})
+    scan = tmp_path / "blank-scan.pdf"
+    size = degrade_to_scan(clean, scan, angle_deg=0.6)
+    ghost = ("fl", (270 / PAGE_W, 1 - 190 / PAGE_H, 300 / PAGE_W, 1 - 176 / PAGE_H), "HANDWRITING")
+    blocks = textract_blocks_for(clean, angle_deg=0.6, size=size, extra_words=[ghost])
+    result = analyze(scan, blocks)
+    funds = result["signatories"][FUNDS_AVAILABLE]
+    assert funds["state"] == STATE_UNCERTAIN
+    assert funds["reason"] == "handwriting_weak_ink"
+    assert result["summary"]["can_save"] is False
+
+
+def test_ambiguous_ink_is_uncertain_not_a_silent_pass():
+    # Replaces the old "lenient_mark" pass: a short upright tick that is more
+    # than speckle but not a confident stroke has to be confirmed by a person.
+    import numpy as np
+    from ocr.signature_detection import _classify_region
+
+    gray = np.full((1000, 1000), 255, dtype=np.uint8)
+    gray[420:470, 300:303] = 0  # 3px x 50px tick inside a 300x80 band
+    region = Region(page=1, x0=0.2, y0=0.4, x1=0.5, y1=0.48)
+    result = _classify_region(gray, region)
+    assert result["state"] == STATE_UNCERTAIN
+    assert result["reason"] == "ambiguous_ink"
+
+
+def test_summary_states():
+    from ocr.signature_detection import _summarise
+
+    def summary(*states):
+        return _summarise({key: {"state": state} for key, state in zip(REQUIRED, states)})
+
+    assert summary("present", "present", "present")["can_save"] is True
+    needs = summary("present", "uncertain", "present")
+    assert needs["can_save"] is False and needs["needs_confirmation"] is True
+    assert needs["uncertain_keys"] == [FUNDS_AVAILABLE]
+    assert needs["status"] == "needs_confirmation"
+    # A blank box can never be confirmed away.
+    blank = summary("absent", "uncertain", "present")
+    assert blank["needs_confirmation"] is False and blank["status"] == "incomplete"
+
+
+# ===========================================================================
+# Ground truth on synthetic forms - digital and scanned
+# ===========================================================================
+# Every case runs twice: on the clean digital PDF (pdfminer geometry) and on a
+# scanned copy - gray paper, noise, dust, a 1 degree tilt, no text layer, with
+# Textract-shaped word boxes (see scan_helpers.py).
+def _analyze_both(tmp_path, signed, *, angle_deg=1.0, name="pr"):
+    clean = tmp_path / f"{name}.pdf"
+    _build_pr_pdf(clean, signed=signed)
+    scan = tmp_path / f"{name}-scan.pdf"
+    size = degrade_to_scan(clean, scan, angle_deg=angle_deg)
+    blocks = textract_blocks_for(clean, angle_deg=angle_deg, size=size)
+    return {"digital": analyze(clean), "scanned": analyze(scan, blocks)}
+
+
+def _check_ground_truth(results, signed):
+    for version, result in results.items():
+        for key in ALL_FOUR:
+            info = result["signatories"][key]
+            if signed.get(key):
+                assert info["state"] == STATE_PRESENT, (version, key, info)
+            else:
+                # The rule that matters most: a blank box is never "present".
+                assert info["state"] != STATE_PRESENT, (version, key, info)
+                assert info["state"] == STATE_ABSENT, (version, key, info)
+        all_signed = all(signed.get(key) for key in REQUIRED)
+        assert result["summary"]["can_save"] is all_signed, version
+
+
+COMBINATIONS = [dict(zip(REQUIRED, combo)) for combo in itertools.product([False, True], repeat=3)]
+
+
+@pytest.mark.parametrize(
+    "signed", COMBINATIONS,
+    ids=["".join("S" if combo[k] else "-" for k in REQUIRED) for combo in COMBINATIONS],
+)
+def test_every_signed_blank_combination_matches_ground_truth(tmp_path, signed):
+    _check_ground_truth(_analyze_both(tmp_path, signed), signed)
+
+
+@pytest.mark.parametrize("style", ["initials", "faint", "pencil", "marker", "loop", "crossing"])
+def test_writing_styles_are_present(tmp_path, style):
+    signed = {key: style for key in ALL_FOUR}
+    _check_ground_truth(_analyze_both(tmp_path, signed), signed)
+
+
+def test_long_signature_overhanging_into_a_blank_column_is_not_counted(tmp_path):
+    # Requested-by's signature runs 230pt - past the Funds Available label -
+    # while the Funds box itself is blank.
+    signed = {REQUESTED_BY: "long", APPROVED_BY: True}
+    _check_ground_truth(_analyze_both(tmp_path, signed), signed)
+
+
+def test_signature_leaning_into_a_blank_column_is_not_counted(tmp_path):
+    # Approved-by's signature starts 30pt left of its own label, over the blank
+    # Funds box.
+    signed = {REQUESTED_BY: True, APPROVED_BY: "leaning"}
+    _check_ground_truth(_analyze_both(tmp_path, signed), signed)
+
+
+@pytest.mark.parametrize("angle_deg", [-2.0, 2.0])
+@pytest.mark.parametrize("signed", [
+    {},
+    {REQUESTED_BY: True, APPROVED_BY: True},
+    {REQUESTED_BY: True, FUNDS_AVAILABLE: True, APPROVED_BY: True, TWG: True},
+], ids=["blank", "funds-missing", "all-signed"])
+def test_tilted_scans(tmp_path, signed, angle_deg):
+    _check_ground_truth(_analyze_both(tmp_path, signed, angle_deg=angle_deg), signed)

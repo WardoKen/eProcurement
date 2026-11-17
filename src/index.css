@@ -2966,6 +2966,11 @@ summary:focus-visible {
   background: #fffbeb;
 }
 
+.signature-card.sig-status-uncertain {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
 .sig-status-pending {
   color: #475569;
   background: #f1f5f9;
@@ -3001,6 +3006,12 @@ summary:focus-visible {
   color: #92400e;
   background: #fef3c7;
   border-color: #fde68a;
+}
+
+.sig-status-chip.sig-status-uncertain {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #f59e0b;
 }
 
 .signature-validation-panel {
@@ -3055,6 +3066,32 @@ summary:focus-visible {
 .signature-validation-list li.sig-status-present > svg { color: #16a34a; }
 .signature-validation-list li.sig-status-absent > svg { color: #dc2626; }
 .signature-validation-list li.sig-status-unverifiable > svg { color: #d97706; }
+.signature-validation-list li.sig-status-uncertain { background: #fffbeb; }
+.signature-validation-list li.sig-status-uncertain > svg { color: #b45309; }
+
+.signature-validation-list li .sig-uncertain-reason {
+  display: block;
+  margin-top: 2px;
+  color: #92400e;
+}
+
+.sig-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.sig-confirm input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
 
 .signature-validation-list li strong {
   display: block;
@@ -3083,6 +3120,21 @@ summary:focus-visible {
 
 .signature-validation-summary .sig-missing span {
   font-weight: 500;
+}
+
+.signature-validation-summary .sig-uncertain {
+  color: #92400e;
+  font-weight: 600;
+}
+
+.signature-validation-summary .sig-uncertain span {
+  font-weight: 500;
+}
+
+.sig-confirmed-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: #475569;
 }
 
 .save-blocked-note {
@@ -9212,4 +9264,36 @@ textarea:focus-visible,
 
 @media (max-width: 640px) {
   .rfq-email-summary > div { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Dropdown fields: a native <select> and a free-text field with suggestions
+   (<input list>) share one look - same chevron, padding and height - so the
+   RFQ "Mode of Procurement" and "Quotation Basis" read as the same control.
+   Chrome only shows the datalist arrow on hover and Firefox never does, so the
+   native indicators are replaced with one drawn chevron. */
+.form-field .dropdown-control,
+.dropdown-control {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2353636c' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px 16px;
+}
+
+select.dropdown-control {
+  cursor: pointer;
+}
+
+.dropdown-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.dropdown-control::-webkit-calendar-picker-indicator,
+.dropdown-control::-webkit-list-button {
+  display: none !important;
+  opacity: 0;
 }
