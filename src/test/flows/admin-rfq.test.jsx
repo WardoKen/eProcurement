@@ -131,7 +131,7 @@ describe('assign categories', () => {
     })
     const { user } = renderAt('/admin')
     await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
-    await user.click(await screen.findByRole('button', { name: /category selection/i }))
+    await user.click(await screen.findByRole('button', { name: /select categories/i }))
 
     const first = await screen.findByRole('combobox', { name: 'Category for item 1' })
     await user.click(first)
@@ -160,7 +160,7 @@ describe('assign categories', () => {
     })
     const { user } = renderAt('/admin')
     await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
-    await user.click(await screen.findByRole('button', { name: /category selection/i }))
+    await user.click(await screen.findByRole('button', { name: /select categories/i }))
     await user.click(await screen.findByRole('button', { name: /save categories and continue/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/1 item still need a category/i)
