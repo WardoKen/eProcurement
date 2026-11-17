@@ -121,6 +121,18 @@ const authStore = {
 // "1 PR", "0 PRs", "3 suppliers" for KPI units.
 const pluralUnit = (count, singular) => (Number(count || 0) === 1 ? singular : `${singular}s`)
 
+const formatPostingDate = (value) => new Date(value).toLocaleString('en-PH', {
+  year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+})
+
+// The PR's posting record: when it was first posted to suppliers as an
+// opportunity, and by whom (see record_pr_posting in api/views.py).
+const formatPostingRecord = (pr) => {
+  if (pr?.posted_at) return `${formatPostingDate(pr.posted_at)}${pr.posted_by ? ` by ${pr.posted_by}` : ''}`
+  if (pr?.status === 'matched' || pr?.status === 'approved') return 'Not recorded (posted before posting records were kept)'
+  return 'Not yet posted'
+}
+
 const SkeletonRows = ({ count = 4 }) => (
   <div className="skeleton-stack" aria-label="Loading content">
     {Array.from({ length: count }, (_, index) => (
@@ -5084,7 +5096,10 @@ const Admin = () => {
             {editingPr && (
               <Modal labelledBy="edit-pr-title" className="modal-content pr-edit-modal" onClose={closeEditPr} dismissible={!editPrSaving}>
                   <div className="modal-header">
-                    <h2 id="edit-pr-title">Review Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
+                    <div className="pr-sheet-title">
+                      <h2 id="edit-pr-title">Review Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
+                      <p className="pr-sheet-meta">Posted to suppliers: {formatPostingRecord(editingPr)}</p>
+                    </div>
                     <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close Purchase Request review">×</button>
                   </div>
                   {editPrLoading || !editPrForm ? (
@@ -5444,6 +5459,7 @@ const Admin = () => {
                 <div><dt>Items</dt><dd>{viewingPr.items_count ?? 0}</dd></div>
                 <div><dt>Grand total</dt><dd>{formatPeso(viewingPr.grand_total)}</dd></div>
                 <div><dt>Created</dt><dd>{viewingPr.created_at ? new Date(viewingPr.created_at).toLocaleString() : 'N/A'}</dd></div>
+                <div><dt>Posted to suppliers</dt><dd>{formatPostingRecord(viewingPr)}</dd></div>
               </dl>
             </div>
             <div className="modal-actions">
@@ -6802,6 +6818,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
       category: (opp) => opp.category,
       budget: (opp) => Number(opp.grand_total || 0),
       status: (opp) => opp.status,
+      posted: (opp) => opp.posted_at || '',
     },
     pageSize: 10,
   })
@@ -6840,6 +6857,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
                 <SortableHeader table={table} sortKey="category">Category</SortableHeader>
                 <SortableHeader table={table} sortKey="budget">Budget</SortableHeader>
                 <SortableHeader table={table} sortKey="status">Status</SortableHeader>
+                <SortableHeader table={table} sortKey="posted">Posted</SortableHeader>
                 <th scope="col">Action</th>
               </tr>
             </thead>
@@ -6853,6 +6871,9 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
                   <td data-label="Budget">{formatPesoAmount(opp.grand_total)}</td>
                   <td data-label="Status">
                     <span className={`status-badge status-${opp.status}`}>{humanizeStatus(opp.status)}</span>
+                  </td>
+                  <td data-label="Posted" className="cell-date">
+                    {opp.posted_at ? new Date(opp.posted_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not recorded'}
                   </td>
                   <td data-label="">
                     <button

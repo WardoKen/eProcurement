@@ -145,6 +145,13 @@ class PurchaseRequest(models.Model):
     # submitter confirmed by hand against the document, for the BAC's review:
     # [{"key", "label", "confirmed_by", "confirmed_at"}].
     signature_confirmations = models.JSONField(default=list, blank=True)
+    # Posting record: when the PR was first posted to suppliers as a
+    # procurement opportunity (it reached Matched or Approved with at least
+    # one categorized line item) and the username of the BAC user whose
+    # action posted it. Set once by ``record_pr_posting`` and never cleared,
+    # so it stays a true record even if the status later moves back.
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -314,6 +314,9 @@
 .pr-edit-modal > .modal-header,
 .pr-edit-modal > .modal-actions { flex: none; }
 
+.pr-sheet-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pr-sheet-meta { margin: 0; color: var(--ink-2); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+
 .pr-edit-modal .pr-edit-body {
   flex: 1;
   min-height: 0;

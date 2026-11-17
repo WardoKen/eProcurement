@@ -47,6 +47,7 @@
 .opportunity-table th:first-child { white-space: nowrap; }
 
 .cell-strong { font-weight: 650; font-variant-numeric: tabular-nums; }
+.cell-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cell-purpose { min-width: 220px; color: var(--ink); }
 
 /* Wide tables scroll inside their panel, never the page. */

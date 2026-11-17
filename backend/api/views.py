@@ -1163,6 +1163,8 @@ def pr_list(request):
             'approved_by',
             'grand_total',
             'created_at',
+            'posted_at',
+            'posted_by',
             'items_count',
             'has_quotation',
             'assigned_category_exists',
@@ -1208,9 +1210,12 @@ def pr_list(request):
         record['display_status'] = BUYER_PR_STAGE_LABELS[stage]
         record['status_description'] = BUYER_PR_STAGE_DESCRIPTIONS[stage]
         # Real timestamps only - stages without a dedicated timestamp field
-        # (review, matching, completed) are left out rather than invented.
+        # (review, completed) are left out rather than invented. Supplier
+        # matching uses the posting record (null for PRs posted before it
+        # existed).
         record['stage_timestamps'] = {
             'submitted': record['created_at'],
+            'supplier_matching': record['posted_at'],
             'rfq_sent': rollup.get('first_sent_at'),
             'supplier_response': rollup.get('first_response_at'),
         }
@@ -1219,6 +1224,36 @@ def pr_list(request):
 
 
 PR_STATUS_LABELS = dict(PurchaseRequest.STATUS_CHOICES)
+
+# Statuses at which a PR appears in matching suppliers' Opportunities feed
+# (see supplier_matching_opportunities).
+PR_POSTED_STATUSES = {PurchaseRequest.STATUS_MATCHED, PurchaseRequest.STATUS_APPROVED}
+
+
+def record_pr_posting(pr, request):
+    """Stamp the PR's posting record the first time it is posted.
+
+    A PR counts as posted once it is at a supplier-visible status and has at
+    least one categorized line item (the Opportunities feed matches suppliers
+    by item category). The first posting is kept: ``posted_at`` and
+    ``posted_by`` are never overwritten or cleared. Returns the field names
+    that changed, for the caller's ``save(update_fields=...)``.
+    """
+    if pr.posted_at or pr.status not in PR_POSTED_STATUSES:
+        return []
+    has_categorized_item = (
+        pr.line_items.exclude(category__isnull=True).exclude(category='').exists()
+    )
+    if not has_categorized_item:
+        return []
+    auth_user = getattr(request, 'auth_user', None)
+    pr.posted_at = timezone.now()
+    pr.posted_by = (
+        getattr(auth_user, 'username', '')
+        or request.session.get('username', '')
+        or ''
+    )
+    return ['posted_at', 'posted_by']
 
 # 'uploaded' has no toggle - it's the PR's initial state, never something a
 # status change *reaches* as a transition worth muting.
@@ -1476,10 +1511,13 @@ def pr_update_status(request, pr_id: int):
 
     old_status = pr.status
     pr.status = status
-    pr.save(update_fields=['status'])
+    pr.save(update_fields=['status', *record_pr_posting(pr, request)])
     _notify_pr_status_change(pr, old_status, status)
 
-    return JsonResponse({'success': True, 'id': pr_id, 'status': status})
+    return JsonResponse({
+        'success': True, 'id': pr_id, 'status': status,
+        'posted_at': pr.posted_at, 'posted_by': pr.posted_by,
+    })
 
 
 @csrf_exempt
@@ -2245,11 +2283,13 @@ def admin_export_purchase_requests(request):
                 pr.requested_by or '',
                 pr.date.strftime('%Y-%m-%d') if pr.date else '',
                 pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else '',
+                timezone.localtime(pr.posted_at).strftime('%Y-%m-%d %H:%M') if pr.posted_at else '',
+                pr.posted_by or '',
             ]
 
     header = [
         'ID', 'PR No.', 'Entity Name', 'Category', 'Office/Section', 'Status',
-        'Grand Total', 'Requested By', 'PR Date', 'Created At',
+        'Grand Total', 'Requested By', 'PR Date', 'Created At', 'Posted At', 'Posted By',
     ]
     return _csv_stream_response('purchase_requests.csv', header, rows())
 
@@ -2623,6 +2663,7 @@ def supplier_matching_opportunities(request, supplier_id):
             'grand_total': float(pr.grand_total),
             'status': pr.status,
             'created_at': pr.created_at.isoformat(),
+            'posted_at': pr.posted_at.isoformat() if pr.posted_at else None,
             'quotation_status': quotation_status,
             'items_count': pr.line_items.count(),
         })
@@ -3139,11 +3180,14 @@ def pr_items_assign_categories(request, pr_id):
             and not pr.line_items.filter(category='').exists()
         )
         pr.status = PurchaseRequest.STATUS_MATCHED if all_items_categorized else PurchaseRequest.STATUS_IN_REVIEW
-        pr.save(update_fields=['category', 'status'])
+        pr.save(update_fields=['category', 'status', *record_pr_posting(pr, request)])
 
     _notify_pr_status_change(pr, old_status, pr.status, is_automatic=True)
 
-    return JsonResponse({'success': True, 'category': pr.category or '', 'status': pr.status})
+    return JsonResponse({
+        'success': True, 'category': pr.category or '', 'status': pr.status,
+        'posted_at': pr.posted_at, 'posted_by': pr.posted_by,
+    })
 
 
 def _item_brief(item):
