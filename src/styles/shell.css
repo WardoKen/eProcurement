@@ -320,8 +320,9 @@
   background: transparent;
 }
 
-.admin-content > *,
-.admin-layout.collapsed-nav .admin-content > * {
+/* Page content is capped; dialog overlays (rendered inside .admin-content)
+   must still cover the whole viewport. */
+.admin-content > :not(.modal-overlay):not(.ds-modal-overlay):not(.supplier-preview-overlay) {
   max-width: var(--content-max);
   margin-left: 0;
   margin-right: 0;
