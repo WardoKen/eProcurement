@@ -1,5 +1,6 @@
 import React from 'react'
 import { apiFetch } from '../lib/apiClient'
+import { CheckCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import { FieldError, RequiredLegend, RequiredMark } from './ui/FormParts'
 import PhoneField from './ui/PhoneField'
@@ -370,7 +371,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
     if (submitted) {
       return (
         <section className="section-card success-card">
-          <div className="success-icon">✓</div>
+          <div className="success-icon" aria-hidden="true"><CheckCircle size={28} /></div>
           <h2>Registration Submitted Successfully</h2>
           <p>Your supplier registration has been submitted for BAC review.</p>
           <p>You will be notified once your application has been approved or if additional requirements are needed.</p>
@@ -742,7 +743,7 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
               </button>
             </div>
             <div className="modal-body registration-success-modal-body">
-              <div className="success-icon" aria-hidden="true">✓</div>
+              <div className="success-icon" aria-hidden="true"><CheckCircle size={28} /></div>
               <p>Supplier registration submitted successfully. It is now pending review.</p>
               <div className="reference-box">
                 <span>Reference Number</span>

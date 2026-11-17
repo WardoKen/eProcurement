@@ -37,11 +37,11 @@ describe('app shell', () => {
     expect(screen.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'End User Accounts' }))
-    expect(screen.getByRole('button', { name: 'End User Accounts' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: 'End user accounts' }))
+    expect(screen.getByRole('button', { name: 'End user accounts' })).toHaveAttribute('aria-current', 'page')
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' })
-    expect(crumbs).toHaveTextContent('Admin Portal')
-    expect(crumbs).toHaveTextContent('End User Accounts')
+    expect(crumbs).toHaveTextContent('Admin portal')
+    expect(crumbs).toHaveTextContent('End user accounts')
   })
 
   it('keeps procurement items visible but marked for unapproved suppliers', () => {

@@ -1,8 +1,15 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+// Legacy styles, both wrapped in `@layer legacy`.
 import './index.css'
-// Loaded last so its tokens and accessibility rules win the cascade.
 import './styles/design-system.css'
+// Design system (unlayered, so it wins over legacy). See DESIGN.md.
+import './styles/tokens.css'
+import './styles/base.css'
+import './styles/components.css'
+import './styles/shell.css'
+import './styles/screens.css'
+import './styles/screens-admin.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(

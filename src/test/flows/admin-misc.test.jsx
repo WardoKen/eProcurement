@@ -19,7 +19,8 @@ describe('admin dashboard', () => {
     renderAt('/admin')
 
     // RFQ response rate 2 of 5 = 40%.
-    expect((await screen.findAllByText('40%')).length).toBeGreaterThan(0)
+    const kpis = await screen.findByRole('list', { name: 'Key figures' })
+    expect(within(kpis).getByText('RFQ response rate').closest('li')).toHaveTextContent('40%')
     expect((await screen.findAllByText('Acme Supplies, Inc.')).length).toBeGreaterThan(0)
     const gets = new Set(api.calls.map((call) => `${call.method} ${call.path}`))
     expect(gets).toEqual(new Set([
@@ -205,11 +206,25 @@ describe('dashboard KPI tiles', () => {
     const kpis = await screen.findByRole('list', { name: 'Key figures' })
     const tile = (label) => within(kpis).getByText(label).closest('li')
     expect(tile('Purchase Requests')).toHaveTextContent('4PRs')
-    expect(tile('Awaiting PR number')).toHaveTextContent('1PR')
+    expect(tile('Purchase Requests')).toHaveTextContent('1 awaiting a PR number')
     expect(tile('Registered suppliers')).toHaveTextContent('2 approved')
-    expect(tile('Suppliers awaiting review')).toHaveTextContent('1supplier')
     expect(tile('RFQs sent')).toHaveTextContent('5RFQs')
     expect(tile('RFQ response rate')).toHaveTextContent('40%')
+  })
+
+  it('lists the work waiting on the BAC with a way to act on each item', async () => {
+    signIn(adminUser)
+    installApi({ ...baseRoutes, 'GET /api/pr/list/': { json: [numberedPr, { ...numberedPr, id: 50, pr_no: '' }] } })
+    const { user } = renderAt('/admin')
+
+    const queue = await screen.findByRole('region', { name: 'Waiting on the BAC' })
+    expect(within(queue).getByText('1 Purchase Request needs a PR number')).toBeInTheDocument()
+    expect(within(queue).getByText('1 supplier registration is waiting for evaluation')).toBeInTheDocument()
+    // 5 RFQs sent, 2 with a quotation.
+    expect(within(queue).getByText('3 RFQs are still awaiting a quotation')).toBeInTheDocument()
+
+    await user.click(within(queue).getByRole('button', { name: 'Review PRs' }))
+    expect(screen.getByRole('heading', { level: 1, name: 'Purchase Requests' })).toBeInTheDocument()
   })
 
   it('reads as "nothing yet" on an empty system', async () => {

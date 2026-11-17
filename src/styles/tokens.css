@@ -1,0 +1,137 @@
+/* ==========================================================================
+   eProcure design tokens. See DESIGN.md for the rationale and contrast table.
+
+   index.css and design-system.css are loaded inside `@layer legacy`, so any
+   unlayered rule in src/styles/ wins over them regardless of specificity.
+   The "legacy aliases" block at the bottom points the old variable names at
+   the new palette, which restyles screens that have not been rewritten yet.
+   ========================================================================== */
+
+:root {
+  /* Color */
+  --navy: #1B3A5C;
+  --navy-hover: #142C47;
+  --navy-tint: #E4EAF1;
+  --manila: #D9B872;
+  --manila-deep: #8A6722;
+  --manila-tint: #F6EEDC;
+  --workspace: #E9E7E1;
+  --sidebar: #F5F4F0;
+  --paper: #FFFFFF;
+  --paper-sunken: #F2F0EB;
+  --ink: #1C2430;
+  --ink-2: #4D5664;
+  --ink-3: #5C6470;
+  --rule: #D3CFC6;
+  --rule-strong: #B9B4A8;
+  --input-border: #7D8590;
+
+  --tone-neutral: #4F5866;   --tone-neutral-fill: #E9ECF0;
+  --tone-review: #7A4F00;    --tone-review-fill: #FAEBCB;
+  --tone-progress: #1A5296;  --tone-progress-fill: #E2ECF8;
+  --tone-success: #1D6136;   --tone-success-fill: #DCEFE1;
+  --tone-danger: #9B2318;    --tone-danger-fill: #F9E1DD;
+
+  /* Type */
+  --font-serif: 'Literata', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
+  --text-xs: 12px;
+  --text-sm: 12.5px;
+  --text-table: 13.5px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --leading-tight: 1.25;
+  --leading-body: 1.5;
+  --measure: 72ch;
+
+  /* Space */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  /* Size and shape */
+  --control-h: 36px;
+  --control-h-sm: 32px;
+  --control-h-lg: 40px;
+  --row-h: 40px;
+  --radius-control: 2px;
+  --radius-panel: 4px;
+  --radius-dialog: 6px;
+  --shadow-overlay: 0 12px 32px rgba(28, 36, 48, 0.18), 0 2px 6px rgba(28, 36, 48, 0.08);
+  --masthead-h: 52px;
+  --sidebar-w: 240px;
+  --sidebar-w-collapsed: 64px;
+  --content-max: 1320px;
+
+  /* Focus and motion */
+  --focus: 2px solid var(--navy);
+  --focus-on-dark: 2px solid var(--manila);
+  --focus-offset: 2px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration: 160ms;
+
+  /* Legacy aliases: old names used throughout index.css. */
+  --primary: var(--navy);
+  --primary-soft: var(--navy-hover);
+  --teal: var(--navy);
+  --teal-soft: var(--navy-hover);
+  --teal-tint: var(--navy-tint);
+  --gold: var(--manila-deep);
+  --gold-hover: var(--manila-deep);
+  --gold-tint: var(--manila-tint);
+  --on-gold: #FFFFFF;
+  --navy-ink: var(--ink);
+  --navy-soft: var(--navy-hover);
+  --ink-legacy: var(--ink);
+  --paper-legacy: var(--workspace);
+  --line: var(--rule);
+  --bg: var(--workspace);
+  --card: var(--paper);
+  --surface: var(--paper);
+  --border: var(--rule);
+  --border-strong: var(--rule-strong);
+  --border-input: var(--input-border);
+  --text: var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-muted: var(--ink-3);
+  --muted: var(--ink-2);
+  --ring: rgba(27, 58, 92, 0.25);
+  --success: var(--tone-success);
+  --success-tint: var(--tone-success-fill);
+  --warning: var(--tone-review);
+  --warning-tint: var(--tone-review-fill);
+  --danger: var(--tone-danger);
+  --danger-tint: var(--tone-danger-fill);
+  --info: var(--tone-progress);
+  --info-tint: var(--tone-progress-fill);
+  --neutral: var(--tone-neutral);
+  --neutral-tint: var(--tone-neutral-fill);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-panel);
+  --radius-lg: var(--radius-panel);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: var(--shadow-overlay);
+  --focus-ring: var(--navy);
+  --focus-ring-on-dark: var(--manila);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --font-size-xs: var(--text-xs);
+  --font-size-sm: var(--text-sm);
+  --font-size-md: var(--text-md);
+  --font-size-lg: var(--text-lg);
+  --font-size-xl: var(--text-xl);
+  --font-size-2xl: var(--text-2xl);
+  --line-height-tight: var(--leading-tight);
+  --line-height-body: var(--leading-body);
+  --duration-fast: 120ms;
+  --duration-base: var(--duration);
+  --ease-standard: var(--ease);
+}

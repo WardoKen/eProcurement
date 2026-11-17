@@ -23,7 +23,7 @@ const routes = {
 const dataRows = (table) => within(table).getAllByRole('row').slice(1)
 
 async function openMonitor(user) {
-  await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+  await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
   return screen.findByRole('table', { name: /numbered purchase requests/i })
 }
 
@@ -85,7 +85,7 @@ describe('supplier management list', () => {
     signIn(adminUser)
     const api = installApi(supplierRoutes)
     const { user } = renderAt('/admin')
-    await user.click(screen.getAllByRole('button', { name: /supplier management/i })[0])
+    await user.click(screen.getAllByRole('button', { name: /^suppliers/i })[0])
     await screen.findByText('Bravo Trading')
 
     expect(names()).toEqual(['Bravo Trading', 'Alpha Supplies', 'Charlie Corp'])

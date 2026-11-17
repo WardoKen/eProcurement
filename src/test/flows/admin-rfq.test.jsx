@@ -36,7 +36,7 @@ const routes = {
 }
 
 async function openMatching(user) {
-  await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+  await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
   await user.click(await screen.findByRole('button', { name: /continue matching/i }))
   await screen.findByText(/category-matched suppliers/i)
 }
@@ -130,7 +130,7 @@ describe('assign categories', () => {
       'POST /api/pr/43/items/categories/': { json: { ok: true } },
     })
     const { user } = renderAt('/admin')
-    await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+    await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
     await user.click(await screen.findByRole('button', { name: /category selection/i }))
 
     const first = await screen.findByRole('combobox', { name: 'Category for item 1' })
@@ -139,7 +139,7 @@ describe('assign categories', () => {
     const listbox = screen.getByRole('listbox', { name: 'Category for item 1' })
     expect(first).toHaveAttribute('aria-controls', listbox.id)
     await user.keyboard('{Enter}')
-    await user.click(screen.getByRole('button', { name: /save categories & continue/i }))
+    await user.click(screen.getByRole('button', { name: /save categories and continue/i }))
 
     await waitFor(() => expect(api.find('POST', '/api/pr/43/items/categories/')).toHaveLength(1))
     expect(api.find('POST', '/api/pr/43/items/categories/')[0].body).toEqual({
@@ -159,9 +159,9 @@ describe('assign categories', () => {
       'GET /api/pr/43/items/': { json: [{ id: 100, item_description: 'Laptop', quantity: 2, unit_cost: 1000, category: '' }] },
     })
     const { user } = renderAt('/admin')
-    await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+    await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
     await user.click(await screen.findByRole('button', { name: /category selection/i }))
-    await user.click(await screen.findByRole('button', { name: /save categories & continue/i }))
+    await user.click(await screen.findByRole('button', { name: /save categories and continue/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/1 item still need a category/i)
     expect(screen.getByRole('combobox', { name: 'Category for item 1' })).toHaveAttribute('aria-invalid', 'true')

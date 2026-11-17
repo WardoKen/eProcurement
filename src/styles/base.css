@@ -1,0 +1,140 @@
+/* Element defaults.
+
+   Most of this file is in `@layer base`, below `@layer legacy`, so class
+   rules in index.css keep their layout (e.g. search inputs with icon
+   padding) while picking up the new tokens. The few rules after the layer
+   block are unlayered on purpose: page font, page background and heading
+   face must win everywhere. */
+
+@layer base {
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--workspace);
+  background-image: none;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  font-feature-settings: 'kern';
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font-family: inherit; }
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--ink);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+h1, h2 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-optical-sizing: auto;
+}
+
+h1 { font-size: var(--text-2xl); line-height: 1.23; letter-spacing: -0.01em; }
+h2 { font-size: var(--text-xl); line-height: 1.3; }
+h3, h4, h5, h6 { font-family: var(--font-sans); font-weight: 650; }
+h3 { font-size: var(--text-lg); line-height: 1.375; }
+h4 { font-size: var(--text-md); line-height: 1.4; }
+
+p { max-width: var(--measure); }
+td p, th p, li p, label p, dd p, .modal-body p { max-width: none; }
+
+a { color: var(--navy); text-underline-offset: 2px; }
+a:hover { color: var(--navy-hover); }
+
+strong, b { font-weight: 650; }
+
+code, kbd, samp { font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+
+::selection { background: var(--navy-tint); color: var(--ink); }
+
+/* Focus: one visible style for every interactive element. */
+:where(button, a, input, select, textarea, summary, [tabindex], [role="button"]):focus-visible {
+  outline: var(--focus);
+  outline-offset: var(--focus-offset);
+  box-shadow: none;
+}
+
+:where(.portal-masthead, .navbar) :where(button, a, [tabindex]):focus-visible {
+  outline: var(--focus-on-dark);
+}
+
+/* Form controls */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea) {
+  min-height: var(--control-h);
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-control);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  box-shadow: none;
+}
+
+textarea { min-height: 88px; resize: vertical; }
+
+:where(input, select, textarea)::placeholder { color: var(--ink-3); opacity: 1; }
+
+:where(input, select, textarea):hover:not(:disabled):not([readonly]) { border-color: var(--ink-2); }
+
+:where(input, select, textarea):focus { border-color: var(--navy); box-shadow: none; }
+
+:where(input, select, textarea):disabled {
+  background-color: var(--paper-sunken);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+input[readonly], textarea[readonly] {
+  background-color: var(--paper-sunken);
+  border-style: solid;
+  color: var(--ink-2);
+}
+
+[aria-invalid="true"] { border-color: var(--tone-danger); }
+
+input[type="checkbox"], input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--navy);
+}
+
+label { color: var(--ink); }
+
+hr { border: 0; border-top: 1px solid var(--rule); }
+
+table { font-variant-numeric: tabular-nums; }
+
+} /* end @layer base */
+
+/* Unlayered: these must win over legacy. */
+body {
+  background: var(--workspace);
+  background-image: none;
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+h1, h2 { font-family: var(--font-serif); font-weight: 600; letter-spacing: normal; text-transform: none; }
+
+/* No pill-shaped fields anywhere: legacy rules used 999px radii on search
+   boxes. Only the radius is forced; padding stays with the legacy rule so
+   icon offsets survive. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
+  border-radius: var(--radius-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -32,6 +32,8 @@ import {
   FileText,
   TrendingUp,
   CheckCircle,
+  Circle,
+  CircleDot,
   Clock,
   AlertCircle,
   Save,
@@ -350,11 +352,11 @@ export const Opportunities = () => {
   }
 
   const statusMeta = {
-    uploaded: { label: 'Uploaded', className: 'status-review' },
+    uploaded: { label: 'Submitted', className: 'tone-neutral' },
     in_review: { label: 'In Review', className: 'status-review' },
-    matched: { label: 'Matched', className: 'status-open' },
-    approved: { label: 'Approved', className: 'status-open' },
-    rejected: { label: 'Rejected', className: 'status-merged' },
+    matched: { label: 'Matched', className: 'tone-progress' },
+    approved: { label: 'Completed', className: 'tone-success' },
+    rejected: { label: 'Rejected', className: 'tone-danger' },
   }
 
   const pageSize = 12
@@ -400,7 +402,7 @@ export const Opportunities = () => {
     return (
       <div className="page-content">
         <div className="category-detail-header">
-          <button className="btn-secondary" onClick={() => { setSelectedCategory(null); setCategoryPRs([]) }}>← Back to Categories</button>
+          <button className="btn-secondary" onClick={() => { setSelectedCategory(null); setCategoryPRs([]) }}><ChevronLeft size={15} aria-hidden="true" /> Back to categories</button>
           <h1>{selectedCategory.name}</h1>
           <p>{selectedCategory.count} open {selectedCategory.count === 1 ? 'opportunity' : 'opportunities'} in this category</p>
         </div>
@@ -584,11 +586,11 @@ const Tracking = () => {
   const isLikelyPrNumber = (value) => /^\d{4}-\d{2}-\d{3}$/.test(String(value || '').trim())
 
   const statusMeta = {
-    uploaded: { label: 'Uploaded', className: 'status-review' },
+    uploaded: { label: 'Submitted', className: 'tone-neutral' },
     in_review: { label: 'In Review', className: 'status-review' },
-    matched: { label: 'Matched', className: 'status-open' },
-    approved: { label: 'Approved', className: 'status-open' },
-    rejected: { label: 'Rejected', className: 'status-merged' },
+    matched: { label: 'Matched', className: 'tone-progress' },
+    approved: { label: 'Completed', className: 'tone-success' },
+    rejected: { label: 'Rejected', className: 'tone-danger' },
   }
 
   const formatStatus = (status) => statusMeta[status] || { label: status || 'Unknown', className: 'status-review' }
@@ -1302,13 +1304,13 @@ const WorkflowStepper = ({ current }) => {
         const isActive = i === currentIndex
         return (
           <React.Fragment key={step.key}>
-            {i > 0 && <span className="workflow-step-arrow" aria-hidden="true">→</span>}
+            {i > 0 && <ChevronRight className="workflow-step-arrow" size={14} aria-hidden="true" />}
             <div
               role="listitem"
               aria-current={isActive ? 'step' : undefined}
               className={`workflow-step${isDone ? ' step-done' : ''}${isActive ? ' step-active' : ''}`}
             >
-              <span className="step-icon" aria-hidden="true">{isDone ? '✓' : isActive ? '►' : '○'}</span>
+              <span className="step-icon" aria-hidden="true">{isDone ? <Check size={13} /> : isActive ? <CircleDot size={13} /> : <Circle size={13} />}</span>
               <span className="step-label">{step.label}</span>
               <span className="sr-only">{isDone ? ' (completed)' : isActive ? ' (current step)' : ''}</span>
             </div>
@@ -1607,9 +1609,9 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
       </div>
 
       <div className="form-actions">
-        <button type="button" className="btn-secondary" onClick={onBack}>← Back to PR Upload</button>
+        <button type="button" className="btn-secondary" onClick={onBack}><ChevronLeft size={15} aria-hidden="true" /> Back to PR upload</button>
         <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Categories & Continue →'}
+          {saving ? 'Saving…' : 'Save categories and continue'}
         </button>
         {touched && !allAssigned && (
           <span style={{ color: '#b91c1c', fontSize: 13, marginLeft: 4 }}>
@@ -1807,7 +1809,7 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           <div><strong>Supplier Contact: </strong><span>{supplier.contact_person || 'N/A'}</span></div>
           <div><strong>Supplier Email: </strong><span>{supplier.email || 'N/A'}</span></div>
           <div><strong>Supplier TIN: </strong><span>{supplier.tin || 'N/A'}</span></div>
-          <div><strong>Status: </strong><span className={`status-badge ${rfq?.rfq_no ? 'status-open' : 'status-draft'}`}>{rfq?.status || 'Draft'}</span></div>
+          <div><strong>Status: </strong><span className={`status-badge ${rfq?.rfq_no ? 'tone-success' : 'status-draft'}`}>{rfq?.status || 'Draft'}</span></div>
           <div><strong>Quotation No.: </strong><span>{rfq?.quotation_no || 'Not Yet Issued'}</span></div>
           {rfq?.rfq_no && (
             <>
@@ -2002,18 +2004,18 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                   <article key={s.id} className="supplier-match-card">
                     <div className="supplier-match-head">
                       <h4>{s.company_name}</h4>
-                      <span className="status-badge status-open">{s.status || 'Approved'}</span>
+                      <span className="status-badge tone-success">{s.status || 'Approved'}</span>
                     </div>
                     <div className="supplier-match-body">
-                      <div><span className="match-tag match-tag-category">✓ Category Match</span></div>
+                      <div><span className="match-tag match-tag-category"><Check size={12} aria-hidden="true" /> Category match</span></div>
                       <div>Coverage: {group.item_count}/{group.item_count} items</div>
                       {s.contact_person && <div><strong>Contact:</strong> {s.contact_person}</div>}
                       {s.email && <div><strong>Email:</strong> {s.email}</div>}
-                      <div><strong>Compliance:</strong> <span className="status-badge status-open">{s.compliance_status || 'Eligible'} ({s.compliance_percentage ?? 100}%)</span></div>
+                      <div><strong>Compliance:</strong> <span className="status-badge tone-success">{s.compliance_status || 'Eligible'} ({s.compliance_percentage ?? 100}%)</span></div>
                     </div>
                     <div className="supplier-match-foot">
                       {status ? (
-                        <span className="status-badge status-open">{rfqStatusLabelText(status)}</span>
+                        <span className="status-badge tone-success">{rfqStatusLabelText(status)}</span>
                       ) : (
                         <button type="button" className="btn-sm btn-primary" onClick={() => onSelectSupplier(s, group, 'category_match')}>Request Quotation</button>
                       )}
@@ -2034,7 +2036,7 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
           <form className="other-supplier-search" onSubmit={runSearch}>
             <label className="form-field" style={{ flex: 1, margin: 0 }}>
               <span>Search by supplier name</span>
-              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Search supplier name..." />
+              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search supplier name" />
             </label>
             <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Searching…' : 'Search'}</button>
           </form>
@@ -2050,7 +2052,7 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                     <article key={s.id} className="supplier-match-card supplier-match-card-manual">
                       <div className="supplier-match-head">
                         <h4>{s.company_name}</h4>
-                        <span className={`status-badge ${s.status === 'Approved' ? 'status-open' : 'status-review'}`}>{s.status || 'Pending'}</span>
+                        <span className={`status-badge ${s.status === 'Approved' ? 'tone-success' : 'status-review'}`}>{s.status || 'Pending'}</span>
                       </div>
                       <div className="supplier-match-body">
                         <div><span className="match-tag match-tag-manual">Manual BAC Selection</span></div>
@@ -2059,7 +2061,7 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                       </div>
                       <div className="supplier-match-foot">
                         {status ? (
-                          <span className="status-badge status-open">{rfqStatusLabelText(status)}</span>
+                          <span className="status-badge tone-success">{rfqStatusLabelText(status)}</span>
                         ) : (
                           <button
                             type="button"
@@ -2324,7 +2326,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
       {confirmDialog}
 
       <div className="form-actions" style={{ marginTop: 20 }}>
-        <button type="button" className="btn-secondary" onClick={onBack}>← Back to Categories</button>
+        <button type="button" className="btn-secondary" onClick={onBack}><ChevronLeft size={15} aria-hidden="true" /> Back to categories</button>
       </div>
     </div>
   )
@@ -2412,19 +2414,23 @@ const RFQ_MGMT_SORTS = [
 
 const PR_RFQ_STATUS_META = {
   awaiting_responses: { label: 'Awaiting Responses', className: 'status-review' },
-  responses_in_progress: { label: 'Responses In Progress', className: 'status-review' },
-  all_responses_received: { label: 'All Responses Received', className: 'status-open' },
-  no_rfqs: { label: 'No RFQs', className: 'status-review' },
+  responses_in_progress: { label: 'Responses In Progress', className: 'tone-progress' },
+  all_responses_received: { label: 'All Responses Received', className: 'tone-success' },
+  no_rfqs: { label: 'No RFQs', className: 'tone-neutral' },
 }
 
 const rfqResponseIndicator = (rfq) => {
-  if (rfq.has_response) return { icon: '✓', label: 'Response Received', className: 'received' }
-  if (rfq.status === 'draft') return { icon: '•', label: 'Draft', className: 'draft' }
-  return { icon: '⏳', label: 'Awaiting Response', className: 'awaiting' }
+  if (rfq.has_response) return { label: 'Response Received', className: 'received' }
+  if (rfq.status === 'draft') return { label: 'Draft', className: 'draft' }
+  return { label: 'Awaiting Response', className: 'awaiting' }
 }
 
 // Decorative status glyph; the text beside it carries the meaning.
-const StatusGlyph = ({ children }) => <span aria-hidden="true">{children}</span>
+const STATUS_GLYPH_ICONS = { received: CheckCircle, awaiting: Clock, draft: Circle }
+const StatusGlyph = ({ kind }) => {
+  const Icon = STATUS_GLYPH_ICONS[kind] || Circle
+  return <Icon size={13} aria-hidden="true" />
+}
 
 const rfqMgmtFormatDate = (value) => (value ? new Date(value).toLocaleDateString() : '—')
 const rfqMgmtFormatDateTime = (value) => (value ? new Date(value).toLocaleString() : '—')
@@ -2453,7 +2459,7 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
 
   return (
     <>
-      <Breadcrumbs items={[{ label: 'RFQ Management', onClick: onBack }, { label: `Responses · ${pr.pr_no}` }]} />
+      <Breadcrumbs items={[{ label: 'RFQs and responses', onClick: onBack }, { label: `Responses · ${pr.pr_no}` }]} />
       <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
         <ChevronLeft size={14} aria-hidden="true" /> Back to RFQ Management
       </button>
@@ -2463,8 +2469,8 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
       </div>
 
       <div className="rfq-mgmt-progress" style={{ marginBottom: 16 }}>
-        <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
-        <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> {summary.awaiting_response} Awaiting Response</span>
+        <span className="rfq-resp-indicator received"><StatusGlyph kind="received" /> {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
+        <span className="rfq-resp-indicator awaiting"><StatusGlyph kind="awaiting" /> {summary.awaiting_response} Awaiting Response</span>
       </div>
 
       {responded.length === 0 ? (
@@ -2476,7 +2482,7 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
               <div>
                 <h4>{rfq.supplier.company_name}</h4>
                 <p className="supplier-subtext">{rfq.rfq_no}</p>
-                <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> Response Received</span>
+                <span className="rfq-resp-indicator received"><StatusGlyph kind="received" /> Response Received</span>
                 {rfq.submitted_at && <p className="supplier-subtext">Submitted: {new Date(rfq.submitted_at).toLocaleString()}</p>}
               </div>
               <div className="rfq-mgmt-row-actions">
@@ -2498,7 +2504,7 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
                 <div>
                   <h4>{rfq.supplier.company_name}</h4>
                   <p className="supplier-subtext">{rfq.rfq_no}</p>
-                  <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> Awaiting Response</span>
+                  <span className="rfq-resp-indicator awaiting"><StatusGlyph kind="awaiting" /> Awaiting Response</span>
                 </div>
                 <div className="rfq-mgmt-row-actions">
                   {rfq.generated_pdf_url && (
@@ -2530,13 +2536,13 @@ const RFQDetailView = ({ group, rfq, onBack, onView }) => {
 
   return (
     <>
-      <Breadcrumbs items={[{ label: 'RFQ Management', onClick: onBack }, { label: pr.pr_no }, { label: rfq.rfq_no }]} />
+      <Breadcrumbs items={[{ label: 'RFQs and responses', onClick: onBack }, { label: pr.pr_no }, { label: rfq.rfq_no }]} />
       <button type="button" className="btn-sm btn-secondary" onClick={onBack} style={{ marginBottom: 16 }}>
         <ChevronLeft size={14} aria-hidden="true" /> Back to RFQ Management
       </button>
       <div className="supplier-header">
         <h1>{rfq.rfq_no}</h1>
-        <p className="record-status">Current status <span className={`status-badge ${rfq.has_response ? 'status-open' : 'status-review'}`}>{rfq.status_label || rfq.status}</span></p>
+        <p className="record-status">Current status <span className={`status-badge ${rfq.has_response ? 'tone-success' : 'status-review'}`}>{rfq.status_label || rfq.status}</span></p>
       </div>
       <ProcurementStepper status={rfq.status} label={`Progress of ${rfq.rfq_no}`} />
 
@@ -2679,7 +2685,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
       >
         <label className="form-field" style={{ flex: 1, margin: 0 }}>
           <span>Search by supplier name, PR number or quotation number</span>
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 e.g. Juan's, 2026-09-001, 2026-021" />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="e.g. Juan's, 2026-09-001, 2026-021" />
         </label>
         <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
         {activeSearch && (
@@ -2693,7 +2699,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
         <div className="skeleton-stack">{[1, 2, 3].map((n) => <div key={n} className="skeleton-line" style={{ height: 90 }} />)}</div>
       ) : rfqs.length === 0 ? (
         <div className="supplier-match-empty">
-          {activeSearch ? 'No manual RFQs match your search.' : 'No manual RFQs yet. Create one from Supplier Matching → Manual / Unregistered Supplier.'}
+          {activeSearch ? 'No manual RFQs match your search.' : 'No manual RFQs yet. Create one from Supplier Matching by choosing Manual / Unregistered Supplier.'}
         </div>
       ) : (
         <div className="supplier-match-grid">
@@ -2701,7 +2707,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
             <article key={rfq.id} className="supplier-match-card supplier-match-card-manual">
               <div className="supplier-match-head">
                 <h4>{rfq.manual_supplier_name || rfq.supplier_name}</h4>
-                <span className={`status-badge ${rfq.has_response ? 'status-open' : 'status-review'}`}>{rfq.status_label}</span>
+                <span className={`status-badge ${rfq.has_response ? 'tone-success' : 'status-review'}`}>{rfq.status_label}</span>
               </div>
               <div className="supplier-match-body">
                 <div><span className="match-tag match-tag-manual">Manual / Unregistered</span></div>
@@ -2845,7 +2851,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
     content = (
       <>
         <div className="supplier-header">
-          <h1>RFQ Management</h1>
+          <h1>RFQs and responses</h1>
           <p>RFQs grouped by Purchase Request. See how many suppliers were sent an RFQ for each PR and which have responded.</p>
         </div>
 
@@ -2903,8 +2909,8 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                     <div className="rfq-mgmt-group-body">
                       <div className="rfq-mgmt-progress">
                         <span>{summary.sent} Sent</span>
-                        <span className="rfq-resp-indicator received"><StatusGlyph>✓</StatusGlyph> {summary.responses_received} Received</span>
-                        <span className="rfq-resp-indicator awaiting"><StatusGlyph>⏳</StatusGlyph> {summary.awaiting_response} Awaiting</span>
+                        <span className="rfq-resp-indicator received"><StatusGlyph kind="received" /> {summary.responses_received} Received</span>
+                        <span className="rfq-resp-indicator awaiting"><StatusGlyph kind="awaiting" /> {summary.awaiting_response} Awaiting</span>
                         {summary.responses_received > 0 && (
                           <button type="button" className="btn-sm btn-primary" onClick={() => setDetail({ mode: 'pr', group })}>View All Responses</button>
                         )}
@@ -2935,7 +2941,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                                       <td><strong>{rfq.rfq_no || '—'}</strong></td>
                                       <td>{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '—'}</td>
                                       <td>{rfq.submitted_at ? new Date(rfq.submitted_at).toLocaleDateString() : '—'}</td>
-                                      <td><span className={`rfq-resp-indicator ${indicator.className}`}><StatusGlyph>{indicator.icon}</StatusGlyph> {indicator.label}</span></td>
+                                      <td><span className={`rfq-resp-indicator ${indicator.className}`}><StatusGlyph kind={indicator.className} /> {indicator.label}</span></td>
                                       <td>
                                         <div className="rfq-mgmt-row-actions">
                                           <button type="button" className="btn-sm btn-secondary" onClick={() => setDetail({ mode: 'rfq', group, rfq })}>View RFQ</button>
@@ -3000,15 +3006,15 @@ const SUPPLIER_DECISION_COPY = {
 
 const ADMIN_TAB_LABELS = {
   dashboard: 'Dashboard',
-  'pr-monitoring': 'PR Review & Monitoring',
-  'assign-categories': 'Assign Categories',
-  'supplier-matching': 'Supplier Matching',
-  'rfq-responses': 'RFQ Management',
+  'pr-monitoring': 'Purchase Requests',
+  'assign-categories': 'Assign categories',
+  'supplier-matching': 'Supplier matching',
+  'rfq-responses': 'RFQs and responses',
   'manual-rfqs': 'Manual RFQs',
-  suppliers: 'Supplier Management',
-  'buyer-accounts': 'End User Accounts',
-  'pr-numbering-settings': 'PR Numbering',
-  'pr-notification-settings': 'PR Notifications',
+  suppliers: 'Suppliers',
+  'buyer-accounts': 'End user accounts',
+  'pr-numbering-settings': 'PR numbering',
+  'pr-notification-settings': 'PR notifications',
 }
 
 // Workflow screens reached from PR Review & Monitoring, not from the sidebar.
@@ -3087,7 +3093,7 @@ const Admin = () => {
   const [confirmDialog, confirm] = useConfirm()
   const toast = useToast()
   const prStatusOptions = [
-    { value: 'uploaded', label: 'Uploaded' },
+    { value: 'uploaded', label: 'Submitted' },
     { value: 'in_review', label: 'In Review' },
     { value: 'matched', label: 'Matched' },
     { value: 'approved', label: 'Completed' },
@@ -3545,7 +3551,7 @@ const Admin = () => {
     supplierRegistrations.find((supplier) => supplier.id === selectedSupplierId) || null
   ), [selectedSupplierId, supplierRegistrations])
 
-  const PR_STATUS_LABELS = { uploaded: 'Uploaded', in_review: 'In Review', matched: 'Matched', approved: 'Approved', rejected: 'Rejected' }
+  const PR_STATUS_LABELS = { uploaded: 'Submitted', in_review: 'In Review', matched: 'Matched', approved: 'Completed', rejected: 'Rejected' }
 
   const dashboardBreakdowns = React.useMemo(() => {
     const toBarItems = (rows, labels = {}) => (rows || []).map((row) => ({
@@ -3576,21 +3582,23 @@ const Admin = () => {
       categoryTotal: categoryBreakdown.length,
       categoryWithSuppliers: categoryBreakdown.filter((row) => row.count > 0).length,
       monthlyVolume: dashboardStats?.pr_monthly_volume || [],
+      prStatusCounts: Object.fromEntries((dashboardStats?.pr_status_breakdown || []).map((row) => [row.status, row.count || 0])),
+      rfqAwaiting: Math.max(0, (rfq.total_sent || 0) - (rfq.with_response || 0)),
       rfq,
       responseRate,
     }
   }, [dashboardStats])
 
   const getSupplierStatusMeta = (status) => {
-    if (status === 'Approved') return { label: 'Approved', className: 'status-open' }
-    if (status === 'Rejected') return { label: 'Rejected', className: 'status-merged' }
+    if (status === 'Approved') return { label: 'Approved', className: 'tone-success' }
+    if (status === 'Rejected') return { label: 'Rejected', className: 'tone-danger' }
     if (status === 'For Compliance') return { label: 'For Compliance', className: 'status-review' }
     return { label: status || 'Pending Review', className: 'status-review' }
   }
 
   const getDocumentStatusMeta = (status) => {
-    if (status === 'Verified') return { label: 'Verified', className: 'status-open' }
-    if (status === 'Rejected') return { label: 'Rejected', className: 'status-merged' }
+    if (status === 'Verified') return { label: 'Verified', className: 'tone-success' }
+    if (status === 'Rejected') return { label: 'Rejected', className: 'tone-danger' }
     return { label: status || 'Pending', className: 'status-review' }
   }
 
@@ -3717,11 +3725,11 @@ const Admin = () => {
   const requestPrDelete = (prId) => setPrDeleteConfirmId(prId)
 
   const prStatusMeta = {
-    uploaded: { label: 'Uploaded', className: 'status-review' },
+    uploaded: { label: 'Submitted', className: 'tone-neutral' },
     in_review: { label: 'In Review', className: 'status-review' },
-    matched: { label: 'Matched', className: 'status-open' },
-    approved: { label: 'Completed', className: 'status-open' },
-    rejected: { label: 'Rejected', className: 'status-merged' },
+    matched: { label: 'Matched', className: 'tone-progress' },
+    approved: { label: 'Completed', className: 'tone-success' },
+    rejected: { label: 'Rejected', className: 'tone-danger' },
   }
 
   const pesoFormatter = React.useMemo(() => new Intl.NumberFormat('en-PH', {
@@ -3932,30 +3940,30 @@ const Admin = () => {
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
       {/* Admin Navbar */}
       <Sidebar
-        portalLabel="Admin Portal"
+        portalLabel="Admin portal"
         activeId={currentTab}
         onSelect={setCurrentTab}
         navCollapsed={navCollapsed}
         onToggleNav={() => setNavCollapsed((v) => !v)}
-        userPrimary="Administrator"
-        userSecondary="admin@ctu.edu.ph"
+        userPrimary={getStoredUser()?.name || getStoredUser()?.username || 'BAC Secretariat'}
+        userSecondary="BAC Secretariat"
         onLogout={handleLogout}
         groups={[
-          { section: 'MAIN', items: [
-            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { section: 'Overview', items: [
+            { id: 'dashboard', label: ADMIN_TAB_LABELS.dashboard, icon: LayoutDashboard },
           ] },
-          { section: 'PROCUREMENT', items: [
-            { id: 'pr-monitoring', label: 'PR Review & Monitoring', icon: ClipboardList },
-            { id: 'rfq-responses', label: 'RFQ Management', icon: Inbox },
-            { id: 'manual-rfqs', label: 'Manual RFQs', icon: FilePen },
+          { section: 'Procurement', items: [
+            { id: 'pr-monitoring', label: ADMIN_TAB_LABELS['pr-monitoring'], icon: ClipboardList, count: unnumberedPrRecords.length },
+            { id: 'rfq-responses', label: ADMIN_TAB_LABELS['rfq-responses'], icon: Inbox },
+            { id: 'manual-rfqs', label: ADMIN_TAB_LABELS['manual-rfqs'], icon: FilePen },
           ] },
-          { section: 'ACCOUNTS', items: [
-            { id: 'suppliers', label: 'Supplier Management', icon: Store },
-            { id: 'buyer-accounts', label: 'End User Accounts', icon: UserCog },
+          { section: 'Accounts', items: [
+            { id: 'suppliers', label: ADMIN_TAB_LABELS.suppliers, icon: Store, count: dashboardBreakdowns.suppliersAwaitingReview },
+            { id: 'buyer-accounts', label: ADMIN_TAB_LABELS['buyer-accounts'], icon: UserCog },
           ] },
-          { section: 'SETTINGS', items: [
-            { id: 'pr-numbering-settings', label: 'PR Numbering', icon: Settings },
-            { id: 'pr-notification-settings', label: 'PR Notifications', icon: Bell },
+          { section: 'Settings', items: [
+            { id: 'pr-numbering-settings', label: ADMIN_TAB_LABELS['pr-numbering-settings'], icon: Settings },
+            { id: 'pr-notification-settings', label: ADMIN_TAB_LABELS['pr-notification-settings'], icon: Bell },
           ] },
         ]}
       />
@@ -3965,7 +3973,7 @@ const Admin = () => {
         {currentTab !== 'dashboard' && (
           <Breadcrumbs
             items={[
-              { label: 'Admin Portal', onClick: () => setCurrentTab('dashboard') },
+              { label: 'Admin portal', onClick: () => setCurrentTab('dashboard') },
               ...(ADMIN_WORKFLOW_TABS.has(currentTab)
                 ? [{ label: ADMIN_TAB_LABELS['pr-monitoring'], onClick: () => setCurrentTab('pr-monitoring') }]
                 : []),
@@ -3975,15 +3983,15 @@ const Admin = () => {
         )}
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
-          <div className="supplier-section">
+          <div className="supplier-section admin-dashboard">
             <div className="supplier-header dashboard-header-row">
               <div>
-                <h1>Admin Dashboard</h1>
-                <p>System overview and management controls</p>
+                <h1>Dashboard</h1>
+                <p>{new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
               </div>
               <div className="dashboard-refresh">
                 <span className="field-hint" aria-live="polite">
-                  {dashboardUpdatedAt ? `Updated ${dashboardUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · refreshes every 30 seconds` : ''}
+                  {dashboardUpdatedAt ? `Updated ${dashboardUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, refreshes every 30 seconds` : ''}
                 </span>
                 <button type="button" className="btn-sm btn-secondary" onClick={loadDashboardStats} disabled={dashboardLoading}>
                   <RefreshCw size={14} className={dashboardLoading ? 'spin' : ''} aria-hidden="true" />
@@ -3992,184 +4000,175 @@ const Admin = () => {
               </div>
             </div>
             {dashboardError && (
-              <div className="alert alert-error" role="alert" style={{ marginBottom: '16px' }}>
+              <div className="alert alert-error" role="alert">
                 {dashboardError}. The figures below may be out of date.{' '}
                 <button type="button" className="link-like" onClick={loadDashboardStats}>Try again</button>
               </div>
             )}
 
+            <div className="dash-top">
+              <section className="dash-panel dash-queue" aria-labelledby="dash-queue-title">
+                <header className="dash-panel-header">
+                  <h2 id="dash-queue-title">Waiting on the BAC</h2>
+                </header>
+                <ul className="action-queue">
+                  {[
+                    { key: 'pr', count: unnumberedPrRecords.length, one: 'Purchase Request needs a PR number', many: 'Purchase Requests need a PR number', hint: 'Review each request and assign its number.', clear: 'Every Purchase Request has a PR number.', action: 'Review PRs', tab: 'pr-monitoring' },
+                    { key: 'supplier', count: dashboardBreakdowns.suppliersAwaitingReview, one: 'supplier registration is waiting for evaluation', many: 'supplier registrations are waiting for evaluation', hint: 'Pending Review or For Compliance.', clear: 'No supplier registrations are waiting.', action: 'Evaluate suppliers', tab: 'suppliers' },
+                    { key: 'rfq', count: dashboardBreakdowns.rfqAwaiting, one: 'RFQ is still awaiting a quotation', many: 'RFQs are still awaiting a quotation', hint: 'Sent to suppliers, no quotation uploaded yet.', clear: 'Every RFQ sent has a quotation.', action: 'Open RFQs', tab: 'rfq-responses' },
+                  ].map((row) => (
+                    <li key={row.key} className={`action-row ${row.count > 0 ? 'needs-action' : 'is-clear'}`}>
+                      <span className="action-count" aria-hidden="true">{row.count}</span>
+                      <span className="action-text">
+                        <strong>{row.count > 0 ? `${row.count} ${row.count === 1 ? row.one : row.many}` : row.clear}</strong>
+                        {row.count > 0 && <small>{row.hint}</small>}
+                      </span>
+                      {row.count > 0 && (
+                        <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab(row.tab)}>{row.action}</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="dash-panel dash-pipeline" aria-labelledby="dash-pipeline-title">
+                <header className="dash-panel-header">
+                  <h2 id="dash-pipeline-title">Purchase Request pipeline</h2>
+                  <span className="dash-panel-meta">{dashboardStats?.total_purchase_requests ?? 0} on record</span>
+                </header>
+                <ol className="pipeline-strip">
+                  {[
+                    ['uploaded', 'Submitted'],
+                    ['in_review', 'In Review'],
+                    ['matched', 'Matched'],
+                    ['approved', 'Completed'],
+                  ].map(([key, label]) => (
+                    <li key={key} className={`pipeline-stage stage-${key}`}>
+                      <span className="pipeline-count">{dashboardBreakdowns.prStatusCounts[key] || 0}</span>
+                      <span className="pipeline-label">{label}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="pipeline-note">
+                  {dashboardBreakdowns.prStatusCounts.rejected === 1 ? '1 request was rejected.' : `${dashboardBreakdowns.prStatusCounts.rejected || 0} requests were rejected.`}
+                </p>
+              </section>
+            </div>
+
             {dashboardLoading && !dashboardStats ? (
               <ul className="kpi-grid" aria-busy="true" aria-label="Key figures loading">
-                {Array.from({ length: 6 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
+                {Array.from({ length: 4 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
               </ul>
             ) : (
               <ul className="kpi-grid" aria-label="Key figures">
-                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit={pluralUnit(dashboardStats?.total_purchase_requests, 'PR')} zeroHint="No Purchase Requests submitted yet." hint="All PRs on record" />
-                <KpiTile icon={FilePen} label="Awaiting PR number" value={unnumberedPrRecords.length} unit={pluralUnit(unnumberedPrRecords.length, 'PR')} tone={unnumberedPrRecords.length ? 'warning' : undefined} zeroHint="Review queue is clear." hint="Need BAC review in PR Review & Monitoring" />
+                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit={pluralUnit(dashboardStats?.total_purchase_requests, 'PR')} zeroHint="No Purchase Requests submitted yet." hint={`${unnumberedPrRecords.length} awaiting a PR number`} />
                 <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit={pluralUnit(dashboardStats?.total_suppliers, 'supplier')} zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
-                <KpiTile icon={Users} label="Suppliers awaiting review" value={dashboardBreakdowns.suppliersAwaitingReview} unit={pluralUnit(dashboardBreakdowns.suppliersAwaitingReview, 'supplier')} tone={dashboardBreakdowns.suppliersAwaitingReview ? 'warning' : undefined} zeroHint="No registrations waiting." hint="Pending Review or For Compliance" />
                 <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit={pluralUnit(dashboardBreakdowns.rfq.total_sent, 'RFQ')} zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
                 <KpiTile icon={TrendingUp} label="RFQ response rate" value={`${dashboardBreakdowns.responseRate}`} unit="%" zeroHint={dashboardBreakdowns.rfq.total_sent ? 'No quotations received yet.' : 'Available once RFQs are sent.'} hint={`${dashboardBreakdowns.rfq.with_response} of ${dashboardBreakdowns.rfq.total_sent} RFQs answered`} />
               </ul>
             )}
 
-            {dashboardLoading && !dashboardStats ? (
-              <div className="admin-dashboard-grid">
-                <section className="admin-dashboard-panel"><SkeletonRows count={5} /></section>
-                <section className="admin-dashboard-panel"><SkeletonRows count={5} /></section>
-              </div>
-            ) : (
-              <>
-                <div className="admin-dashboard-grid">
-                  <section className="admin-dashboard-panel">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Supplier network</span>
-                        <h2>Suppliers by Status</h2>
-                      </div>
-                      <span className="admin-panel-total">{dashboardStats?.total_suppliers ?? 0} total</span>
-                    </div>
-                    <BreakdownBarList items={dashboardBreakdowns.supplierStatus} emptyLabel="No suppliers registered yet." />
-                  </section>
-
-                  <section className="admin-dashboard-panel">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Eligibility documents</span>
-                        <h2>Document Verification Status</h2>
-                      </div>
-                      <span className="admin-panel-total">{dashboardBreakdowns.documentStatus.reduce((sum, item) => sum + item.count, 0)} documents</span>
-                    </div>
-                    <BreakdownBarList items={dashboardBreakdowns.documentStatus} emptyLabel="No documents uploaded yet." />
-                  </section>
-
-                  <section className="admin-dashboard-panel">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Procurement categories</span>
-                        <h2>Verified Suppliers by Category</h2>
-                      </div>
-                      <span className="admin-panel-total">{dashboardBreakdowns.categoryWithSuppliers}/{dashboardBreakdowns.categoryTotal} covered</span>
-                    </div>
-                    <BreakdownBarList items={dashboardBreakdowns.categoryItems} emptyLabel="No approved suppliers are assigned to a category yet." />
-                  </section>
-
-                  <section className="admin-dashboard-panel">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Procurement</span>
-                        <h2>Purchase Request Pipeline</h2>
-                      </div>
-                      <span className="admin-panel-total">{dashboardStats?.total_purchase_requests ?? 0} total</span>
-                    </div>
-                    <BreakdownBarList items={dashboardBreakdowns.prStatus} emptyLabel="No purchase requests yet." />
-                  </section>
-
-                  <section className="admin-dashboard-panel admin-dashboard-panel-wide">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Trend</span>
-                        <h2>Purchase Request Volume (Last 6 Months)</h2>
-                      </div>
-                    </div>
-                    <MonthlyTrendChart data={dashboardBreakdowns.monthlyVolume} />
-                  </section>
-
-                  <section className="admin-dashboard-panel admin-dashboard-panel-wide">
-                    <div className="admin-dashboard-panel-header">
-                      <div>
-                        <span className="section-kicker">Supplier engagement</span>
-                        <h2>RFQ Response Summary</h2>
-                      </div>
-                    </div>
-                    <div className="admin-cards">
-                      <div className="admin-card">
-                        <div className="admin-card-eyebrow">Issued</div>
-                        <div className="admin-card-value">{dashboardBreakdowns.rfq.total_sent}</div>
-                        <div className="admin-card-label">RFQs Sent</div>
-                      </div>
-                      <div className="admin-card">
-                        <div className="admin-card-eyebrow">Engaged</div>
-                        <div className="admin-card-value">{dashboardBreakdowns.rfq.with_response}</div>
-                        <div className="admin-card-label">RFQs with a Quotation</div>
-                      </div>
-                      <div className="admin-card">
-                        <div className="admin-card-eyebrow">Rate</div>
-                        <div className="admin-card-value">{dashboardBreakdowns.responseRate}%</div>
-                        <div className="admin-card-label">RFQ Response Rate</div>
-                      </div>
-                      <div className="admin-card">
-                        <div className="admin-card-eyebrow">Competitiveness</div>
-                        <div className="admin-card-value">{dashboardBreakdowns.rfq.avg_quotations_per_rfq}</div>
-                        <div className="admin-card-label">Avg. Quotations per RFQ</div>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </>
-            )}
-
-            <div className="admin-dashboard-grid">
-              <section className="admin-dashboard-panel">
-                <div className="admin-dashboard-panel-header">
-                  <div>
-                    <span className="section-kicker">Latest records</span>
-                    <h2>Recent Purchase Requests</h2>
-                  </div>
+            <div className="dash-records">
+              <section className="dash-panel" aria-labelledby="dash-recent-pr-title">
+                <header className="dash-panel-header">
+                  <h2 id="dash-recent-pr-title">Recent Purchase Requests</h2>
                   <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('pr-monitoring')}>View all</button>
-                </div>
-                {prLoading && prRecords.length === 0 ? <SkeletonRows count={4} /> : prRecords.length === 0 ? (
-                  <div className="dashboard-empty-state"><ClipboardList size={20} /><span>No Purchase Requests found.</span></div>
+                </header>
+                {prLoading && prRecords.length === 0 ? <div className="dash-panel-body"><SkeletonRows count={4} /></div> : prRecords.length === 0 ? (
+                  <div className="dashboard-empty-state"><ClipboardList size={18} aria-hidden="true" /><span>No Purchase Requests found. They appear here once End Users submit them.</span></div>
                 ) : (
-                  <div className="dashboard-activity-list">
-                    {prRecords.slice(0, 5).map((pr) => {
-                      const statusMeta = getPrStatusMeta(pr.status)
-                      return (
-                        <button key={pr.id} type="button" className="dashboard-activity-row" onClick={() => handleViewPr(pr)}>
-                          <span className="dashboard-activity-id">{pr.pr_no || `PR-${pr.id}`}</span>
-                          <span className="dashboard-activity-main"><strong>{pr.entity_name || 'Unnamed entity'}</strong><small>{pr.office_section || 'Office not specified'}</small></span>
-                          <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
-                          <span className="dashboard-activity-value">{formatPeso(pr.grand_total)}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <table className="data-table dash-table responsive-table">
+                    <thead>
+                      <tr><th scope="col">PR No.</th><th scope="col">Entity and office</th><th scope="col">Status</th><th scope="col" className="num">Total</th></tr>
+                    </thead>
+                    <tbody>
+                      {prRecords.slice(0, 5).map((pr) => {
+                        const statusMeta = getPrStatusMeta(pr.status)
+                        return (
+                          <tr key={pr.id}>
+                            <td data-label="PR No.">
+                              <button type="button" className="record-link" onClick={() => handleViewPr(pr)}>{pr.pr_no || `Unnumbered #${pr.id}`}</button>
+                            </td>
+                            <td data-label="Entity and office">
+                              <span className="cell-primary">{pr.entity_name || 'Unnamed entity'}</span>
+                              <span className="cell-secondary">{pr.office_section || 'Office not specified'}</span>
+                            </td>
+                            <td data-label="Status"><span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span></td>
+                            <td data-label="Total" className="num">{formatPeso(pr.grand_total)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 )}
               </section>
-              <section className="admin-dashboard-panel">
-                <div className="admin-dashboard-panel-header">
-                  <div>
-                    <span className="section-kicker">Supplier network</span>
-                    <h2>Recent Registrations</h2>
-                  </div>
+
+              <section className="dash-panel" aria-labelledby="dash-recent-sup-title">
+                <header className="dash-panel-header">
+                  <h2 id="dash-recent-sup-title">Recent supplier registrations</h2>
                   <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('suppliers')}>Manage</button>
-                </div>
-                {supplierLoading && supplierRegistrations.length === 0 ? <SkeletonRows count={4} /> : supplierRegistrations.length === 0 ? (
-                  <div className="dashboard-empty-state"><Users size={20} /><span>No supplier registrations found.</span></div>
+                </header>
+                {supplierLoading && supplierRegistrations.length === 0 ? <div className="dash-panel-body"><SkeletonRows count={4} /></div> : supplierRegistrations.length === 0 ? (
+                  <div className="dashboard-empty-state"><Users size={18} aria-hidden="true" /><span>No supplier registrations found.</span></div>
                 ) : (
-                  <div className="dashboard-activity-list">
-                    {supplierRegistrations.slice(0, 5).map((supplier) => {
-                      const statusMeta = getSupplierStatusMeta(supplier.status)
-                      return (
-                        <button key={supplier.id} type="button" className="dashboard-activity-row" onClick={() => { setCurrentTab('suppliers'); handleSelectSupplier(supplier) }}>
-                          <span className="dashboard-activity-id">#{supplier.id}</span>
-                          <span className="dashboard-activity-main"><strong>{supplier.company_name || 'Unnamed supplier'}</strong><small>{supplier.email || 'Email not specified'}</small></span>
-                          <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <table className="data-table dash-table responsive-table">
+                    <thead>
+                      <tr><th scope="col">Supplier</th><th scope="col">Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {supplierRegistrations.slice(0, 5).map((supplier) => {
+                        const statusMeta = getSupplierStatusMeta(supplier.status)
+                        return (
+                          <tr key={supplier.id}>
+                            <td data-label="Supplier">
+                              <button type="button" className="record-link" onClick={() => { setCurrentTab('suppliers'); handleSelectSupplier(supplier) }}>{supplier.company_name || 'Unnamed supplier'}</button>
+                              <span className="cell-secondary">{supplier.email || 'Email not specified'}</span>
+                            </td>
+                            <td data-label="Status"><span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span></td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 )}
               </section>
             </div>
+
+            {dashboardLoading && !dashboardStats ? (
+              <section className="dash-panel dash-network"><div className="dash-panel-body"><SkeletonRows count={5} /></div></section>
+            ) : (
+              <section className="dash-panel dash-network" aria-labelledby="dash-network-title">
+                <header className="dash-panel-header">
+                  <h2 id="dash-network-title">Supplier network and PR volume</h2>
+                </header>
+                <div className="dash-network-grid">
+                  <div className="dash-figure">
+                    <h3>Suppliers by status <span className="dash-figure-total">{dashboardStats?.total_suppliers ?? 0} total</span></h3>
+                    <BreakdownBarList items={dashboardBreakdowns.supplierStatus} emptyLabel="No suppliers registered yet." />
+                  </div>
+                  <div className="dash-figure">
+                    <h3>Eligibility documents <span className="dash-figure-total">{dashboardBreakdowns.documentStatus.reduce((sum, item) => sum + item.count, 0)} on file</span></h3>
+                    <BreakdownBarList items={dashboardBreakdowns.documentStatus} emptyLabel="No documents uploaded yet." />
+                  </div>
+                  <div className="dash-figure">
+                    <h3>Verified suppliers by category <span className="dash-figure-total">{dashboardBreakdowns.categoryWithSuppliers} of {dashboardBreakdowns.categoryTotal} categories covered</span></h3>
+                    <BreakdownBarList items={dashboardBreakdowns.categoryItems} emptyLabel="No approved suppliers are assigned to a category yet." />
+                  </div>
+                  <div className="dash-figure">
+                    <h3>Purchase Requests, last 6 months</h3>
+                    <MonthlyTrendChart data={dashboardBreakdowns.monthlyVolume} />
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
         )}
 
         {currentTab === 'suppliers' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>Supplier Verification & Approval</h1>
-              <p>Review supplier registrations, verify uploaded documents, and approve or reject submissions.</p>
+              <h1>Suppliers</h1>
+              <p>Evaluate supplier registrations, verify their eligibility documents, and approve, return for compliance, or reject each one.</p>
             </div>
 
             {supplierError && (
@@ -4528,7 +4527,7 @@ const Admin = () => {
         {currentTab === 'buyer-accounts' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>End User Accounts</h1>
+              <h1>End user accounts</h1>
               <p>Create and manage End User accounts for Purchase Request submission.</p>
             </div>
             <div className="buyer-account-layout">
@@ -4616,7 +4615,7 @@ const Admin = () => {
         {currentTab === 'pr-numbering-settings' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>PR Numbering</h1>
+              <h1>PR numbering</h1>
               <p>Configure how Purchase Request numbers are formatted and when the running sequence resets.</p>
             </div>
             <div className="buyer-account-layout">
@@ -4624,7 +4623,7 @@ const Admin = () => {
                 <div className="panel-header">
                   <div>
                     <h2>Number Format</h2>
-                    <p className="supplier-subtext">Changes apply to PR numbers generated from now on - existing numbers are never rewritten.</p>
+                    <p className="supplier-subtext">Changes apply to PR numbers generated from now on. Existing numbers are never rewritten.</p>
                   </div>
                 </div>
                 {prNumberFormatLoading && !prNumberFormatDraft ? (
@@ -4707,7 +4706,7 @@ const Admin = () => {
         {currentTab === 'pr-notification-settings' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>PR Notifications</h1>
+              <h1>PR notifications</h1>
               <p>Configure when End Users are emailed about their Purchase Request's status.</p>
             </div>
             <div className="buyer-account-layout">
@@ -4715,7 +4714,7 @@ const Admin = () => {
                 <div className="panel-header">
                   <div>
                     <h2>Status Email Settings</h2>
-                    <p className="supplier-subtext">Applies to notifications going forward - already-sent emails are unaffected.</p>
+                    <p className="supplier-subtext">Applies to notifications from now on. Emails already sent are not affected.</p>
                   </div>
                 </div>
                 {prNotificationSettingsLoading && !prNotificationSettingsDraft ? (
@@ -4825,8 +4824,8 @@ const Admin = () => {
         {currentTab === 'pr-monitoring' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>PR Review & Monitoring</h1>
-              <p>Review unnumbered Purchase Requests and monitor numbered requests through the procurement workflow.</p>
+              <h1>Purchase Requests</h1>
+              <p>Review new requests and assign their PR numbers, then follow each numbered request through supplier matching and RFQs.</p>
             </div>
 
             <div className="admin-actions" style={{ marginBottom: '16px' }}>
@@ -4991,18 +4990,18 @@ const Admin = () => {
                           </select>
                         )}
                       </span>
-                      <span role="cell" data-label="Created">{pr.created_at ? new Date(pr.created_at).toLocaleString() : 'N/A'}</span>
+                      <span role="cell" data-label="Created" title={pr.created_at ? new Date(pr.created_at).toLocaleString() : undefined}>{pr.created_at ? new Date(pr.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not recorded'}</span>
                       <span role="cell" data-label="Next Step" className="pr-matching-action">
                         {pr.status !== 'uploaded' && !pr.has_quotation && (
                           <button
                             type="button"
-                            className="btn-sm btn-primary"
+                            className="btn-sm btn-secondary"
                             onClick={() => {
                               setWorkflowPrId(pr.id)
                               setCurrentTab(pr.category?.trim() ? 'supplier-matching' : 'assign-categories')
                             }}
                           >
-                            {pr.category?.trim() ? 'Continue Matching' : 'Category Selection'}
+                            {pr.category?.trim() ? 'Continue matching' : 'Select categories'}
                           </button>
                         )}
                       </span>
@@ -5085,8 +5084,8 @@ const Admin = () => {
             {editingPr && (
               <Modal labelledBy="edit-pr-title" className="modal-content pr-edit-modal" onClose={closeEditPr} dismissible={!editPrSaving}>
                   <div className="modal-header">
-                    <h2 id="edit-pr-title">Edit Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
-                    <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close edit Purchase Request">×</button>
+                    <h2 id="edit-pr-title">Review Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
+                    <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close Purchase Request review">×</button>
                   </div>
                   {editPrLoading || !editPrForm ? (
                     <div className="modal-body" aria-busy="true"><SkeletonRows count={4} /></div>
@@ -5341,18 +5340,10 @@ const Admin = () => {
               </Modal>
             )}
 
-            <div className="admin-checklist">
-              <h3>Monitoring Notes</h3>
-              <ul>
-                <li>Purchase Requests are submitted by End Users; review them here before supplier matching.</li>
-                <li>Use this list as the source set for upcoming supplier matching logic.</li>
-                <li>Refresh after saving a PR to display latest records.</li>
-              </ul>
-            </div>
-
-            <div className="admin-checklist" style={{ marginTop: '16px' }}>
-              <h3>Matched Suppliers</h3>
-              <p style={{ marginTop: 0, marginBottom: 16, color: '#64748b' }}>
+            {matchedSupplierCards.length > 0 && (
+            <div className="admin-checklist matched-suppliers-panel">
+              <h3>Matched suppliers</h3>
+              <p className="supplier-subtext">
                 Review matched supplier suggestions and confirm assignment per Purchase Request.
               </p>
 
@@ -5371,7 +5362,7 @@ const Admin = () => {
                     <article key={card.id} className="supplier-match-card">
                       <div className="supplier-match-head">
                         <h4>{companyName}</h4>
-                        <span className={`status-badge ${verified ? 'status-open' : 'status-review'}`}>
+                        <span className={`status-badge ${verified ? 'tone-success' : 'status-review'}`}>
                           {verified ? 'Verified' : 'Pending'}
                         </span>
                       </div>
@@ -5390,13 +5381,9 @@ const Admin = () => {
                   )
                 })}
 
-                {!matchedSupplierCards.length && (
-                  <div className="supplier-match-empty">
-                    No matched suppliers available yet. Upload and process more PR records to generate supplier matches.
-                  </div>
-                )}
               </div>
             </div>
+            )}
           </div>
         )}
         {prDeleteConfirmId && (
@@ -6026,8 +6013,8 @@ const buyerLongDate = (value) => {
 }
 
 const buyerStatusBadgeClass = (stage) => {
-  if (stage === 'rejected') return 'status-merged'
-  if (stage === 'completed' || stage === 'supplier_response') return 'status-open'
+  if (stage === 'rejected') return 'tone-danger'
+  if (stage === 'completed' || stage === 'supplier_response') return 'tone-success'
   return 'status-review'
 }
 
@@ -6070,7 +6057,7 @@ const BuyerPRTimeline = ({ record }) => {
       <ol className="buyer-timeline" aria-label="Purchase Request progress">
         {nodes.map((node) => (
           <li key={node.label} className={`buyer-timeline-node is-${node.state}`}>
-            <span className="buyer-timeline-marker" aria-hidden="true">{node.state === 'rejected' ? '✕' : '✓'}</span>
+            <span className="buyer-timeline-marker" aria-hidden="true">{node.state === 'rejected' ? <X size={12} /> : <Check size={12} />}</span>
             <div className="buyer-timeline-body">
               <span className="buyer-timeline-label">{node.label}</span>
               {node.at && <span className="buyer-timeline-time">{buyerLongDate(node.at)}</span>}
@@ -6090,7 +6077,7 @@ const BuyerPRTimeline = ({ record }) => {
         return (
           <li key={item.key} className={`buyer-timeline-node is-${state}`}>
             <span className="buyer-timeline-marker" aria-hidden="true">
-              {state === 'done' ? '✓' : state === 'current' ? '●' : '○'}
+              {state === 'done' ? <Check size={12} /> : state === 'current' ? <CircleDot size={12} /> : <Circle size={12} />}
             </span>
             <div className="buyer-timeline-body">
               <span className="buyer-timeline-label">{item.label}</span>
@@ -6420,7 +6407,7 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
                     <h3>Request for Quotation</h3>
                     <p className="supplier-subtext">{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
                   </div>
-                  <span className={`status-badge ${responded ? 'status-open' : 'status-review'}`}>
+                  <span className={`status-badge ${responded ? 'tone-success' : 'status-review'}`}>
                     <span className="sr-only">Status: </span>{rfqSupplierStatusLabel(rfq)}
                   </span>
                 </div>
@@ -6577,7 +6564,7 @@ const SupplierRFQDetail = ({ rfq: initialRfq, supplierId, apiBaseUrl, onBack, on
                 }}
               />
             </label>
-            {file && <p className="supplier-subtext">✓ {file.name} · {fileTypeLabel(file)} • {formatFileSize(file.size)}</p>}
+            {file && <p className="supplier-subtext file-chosen"><Check size={14} aria-hidden="true" /> {file.name} ({fileTypeLabel(file)}, {formatFileSize(file.size)})</p>}
             <div className="form-actions">
               {replacing && <button type="button" className="btn-secondary" onClick={() => { setReplacing(false); setFile(null) }} disabled={uploading}>Cancel</button>}
               <button type="button" className="btn-primary" onClick={handleUpload} disabled={uploading || !file}>{uploading ? 'Uploading...' : 'Upload Completed RFQ'}</button>
@@ -7134,8 +7121,8 @@ const getSupplierDocumentLabel = (docType) => ({
 }[docType] || String(docType || 'Supplier Document').replace(/_/g, ' '))
 
 const getSupplierDocumentStatusMeta = (status) => {
-  if (status === 'Verified') return { label: 'Verified', className: 'status-open' }
-  if (status === 'Rejected') return { label: 'Rejected', className: 'status-merged' }
+  if (status === 'Verified') return { label: 'Verified', className: 'tone-success' }
+  if (status === 'Rejected') return { label: 'Rejected', className: 'tone-danger' }
   return { label: 'Pending Re-evaluation', className: 'status-review' }
 }
 

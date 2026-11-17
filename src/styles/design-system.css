@@ -1,3 +1,4 @@
+@layer legacy {
 /* ==========================================================================
    eProcure design system: token completion + shared components
 
@@ -14,8 +15,8 @@
 
 :root {
   /* Type */
-  --font-sans: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --font-mono: var(--font-sans);
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;
@@ -665,3 +666,5 @@ button.link-like {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+
+} /* end @layer legacy */

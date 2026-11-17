@@ -21,7 +21,7 @@ const adminRoutes = {
 }
 
 const openPrMonitoring = async (user) => {
-  await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+  await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
   await screen.findByText(/awaiting pr number/i)
 }
 
@@ -66,7 +66,7 @@ describe('confirmation steps', () => {
     signIn(adminUser)
     installApi(adminRoutes)
     const { user } = renderAt('/admin')
-    await user.click(screen.getAllByRole('button', { name: /supplier management/i })[0])
+    await user.click(screen.getAllByRole('button', { name: /^suppliers/i })[0])
     await user.click(await screen.findByRole('button', { name: /^view details for acme supplies/i }))
     const review = await screen.findByRole('dialog', { name: /acme supplies/i })
     await user.click(within(review).getByRole('button', { name: /reject registration/i }))
@@ -101,7 +101,7 @@ describe('modal focus management on real screens', () => {
     await openPrMonitoring(user)
     const trigger = await screen.findByRole('button', { name: /review pr/i })
     await user.click(trigger)
-    const dialog = await screen.findByRole('dialog', { name: /edit purchase request/i })
+    const dialog = await screen.findByRole('dialog', { name: /review purchase request/i })
     await screen.findByDisplayValue('RC-100')
 
     for (let index = 0; index < 40; index += 1) {
@@ -110,7 +110,7 @@ describe('modal focus management on real screens', () => {
     }
 
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog', { name: /edit purchase request/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /review purchase request/i })).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
   })
 

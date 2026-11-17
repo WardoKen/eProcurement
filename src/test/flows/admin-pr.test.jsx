@@ -17,7 +17,7 @@ const routes = (overrides = {}) => ({
 })
 
 async function openPrMonitoring(user) {
-  await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+  await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
   await screen.findByText(/awaiting pr number/i)
 }
 

@@ -42,7 +42,7 @@ describe('RFQ workflow indicator', () => {
       'POST /api/pr/43/rfq/': ({ body }) => ({ json: { ...body, id: 9, rfq_no: 'RFQ-2026-001', status: 'draft', supplier: { id: 7 } } }),
     })
     const { user } = renderAt('/admin')
-    await user.click(screen.getAllByRole('button', { name: /pr review & monitoring/i })[0])
+    await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
     await user.click(await screen.findByRole('button', { name: /continue matching/i }))
     await user.click(await screen.findByRole('button', { name: /request quotation/i }))
 
