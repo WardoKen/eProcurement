@@ -10,6 +10,9 @@ import './styles/components.css'
 import './styles/shell.css'
 import './styles/screens.css'
 import './styles/screens-admin.css'
+import './styles/screens-supplier.css'
+import './styles/screens-enduser.css'
+import './styles/screens-public.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(

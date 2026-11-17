@@ -327,10 +327,10 @@
   margin-right: 0;
 }
 
-.supplier-section,
-.supplier-content-inner,
-.page-content,
-.admin-section {
+.admin-content .supplier-section,
+.admin-content .supplier-content-inner,
+.admin-content .page-content,
+.admin-content .admin-section {
   max-width: var(--content-max);
   margin: 0;
   padding: 0;
@@ -350,12 +350,17 @@
   color: var(--ink);
 }
 
-.navbar .admin-brand-mark {
+/* The old "eP" monogram is replaced by the folder mark everywhere it
+   appears (public navbar, login panel, footer). */
+.admin-brand-mark {
   display: inline-block;
+  flex: none;
   width: 30px;
   height: 30px;
+  border: 0;
   border-radius: 3px;
-  background: var(--navy) url('/favicon.svg') center / 30px 30px no-repeat;
+  background: var(--navy) url('/favicon.svg') center / 100% 100% no-repeat;
+  box-shadow: none;
   color: transparent;
   font-size: 0;
   overflow: hidden;

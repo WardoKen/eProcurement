@@ -21,7 +21,11 @@ export function SortableHeader({ table, sortKey, children, className, style }) {
 // Search box + optional extra controls + a live result count.
 export function TableToolbar({ table, searchLabel, searchPlaceholder, children, noun = 'record' }) {
   const searchId = useId()
-  const plural = (count) => `${count} ${noun}${count === 1 ? '' : 's'}`
+  const plural = (count) => {
+    if (count === 1) return `${count} ${noun}`
+    // "opportunity" -> "opportunities", "quotation" -> "quotations"
+    return /[^aeiou]y$/i.test(noun) ? `${count} ${noun.slice(0, -1)}ies` : `${count} ${noun}s`
+  }
   return (
     <div className="data-toolbar">
       <div className="data-toolbar-search">

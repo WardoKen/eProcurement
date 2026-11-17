@@ -1,0 +1,50 @@
+/* ==========================================================================
+   Public pages: home, login, FAQ, supplier registration. Unlayered.
+   ========================================================================== */
+
+/* Login: the navy panel keeps light text. */
+.login-context { background: var(--navy); color: #E7EDF3; }
+.login-context h1 { color: #FFFFFF; }
+.login-context .hero-kicker,
+.login-context .section-kicker { color: var(--manila); }
+.login-context > p:not(.hero-kicker) { color: #C9D3DE; }
+.login-context .admin-brand-mark { width: 44px; height: 44px; }
+.login-context-list strong { color: #FFFFFF; }
+.login-context-list span, .login-context-list small { color: #C9D3DE; }
+
+.login-container { box-shadow: none; border: 1px solid var(--rule); border-radius: var(--radius-panel); overflow: hidden; }
+.login-container::after, .login-container::before { content: none; display: none; }
+
+/* Home: the three roles are not a sequence, so they lose their numbers. */
+.role-index { display: none; }
+
+.procurement-activity-panel { box-shadow: none; }
+.procurement-activity-panel::after, .procurement-activity-panel::before { content: none; display: none; }
+
+/* Supplier registration: a plain navy title band, no gradient. */
+.registration-hero {
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: var(--navy);
+  background-image: none;
+  box-shadow: none;
+}
+.registration-hero::before, .registration-hero::after { content: none; display: none; }
+.registration-hero h1 { font-family: var(--font-serif); color: #FFFFFF; }
+.registration-hero .hero-kicker,
+.registration-hero .section-kicker { color: var(--manila); }
+
+/* The step bar already says which step this is. */
+.supplier-registration .section-badge,
+.registration-wizard .section-badge { display: none; }
+
+/* FAQ: a ruled list of questions, not floating cards. */
+.faq-item {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.faq-section > .faq-item:first-of-type { border-top: 1px solid var(--rule); }

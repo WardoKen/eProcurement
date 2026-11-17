@@ -1,0 +1,106 @@
+/* ==========================================================================
+   End User portal screens. Unlayered. See DESIGN.md.
+   ========================================================================== */
+
+/* ── Submit a Purchase Request ─────────────────────────────────────────── */
+
+/* The page header already explains the upload, so the workspace's own
+   intro heading is hidden here (it still shows in other contexts). */
+.buyer-pr-upload-section .pr-upload-intro > div:first-child { display: none; }
+
+.buyer-pr-upload-section > .alert { margin-bottom: var(--space-4); }
+
+.pr-upload-intro {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.dropzone {
+  border: 1px dashed var(--input-border);
+  border-radius: var(--radius-panel);
+  background: var(--paper-sunken);
+  box-shadow: none;
+  color: var(--ink);
+}
+.dropzone:hover,
+.dropzone.drag-over,
+.dropzone:focus-visible { border-color: var(--navy); border-style: solid; background: var(--navy-tint); }
+.dropzone svg { color: var(--navy); }
+
+.pr-upload-page .form-panel > p,
+.pr-upload-page .form-panel > .helper-text { margin: var(--space-3) var(--space-4) 0; }
+
+/* ── Live Status ──────────────────────────────────────────────────────── */
+
+.buyer-status-viewer {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.buyer-status-viewer > .supplier-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 12px var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+.buyer-status-viewer > .supplier-header .section-kicker { display: none; }
+
+.buyer-status-viewer > .supplier-header h2 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.buyer-status-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; }
+
+.buyer-status-record {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: none;
+}
+.buyer-status-record:last-child { border-bottom: 0; }
+.buyer-status-record.is-open { box-shadow: inset 3px 0 0 var(--navy); }
+
+.buyer-status-record-head {
+  width: 100%;
+  padding: 12px var(--space-5);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.buyer-status-record-head:hover { background: var(--paper-sunken); }
+
+.buyer-status-record-title strong { color: var(--navy); font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.buyer-status-record-title span { color: var(--ink-2); font-size: var(--text-sm); }
+
+.buyer-status-facts dt {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.buyer-status-facts dd { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.status-current-value,
+.buyer-status-record .status-current h3,
+.buyer-status-record .status-current strong { color: var(--ink); font-family: var(--font-serif); }
+
+.buyer-timeline-marker { color: var(--paper); }
+.buyer-timeline-node.is-done .buyer-timeline-marker { border-color: var(--tone-success); background: var(--tone-success); }
+.buyer-timeline-node.is-current .buyer-timeline-marker { border-color: var(--navy); background: var(--paper); color: var(--navy); }

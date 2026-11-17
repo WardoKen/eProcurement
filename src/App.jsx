@@ -5917,7 +5917,11 @@ const Buyer = () => {
     }
   })
 
+  // Confirmation banner only for a submission made during this visit.
+  const [justSubmitted, setJustSubmitted] = React.useState(false)
+
   const handlePrSubmitted = (prId) => {
+    setJustSubmitted(true)
     setSubmittedPrIds((current) => {
       const next = [prId, ...current.filter((id) => id !== prId)].slice(0, 10)
       localStorage.setItem(buyerStorageKey, JSON.stringify(next))
@@ -5935,7 +5939,7 @@ const Buyer = () => {
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
       {/* Buyer Sidebar Navigation */}
       <Sidebar
-        portalLabel="End User Portal"
+        portalLabel="End user portal"
         activeId={currentTab}
         onSelect={setCurrentTab}
         navCollapsed={navCollapsed}
@@ -5945,7 +5949,7 @@ const Buyer = () => {
         onLogout={handleLogout}
         groups={[
           { items: [
-            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'dashboard', label: 'Submit a PR', icon: FileUp },
             { id: 'live-status', label: 'Live Status', icon: TrendingUp },
           ] },
         ]}
@@ -5954,24 +5958,20 @@ const Buyer = () => {
       {/* Buyer Content */}
       <div className="admin-content">
         {currentTab !== 'dashboard' && (
-          <Breadcrumbs items={[{ label: 'End User Portal', onClick: () => setCurrentTab('dashboard') }, { label: 'Live Status' }]} />
+          <Breadcrumbs items={[{ label: 'End user portal', onClick: () => setCurrentTab('dashboard') }, { label: 'Live Status' }]} />
         )}
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
           <div className="supplier-section">
             <div className="supplier-header">
-              <h1>End User Dashboard</h1>
-              <p>Welcome back, {user?.name || 'End User'}. Submit and track Purchase Requests.</p>
+              <h1>Submit a Purchase Request</h1>
+              <p>Upload your signed PR form. The BAC Secretariat reviews it, assigns the PR number and continues it to supplier matching. Follow its progress in Live Status.</p>
             </div>
 
             <section className="buyer-pr-upload-section">
-              <div className="supplier-header">
-                <h2>Submit a Purchase Request</h2>
-                <p>Upload a signed PR for OCR extraction. BAC Secretariat will review, number, and continue it to supplier matching.</p>
-              </div>
-              {submittedPrIds.length > 0 && (
+              {justSubmitted && (
                 <div className="alert alert-success" role="status">
-                  Purchase Request submitted for BAC review. The status viewer below tracks the same database record.
+                  Purchase Request submitted for BAC review. Follow its progress in Live Status.
                 </div>
               )}
               <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
@@ -6014,7 +6014,9 @@ const buyerLongDate = (value) => {
 
 const buyerStatusBadgeClass = (stage) => {
   if (stage === 'rejected') return 'tone-danger'
-  if (stage === 'completed' || stage === 'supplier_response') return 'tone-success'
+  if (stage === 'completed') return 'tone-success'
+  if (stage === 'supplier_matching' || stage === 'rfq_sent' || stage === 'supplier_response') return 'tone-progress'
+  if (stage === 'submitted') return 'tone-neutral'
   return 'status-review'
 }
 
@@ -6305,7 +6307,7 @@ const Supplier = () => {
       />
       <div className="admin-content">
         {currentPage !== 'dashboard' && (
-          <Breadcrumbs items={[{ label: 'Supplier Portal', onClick: () => handlePageChange('dashboard') }, { label: SUPPLIER_PAGE_LABELS[currentPage] || currentPage }]} />
+          <Breadcrumbs items={[{ label: 'Supplier portal', onClick: () => handlePageChange('dashboard') }, { label: SUPPLIER_PAGE_LABELS[currentPage] || currentPage }]} />
         )}
         <ErrorBoundary resetKey={currentPage}>
         {currentPage === 'dashboard' && <SupplierDashboard supplierId={supplierId} apiBaseUrl={apiBaseUrl} supplierStatus={supplierStatus} />}
@@ -6393,7 +6395,7 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
 
   return (
     <div className="supplier-content-inner">
-      <div className="supplier-header"><h2>Requests for Quotation</h2><p>Download each RFQ, complete and sign it, then upload the completed document.</p></div>
+      <div className="supplier-header"><h1>Requests for Quotation</h1><p>Download each RFQ, complete and sign it, then upload the completed document.</p></div>
       {error && <div className="alert alert-error">{error}</div>}
       {loading ? <SkeletonRows count={4} /> : rfqs.length === 0 ? <div className="empty-state"><Send size={48} /><h3>No RFQs received</h3><p>New requests for quotation will appear here.</p></div> : (
         <div className="rfq-supplier-list">
@@ -6404,8 +6406,8 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
               <article className="card rfq-supplier-card" key={rfq.id}>
                 <div className="rfq-supplier-card-head">
                   <div>
-                    <h3>Request for Quotation</h3>
-                    <p className="supplier-subtext">{rfq.rfq_no} · PR {pr.pr_no || pr.id}</p>
+                    <h3>{rfq.rfq_no}</h3>
+                    <p className="supplier-subtext">Request for Quotation for PR {pr.pr_no || pr.id}</p>
                   </div>
                   <span className={`status-badge ${responded ? 'tone-success' : 'status-review'}`}>
                     <span className="sr-only">Status: </span>{rfqSupplierStatusLabel(rfq)}
@@ -6610,24 +6612,24 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
 
   return (
     <Sidebar
-      portalLabel="Supplier Portal"
+      portalLabel="Supplier portal"
       activeId={currentPage}
       onSelect={onPageChange}
       navCollapsed={navCollapsed}
       onToggleNav={onToggleNav}
       userPrimary={supplierDetails?.company_name || 'Supplier Account'}
-      userSecondary={supplierDetails?.email || supplierDetails?.contact_email || 'Portal'}
+      userSecondary={supplierDetails?.email || supplierDetails?.contact_email || ''}
       onLogout={onLogout}
       groups={[
-        { section: 'MAIN', items: [
+        { section: 'Overview', items: [
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         ] },
-        { section: 'PROCUREMENT', items: [
+        { section: 'Procurement', items: [
           { id: 'opportunities', label: 'Opportunities', icon: BriefcaseBusiness },
           { id: 'rfqs', label: 'RFQs', icon: Send },
           { id: 'quotations', label: 'Quotations', icon: FileText },
         ].map((item) => (procurementLocked ? { ...item, locked: true, lockedReason: 'available after BAC approval' } : item)) },
-        { section: 'ACCOUNT', items: [
+        { section: 'Account', items: [
           { id: 'profile', label: 'Profile', icon: Building2 },
           { id: 'notifications', label: 'Notifications', icon: Bell },
         ] },
@@ -6688,8 +6690,8 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>Welcome back{summary?.company_name ? `, ${summary.company_name}` : ''}</h2>
-        <p>Here's a quick overview of your procurement activities.</p>
+        <h1>Welcome back{summary?.company_name ? `, ${summary.company_name}` : ''}</h1>
+        <p>Your registration status, open opportunities and quotations with the BAC.</p>
       </div>
 
       {loadError && (
@@ -6724,25 +6726,35 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
       </ul>
 
       {opportunities.length > 0 && (
-        <div className="supplier-section">
-          <h3>Recent Matching Opportunities</h3>
-          <div className="opportunities-grid">
-            {opportunities.map((opp) => (
-              <div key={opp.id} className="opportunity-card">
-                <div className="opportunity-header">
-                  <h4>{opp.pr_no}</h4>
-                  <span className={`status-badge status-${opp.status}`}>{opp.status}</span>
-                </div>
-                <p className="opportunity-office">{opp.office_section}</p>
-                <p className="opportunity-purpose">{opp.purpose}</p>
-                <div className="opportunity-footer">
-                  <div><strong>Budget:</strong> ₱{Number(opp.grand_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                  <div><strong>Category:</strong> {opp.category}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <section className="dash-panel supplier-recent-opps" aria-labelledby="supplier-recent-opps-title">
+          <header className="dash-panel-header">
+            <h2 id="supplier-recent-opps-title">Recent matching opportunities</h2>
+          </header>
+          <table className="data-table dash-table responsive-table">
+            <thead>
+              <tr>
+                <th scope="col">PR No.</th>
+                <th scope="col">Office</th>
+                <th scope="col">Purpose</th>
+                <th scope="col">Category</th>
+                <th scope="col" className="num">Budget</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opportunities.map((opp) => (
+                <tr key={opp.id}>
+                  <td data-label="PR No." className="cell-strong">{opp.pr_no}</td>
+                  <td data-label="Office">{opp.office_section}</td>
+                  <td data-label="Purpose" className="cell-purpose">{opp.purpose}</td>
+                  <td data-label="Category">{opp.category}</td>
+                  <td data-label="Budget" className="num">{formatPesoAmount(opp.grand_total)}</td>
+                  <td data-label="Status"><span className={`status-badge status-${opp.status}`}>{humanizeStatus(opp.status)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
     </div>
   )
@@ -6803,8 +6815,8 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>Procurement Opportunities</h2>
-        <p>Explore purchase requests matching your registered services</p>
+        <h1>Procurement opportunities</h1>
+        <p>Purchase Requests that match the categories you registered with the BAC.</p>
       </div>
 
       {error && (
@@ -7025,8 +7037,8 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>My Quotations</h2>
-        <p>Track the status of all your submitted quotations.</p>
+        <h1>My quotations</h1>
+        <p>The status of every quotation you have submitted.</p>
       </div>
 
       {error && (
@@ -7073,7 +7085,7 @@ const MyQuotations = ({ supplierId, apiBaseUrl }) => {
         </div>
       ) : !error && (
         <div className="empty-state">
-          <FileText size={48} aria-hidden="true" />
+          <FileText size={20} aria-hidden="true" />
           <h3>{quotations.length ? 'No quotations match your search' : 'No quotations yet'}</h3>
           <p>{quotations.length ? 'Try a different PR number or status.' : 'Download an RFQ from the RFQs tab, complete it, and upload it to submit a quotation.'}</p>
         </div>
@@ -7256,8 +7268,8 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>Company Profile</h2>
-        <p>View and manage your company information.</p>
+        <h1>Company profile</h1>
+        <p>Your registration details and eligibility documents on file with the BAC.</p>
       </div>
 
       {message && (
@@ -7567,8 +7579,8 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
   return (
     <div className="supplier-content-inner">
       <div className="supplier-header">
-        <h2>Notifications</h2>
-        <p>Stay updated on your quotations and procurement opportunities.</p>
+        <h1>Notifications</h1>
+        <p>Updates from the BAC about your registration, RFQs and quotations.</p>
       </div>
 
       {notifications.length > 0 ? (

@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Supplier portal screens. Unlayered. See DESIGN.md.
+   ========================================================================== */
+
+/* Page rhythm: every supplier page stacks its blocks 20px apart. */
+.supplier-content-inner > * + * { margin-top: var(--space-5); }
+.supplier-content-inner > .supplier-header { margin-bottom: 0; }
+.supplier-content-inner > .supplier-header + * { margin-top: var(--space-6); }
+
+/* Registration status: a notice, not a hero card. */
+.supplier-status-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: 2px;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--tone-success);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+
+.supplier-status-card:has(.status-pill.warning) { border-left-color: var(--tone-review); }
+.supplier-status-card:has(.status-pill.danger) { border-left-color: var(--tone-danger); }
+
+.supplier-status-card .status-pill { grid-row: 1; grid-column: 1; }
+
+.supplier-status-card h2 {
+  grid-row: 1;
+  grid-column: 2;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.supplier-status-card p {
+  grid-column: 2;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+
+.supplier-recent-opps .cell-strong,
+.opportunity-table td:first-child,
+.opportunity-table th:first-child { white-space: nowrap; }
+
+.cell-strong { font-weight: 650; font-variant-numeric: tabular-nums; }
+.cell-purpose { min-width: 260px; color: var(--ink); }
+
+/* Opportunities table */
+.opportunity-table-wrapper { overflow-x: auto; }
+.opportunity-table td:last-child,
+.opportunity-table th:last-child { white-space: nowrap; }
+.opportunity-table td .link-like,
+.opportunity-table td button { white-space: nowrap; }
+
+/* RFQ list */
+.rfq-supplier-list { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.rfq-supplier-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "body actions";
+  align-items: end;
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+}
+
+.rfq-supplier-card-head { grid-area: head; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.rfq-supplier-card-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.rfq-supplier-card-head .supplier-subtext { margin: 2px 0 0; font-size: var(--text-sm); }
+
+.rfq-supplier-card-body {
+  grid-area: body;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-6);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+.rfq-supplier-card-body strong { color: var(--ink-2); font-weight: 500; }
+
+.rfq-supplier-card .form-actions { grid-area: actions; margin: 0; }
+
+/* Profile */
+.profile-row,
+.detail-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.profile-row:last-child, .detail-row:last-child { border-bottom: 0; }
+.profile-row > :last-child, .detail-row > :last-child { color: var(--ink); text-align: left; }
+.profile-row > :first-child,
+.detail-row > :first-child { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
+
+.profile-row .status-pill,
+.profile-row .status-badge,
+.detail-row .status-pill,
+.detail-row .status-badge { justify-self: start; width: auto; }
+
+/* Notifications: one ruled list, quiet actions. */
+.notifications-list { display: flex; flex-direction: column; gap: var(--space-5); }
+.notifications-group {
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background: var(--paper);
+}
+.notifications-group > .notifications-group-label { display: block; margin: 0; padding: 10px var(--space-5); border-bottom: 1px solid var(--rule); background: var(--paper-sunken); }
+
+.notification-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: none;
+}
+.notification-item:last-child { border-bottom: 0; }
+
+.notification-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  background: var(--paper-sunken);
+  color: var(--ink-2);
+}
+.notification-icon svg { width: 16px; height: 16px; }
+
+.notification-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title time" "body action";
+  align-items: start;
+  gap: 2px var(--space-4);
+}
+.notification-content h4 { grid-area: title; margin: 0; font-size: var(--text-md); font-weight: 650; }
+.notification-content p { grid-area: body; margin: 0; color: var(--ink-2); font-size: var(--text-md); }
+.notification-time { grid-area: time; color: var(--ink-3); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.notification-content .btn-sm { grid-area: action; justify-self: end; align-self: end; }
+.notification-content .btn-primary { border-color: var(--input-border); background: var(--paper); color: var(--navy); }
+.notification-content .btn-primary:hover:not(:disabled) { border-color: var(--navy); background: var(--navy-tint); color: var(--navy); }
+
+/* Notifications: group labels */
+.notifications-group-label {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-2) !important;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+@media (max-width: 720px) {
+  .rfq-supplier-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "body" "actions"; }
+  .rfq-supplier-card .form-actions { justify-content: flex-start; }
+  .profile-row, .detail-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .cell-purpose { min-width: 0; }
+}

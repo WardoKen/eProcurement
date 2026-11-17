@@ -506,7 +506,7 @@ button.link-like {
     color: var(--text-secondary);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
-    text-transform: uppercase;
+    text-transform: none;
     letter-spacing: 0.04em;
   }
   .responsive-table td[data-label=""]::before { content: none; }
@@ -642,7 +642,7 @@ button.link-like {
     color: var(--text-secondary);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
-    text-transform: uppercase;
+    text-transform: none;
     letter-spacing: 0.04em;
   }
   .pr-row-actions { justify-content: flex-start; }

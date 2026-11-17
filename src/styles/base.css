@@ -23,8 +23,8 @@ body {
 
 button, input, select, textarea { font-family: inherit; }
 
+/* Headings inherit their color, so text on navy panels stays light. */
 h1, h2, h3, h4, h5, h6 {
-  color: var(--ink);
   letter-spacing: normal;
   text-transform: none;
 }
