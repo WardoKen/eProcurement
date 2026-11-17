@@ -122,6 +122,23 @@
 @media (max-width: 720px) {
   .pr-review-queue-row { grid-template-columns: minmax(0, 1fr) auto; }
   .pr-review-queue-row > div { grid-column: 1 / -1; }
+
+  /* Rows become labelled cards (design-system.css); undo desktop grid. */
+  .pr-monitor-table-shell,
+  .pr-monitor-table-wrapper { max-height: none; overflow: visible; border: 0; background: transparent; }
+  .pr-monitor-table-row {
+    min-width: 0;
+    margin: 0 0 var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-panel);
+    background: var(--paper);
+  }
+  .pr-monitor-table-row > [role="cell"],
+  .pr-monitor-table-row > [role="cell"]:nth-child(5),
+  .pr-monitor-table-row > [role="cell"]:nth-child(6) { text-align: left; justify-content: flex-start; }
+  .pr-monitor-table-row > [role="cell"] .status-badge { justify-self: start; }
+  .pr-matching-action .btn-sm { width: auto; }
 }
 
 /* ── Suppliers: registrations as a ruled list, not a card grid ──────────── */

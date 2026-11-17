@@ -47,7 +47,10 @@
 .opportunity-table th:first-child { white-space: nowrap; }
 
 .cell-strong { font-weight: 650; font-variant-numeric: tabular-nums; }
-.cell-purpose { min-width: 260px; color: var(--ink); }
+.cell-purpose { min-width: 220px; color: var(--ink); }
+
+/* Wide tables scroll inside their panel, never the page. */
+.supplier-recent-opps { overflow-x: auto; }
 
 /* Opportunities table */
 .opportunity-table-wrapper { overflow-x: auto; }
@@ -71,8 +74,9 @@
   padding: var(--space-4) var(--space-5);
 }
 
-.rfq-supplier-card-head { grid-area: head; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-.rfq-supplier-card-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.rfq-supplier-card-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.rfq-supplier-card-head > div { flex: 1 1 220px; min-width: 0; }
+.rfq-supplier-card-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rfq-supplier-card-head .supplier-subtext { margin: 2px 0 0; font-size: var(--text-sm); }
 
 .rfq-supplier-card-body {
@@ -166,6 +170,10 @@
 }
 
 @media (max-width: 720px) {
+  .supplier-recent-opps { overflow-x: visible; }
+  .supplier-status-card { grid-template-columns: minmax(0, 1fr); }
+  .supplier-status-card .status-pill { justify-self: start; }
+  .supplier-status-card h2, .supplier-status-card p { grid-column: 1; grid-row: auto; }
   .rfq-supplier-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "body" "actions"; }
   .rfq-supplier-card .form-actions { justify-content: flex-start; }
   .profile-row, .detail-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }

@@ -3,8 +3,19 @@
 This is the visual system for eProcure, the procurement portal of the Bids
 and Awards Committee (BAC) at CTU Tuburan. It covers the Admin (BAC
 Secretariat), Supplier and End User portals and the public pages. The tokens
-below are implemented in `src/styles/tokens.css`. Shared components live in
-`src/styles/components.css` and the portal shell in `src/styles/shell.css`.
+below are implemented in `src/styles/tokens.css`.
+
+| File | Contents |
+|---|---|
+| `src/styles/tokens.css` | Tokens, plus aliases that point legacy variable names at them |
+| `src/styles/base.css` | Element defaults (in `@layer base`), page font, focus |
+| `src/styles/components.css` | Buttons, badges, alerts, panels, tables, forms, dialogs, empty states |
+| `src/styles/shell.css` | Masthead, sidebar, content area, public navbar, breakpoints |
+| `src/styles/screens*.css` | Per-portal screens: shared and dashboard, admin, supplier, enduser, public |
+| `src/index.css`, `src/styles/design-system.css` | Legacy rules, wrapped in `@layer legacy` so everything above wins |
+
+New styles go in the unlayered files above. Legacy rules can be deleted
+once a screen no longer depends on them.
 
 ## Direction: the docket
 

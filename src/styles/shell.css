@@ -448,10 +448,25 @@
   }
 
   .admin-mobile-panel { display: none; }
+  /* Open drawer: fixed under the masthead, whatever the scroll position. */
+  .admin-navbar.mobile-open {
+    position: fixed;
+    inset: var(--masthead-h) 0 auto 0;
+    z-index: 35;
+    background: var(--sidebar);
+    box-shadow: 0 8px 16px rgba(28, 36, 48, 0.18);
+  }
+  .admin-navbar.mobile-open .admin-mobile-panel {
+    position: static;
+    inset: auto;
+    background: var(--sidebar);
+    box-shadow: none;
+  }
   .admin-navbar.mobile-open .admin-mobile-panel {
     display: flex;
     max-height: calc(100vh - var(--masthead-h));
     overflow-y: auto;
+    border-bottom: 1px solid var(--rule-strong);
   }
 
   .admin-layout .admin-nav-scroll { padding: var(--space-3) var(--space-4); }
@@ -463,6 +478,13 @@
   .admin-layout .nav-count { position: static; min-width: 22px; padding: 0 6px; font-size: var(--text-xs); line-height: 20px; }
 
   .admin-content { padding: var(--space-4) var(--space-4) var(--space-7); }
+
+  /* Page headers stay left-aligned on phones (legacy rules centred them). */
+  .admin-content .supplier-header,
+  .admin-content .dashboard-header-row { text-align: left; }
+  .admin-content .dashboard-header-row { flex-direction: column; align-items: flex-start; }
+  .admin-content .dashboard-header-row > div { width: 100%; text-align: left; }
+  .admin-content .dashboard-refresh { justify-content: flex-start; }
 
   .navbar { padding: 10px var(--space-4); height: auto; }
 }

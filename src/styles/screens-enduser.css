@@ -101,6 +101,11 @@
 .buyer-status-record .status-current h3,
 .buyer-status-record .status-current strong { color: var(--ink); font-family: var(--font-serif); }
 
+@media (max-width: 720px) {
+  .buyer-status-viewer > .supplier-header { flex-direction: row; align-items: center; text-align: left; }
+  .buyer-status-viewer > .supplier-header > div { text-align: left; }
+}
+
 .buyer-timeline-marker { color: var(--paper); }
 .buyer-timeline-node.is-done .buyer-timeline-marker { border-color: var(--tone-success); background: var(--tone-success); }
 .buyer-timeline-node.is-current .buyer-timeline-marker { border-color: var(--navy); background: var(--paper); color: var(--navy); }

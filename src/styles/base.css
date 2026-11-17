@@ -123,6 +123,17 @@ body {
 
 h1, h2 { font-family: var(--font-serif); font-weight: 600; letter-spacing: normal; text-transform: none; }
 
+/* Focus: unlayered so no legacy rule (some used a 25% alpha ring, which
+   fails the 3:1 non-text contrast minimum) can weaken it. */
+:where(button, a, input, select, textarea, summary, [tabindex], [role="button"], [role="tab"]):focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+
+:where(.portal-masthead, .login-context, .registration-hero, .procurement-activity-panel) :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline-color: var(--manila);
+}
+
 /* No pill-shaped fields anywhere: legacy rules used 999px radii on search
    boxes. Only the radius is forced; padding stays with the legacy rule so
    icon offsets survive. */
