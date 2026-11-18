@@ -209,15 +209,17 @@ describe('end user dashboard', () => {
     expect(await screen.findByRole('heading', { level: 1, name: /welcome back/i })).toBeInTheDocument()
   })
 
-  it('groups navigation by task, with help pages one click away', async () => {
+  it('groups navigation into Overview and Purchase Requests', async () => {
     signIn(buyerUser)
     installApi({ 'GET /api/pr/list/': { json: [] } })
-    const { user } = renderAt('/enduser')
+    renderAt('/enduser')
 
     const nav = screen.getByRole('navigation', { name: 'End user portal navigation' })
-    expect(within(nav).getByRole('group', { name: 'Purchase Requests' })).toHaveTextContent('Submit a PR')
-    await user.click(within(nav).getByRole('button', { name: 'Help & FAQ' }))
-    await waitFor(() => expect(window.location.pathname).toBe('/faq'))
+    expect(within(nav).getAllByRole('group').map((group) => group.getAttribute('aria-labelledby') && within(group).getAllByRole('button').map((b) => b.textContent.trim()))).toEqual([
+      ['Dashboard'],
+      ['Submit a PR', 'Live Status'],
+    ])
+    expect(within(nav).queryByRole('button', { name: 'Help & FAQ' })).not.toBeInTheDocument()
   })
 })
 

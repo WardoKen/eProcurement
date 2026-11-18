@@ -43,7 +43,6 @@ import {
   Settings,
   Building2,
   HelpCircle,
-  BookOpen,
   Inbox,
   FilePen,
   Store,
@@ -5999,13 +5998,6 @@ const Buyer = () => {
     navigate('/login')
   }
 
-  // Help items leave the portal for the public guide pages.
-  const handleSelect = (id) => {
-    if (id === 'help-faq') navigate('/faq')
-    else if (id === 'help-process') navigate('/process')
-    else setCurrentTab(id)
-  }
-
   const displayName = user?.name || user?.username || 'End User'
   const stageCounts = records.reduce((counts, record) => {
     const stage = buyerStageFor(record)
@@ -6020,7 +6012,7 @@ const Buyer = () => {
       <Sidebar
         portalLabel="End user portal"
         activeId={currentTab}
-        onSelect={handleSelect}
+        onSelect={setCurrentTab}
         navCollapsed={navCollapsed}
         onToggleNav={() => setNavCollapsed((v) => !v)}
         userPrimary={displayName}
@@ -6033,10 +6025,6 @@ const Buyer = () => {
           { section: 'Purchase Requests', items: [
             { id: 'submit', label: END_USER_TAB_LABELS.submit, icon: FileUp },
             { id: 'live-status', label: END_USER_TAB_LABELS['live-status'], icon: TrendingUp },
-          ] },
-          { section: 'Help', items: [
-            { id: 'help-faq', label: 'Help & FAQ', icon: HelpCircle },
-            { id: 'help-process', label: 'How procurement works', icon: BookOpen },
           ] },
         ]}
       />
