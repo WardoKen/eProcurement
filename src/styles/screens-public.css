@@ -17,6 +17,8 @@
 
 /* Home: the three roles are not a sequence, so they lose their numbers. */
 .role-index { display: none; }
+/* With the index hidden, the text must not fall into the 34px index column. */
+.home-role-strip article { grid-template-columns: 1fr; }
 
 .procurement-activity-panel { box-shadow: none; }
 .procurement-activity-panel::after, .procurement-activity-panel::before { content: none; display: none; }
