@@ -24,7 +24,7 @@ async function logIn(user, { role, username, password }) {
 describe('login per role', () => {
   it.each([
     ['admin', { role: 'admin', username: 'bac' }, '/admin'],
-    ['buyer', { role: 'buyer', username: 'enduser1', name: 'Ana' }, '/buyer'],
+    ['buyer', { role: 'buyer', username: 'enduser1', name: 'Ana' }, '/enduser'],
     ['supplier', { role: 'supplier', username: 'acme', supplier_id: 7, supplier_status: 'Approved' }, '/supplier'],
   ])('%s signs in and lands on its portal', async (role, accountUser, landing) => {
     const api = installApi(loginRoutes(accountUser))

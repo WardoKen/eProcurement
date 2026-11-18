@@ -2,6 +2,19 @@
    End User portal screens. Unlayered. See DESIGN.md.
    ========================================================================== */
 
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+.enduser-dashboard { display: flex; flex-direction: column; gap: var(--space-5); }
+.enduser-dashboard > .supplier-header { margin-bottom: 0; }
+.enduser-dashboard > .alert { margin: 0; }
+.enduser-dashboard .dashboard-header-row > .btn-primary { flex: none; }
+
+/* Wide tables scroll inside their panel, never the page. */
+.enduser-dashboard .dash-panel { overflow-x: auto; }
+@media (max-width: 720px) {
+  .enduser-dashboard .dash-panel { overflow-x: visible; }
+}
+
 /* ── Submit a Purchase Request ─────────────────────────────────────────── */
 
 /* The page header already explains the upload, so the workspace's own

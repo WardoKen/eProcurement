@@ -160,12 +160,64 @@ describe('end user live status', () => {
       'GET /api/pr/next-number/': { json: { pr_no: '2026-11-001' } },
       'GET /api/pr/list/': { json: [{ ...numberedPr, display_stage: 'supplier_matching', display_status: 'Supplier Matching' }] },
     })
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
 
     await user.click(screen.getAllByRole('button', { name: /live status/i })[0])
 
     expect((await screen.findAllByText('2026-11-001')).length).toBeGreaterThan(0)
     expect(api.find('GET', '/api/pr/list/?submitted_by=enduser1')).toHaveLength(1)
+  })
+})
+
+describe('end user dashboard', () => {
+  const myPrs = [
+    { ...numberedPr, display_stage: 'under_review', display_status: 'Under BAC Review' },
+    { ...numberedPr, id: 50, pr_no: '2026-10-007', display_stage: 'rfq_sent', display_status: 'RFQ Sent' },
+    { ...numberedPr, id: 51, pr_no: '2026-09-003', display_stage: 'completed', display_status: 'Completed' },
+  ]
+
+  it('greets the End User by name and sums their PRs by who has them', async () => {
+    signIn(buyerUser)
+    installApi({ 'GET /api/pr/list/': { json: myPrs } })
+    renderAt('/enduser')
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Welcome back, Ana Cruz' })).toBeInTheDocument()
+    const kpis = await screen.findByRole('list', { name: 'Key figures' })
+    const tile = (label) => within(kpis).getByText(label).closest('li')
+    expect(tile('Submitted')).toHaveTextContent('3PRs')
+    expect(tile('With the BAC')).toHaveTextContent('1PR')
+    expect(tile('Out for quotation')).toHaveTextContent('1PR')
+    expect(tile('Completed')).toHaveTextContent('1PR')
+    expect(screen.getByRole('table')).toHaveTextContent('2026-10-007')
+  })
+
+  it('offers a way to submit when nothing has been submitted yet', async () => {
+    signIn(buyerUser)
+    installApi({ 'GET /api/pr/list/': { json: [] }, 'GET /api/pr/next-number/': { json: { pr_no: '2026-11-001' } } })
+    const { user } = renderAt('/enduser')
+
+    await user.click(await screen.findByRole('button', { name: /submit your first pr/i }))
+    expect(screen.getByRole('heading', { level: 1, name: 'Submit a Purchase Request' })).toBeInTheDocument()
+  })
+
+  it('the old /buyer address opens the End User portal', async () => {
+    signIn(buyerUser)
+    installApi({ 'GET /api/pr/list/': { json: [] } })
+    renderAt('/buyer')
+
+    await waitFor(() => expect(window.location.pathname).toBe('/enduser'))
+    expect(await screen.findByRole('heading', { level: 1, name: /welcome back/i })).toBeInTheDocument()
+  })
+
+  it('groups navigation by task, with help pages one click away', async () => {
+    signIn(buyerUser)
+    installApi({ 'GET /api/pr/list/': { json: [] } })
+    const { user } = renderAt('/enduser')
+
+    const nav = screen.getByRole('navigation', { name: 'End user portal navigation' })
+    expect(within(nav).getByRole('group', { name: 'Purchase Requests' })).toHaveTextContent('Submit a PR')
+    await user.click(within(nav).getByRole('button', { name: 'Help & FAQ' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/faq'))
   })
 })
 
@@ -179,7 +231,7 @@ describe('end user live status records', () => {
         { ...numberedPr, id: 50, pr_no: '2026-10-007', display_stage: 'under_review', display_status: 'Under BAC Review' },
       ] },
     })
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
     await user.click(screen.getAllByRole('button', { name: /live status/i })[0])
 
     const newest = await screen.findByRole('button', { name: /2026-11-001/ })

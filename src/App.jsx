@@ -43,6 +43,7 @@ import {
   Settings,
   Building2,
   HelpCircle,
+  BookOpen,
   Inbox,
   FilePen,
   Store,
@@ -966,7 +967,7 @@ const Login = () => {
         if (user.role === 'admin') {
           navigate('/admin')
         } else if (user.role === 'buyer') {
-          navigate('/buyer')
+          navigate('/enduser')
         } else if (user.role === 'supplier') {
           navigate('/supplier')
         } else {
@@ -5918,6 +5919,18 @@ const Register = () => {
   )
 }
 
+const END_USER_TAB_LABELS = {
+  dashboard: 'Dashboard',
+  submit: 'Submit a PR',
+  'live-status': 'Live Status',
+}
+
+// Stages grouped by who has the PR, for the End User dashboard figures.
+const END_USER_STAGE_GROUPS = {
+  withBac: new Set(['submitted', 'under_review']),
+  outForQuotation: new Set(['supplier_matching', 'rfq_sent', 'supplier_response']),
+}
+
 const Buyer = () => {
   const navigate = useNavigate()
   const user = React.useMemo(() => getStoredUser(), [])
@@ -5936,6 +5949,40 @@ const Buyer = () => {
   // Confirmation banner only for a submission made during this visit.
   const [justSubmitted, setJustSubmitted] = React.useState(false)
 
+  // The End User's own Purchase Requests, shared by the dashboard and Live
+  // Status so both read the same records from one request.
+  const username = user?.username || ''
+  const [records, setRecords] = React.useState([])
+  const [recordsLoading, setRecordsLoading] = React.useState(false)
+  const [recordsLoaded, setRecordsLoaded] = React.useState(false)
+  const [recordsError, setRecordsError] = React.useState('')
+
+  const loadRecords = React.useCallback(async () => {
+    if (!username) return
+    setRecordsLoading(true)
+    setRecordsError('')
+    try {
+      const response = await apiFetch(
+        `${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}&t=${Date.now()}`,
+        { cache: 'no-store' },
+      )
+      if (!response.ok) throw new Error('Unable to load your Purchase Requests')
+      const databaseRecords = await response.json()
+      setRecords(Array.isArray(databaseRecords) ? databaseRecords : [])
+    } catch (loadError) {
+      setRecordsError(loadError?.message || 'Unable to load Purchase Request status')
+    } finally {
+      setRecordsLoading(false)
+      setRecordsLoaded(true)
+    }
+  }, [apiBaseUrl, username])
+
+  React.useEffect(() => {
+    loadRecords()
+    const refreshTimer = window.setInterval(loadRecords, 30000)
+    return () => window.clearInterval(refreshTimer)
+  }, [loadRecords])
+
   const handlePrSubmitted = (prId) => {
     setJustSubmitted(true)
     setSubmittedPrIds((current) => {
@@ -5943,6 +5990,7 @@ const Buyer = () => {
       localStorage.setItem(buyerStorageKey, JSON.stringify(next))
       return next
     })
+    loadRecords()
   }
 
   const handleLogout = () => {
@@ -5951,33 +5999,137 @@ const Buyer = () => {
     navigate('/login')
   }
 
+  // Help items leave the portal for the public guide pages.
+  const handleSelect = (id) => {
+    if (id === 'help-faq') navigate('/faq')
+    else if (id === 'help-process') navigate('/process')
+    else setCurrentTab(id)
+  }
+
+  const displayName = user?.name || user?.username || 'End User'
+  const stageCounts = records.reduce((counts, record) => {
+    const stage = buyerStageFor(record)
+    if (END_USER_STAGE_GROUPS.withBac.has(stage)) counts.withBac += 1
+    else if (END_USER_STAGE_GROUPS.outForQuotation.has(stage)) counts.outForQuotation += 1
+    else if (stage === 'completed') counts.completed += 1
+    return counts
+  }, { withBac: 0, outForQuotation: 0, completed: 0 })
+
   return (
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
-      {/* Buyer Sidebar Navigation */}
       <Sidebar
         portalLabel="End user portal"
         activeId={currentTab}
-        onSelect={setCurrentTab}
+        onSelect={handleSelect}
         navCollapsed={navCollapsed}
         onToggleNav={() => setNavCollapsed((v) => !v)}
-        userPrimary={user?.name || user?.username || 'End User'}
+        userPrimary={displayName}
         userSecondary={user?.email || ''}
         onLogout={handleLogout}
         groups={[
-          { items: [
-            { id: 'dashboard', label: 'Submit a PR', icon: FileUp },
-            { id: 'live-status', label: 'Live Status', icon: TrendingUp },
+          { section: 'Overview', items: [
+            { id: 'dashboard', label: END_USER_TAB_LABELS.dashboard, icon: LayoutDashboard },
+          ] },
+          { section: 'Purchase Requests', items: [
+            { id: 'submit', label: END_USER_TAB_LABELS.submit, icon: FileUp },
+            { id: 'live-status', label: END_USER_TAB_LABELS['live-status'], icon: TrendingUp },
+          ] },
+          { section: 'Help', items: [
+            { id: 'help-faq', label: 'Help & FAQ', icon: HelpCircle },
+            { id: 'help-process', label: 'How procurement works', icon: BookOpen },
           ] },
         ]}
       />
 
-      {/* Buyer Content */}
       <div className="admin-content">
         {currentTab !== 'dashboard' && (
-          <Breadcrumbs items={[{ label: 'End user portal', onClick: () => setCurrentTab('dashboard') }, { label: 'Live Status' }]} />
+          <Breadcrumbs items={[{ label: 'End user portal', onClick: () => setCurrentTab('dashboard') }, { label: END_USER_TAB_LABELS[currentTab] }]} />
         )}
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
+          <div className="supplier-section enduser-dashboard">
+            <div className="supplier-header dashboard-header-row">
+              <div>
+                <h1>Welcome back, {displayName}</h1>
+                <p>Your Purchase Requests with the BAC Secretariat, from submission to supplier quotation.</p>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => setCurrentTab('submit')}>
+                <FileUp size={16} aria-hidden="true" />
+                Submit a Purchase Request
+              </button>
+            </div>
+
+            {recordsError && (
+              <div className="alert alert-error" role="alert">
+                {recordsError}.{' '}
+                <button type="button" className="link-like" onClick={loadRecords}>Try again</button>
+              </div>
+            )}
+
+            {!recordsLoaded && recordsLoading ? (
+              <ul className="kpi-grid" aria-busy="true" aria-label="Key figures loading">
+                {Array.from({ length: 4 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
+              </ul>
+            ) : (
+              <ul className="kpi-grid" aria-label="Key figures">
+                <KpiTile icon={ClipboardList} label="Submitted" value={records.length} unit={pluralUnit(records.length, 'PR')} zeroHint="Nothing submitted yet." hint="All your Purchase Requests" />
+                <KpiTile icon={Clock} label="With the BAC" value={stageCounts.withBac} unit={pluralUnit(stageCounts.withBac, 'PR')} zeroHint="None waiting on the BAC." hint="Received or under review" />
+                <KpiTile icon={Send} label="Out for quotation" value={stageCounts.outForQuotation} unit={pluralUnit(stageCounts.outForQuotation, 'PR')} zeroHint="None with suppliers yet." hint="Matched, RFQ sent or quoted" />
+                <KpiTile icon={CheckCircle} label="Completed" value={stageCounts.completed} unit={pluralUnit(stageCounts.completed, 'PR')} zeroHint="None completed yet." hint="Procurement finished" />
+              </ul>
+            )}
+
+            <section className="dash-panel" aria-labelledby="enduser-recent-title">
+              <header className="dash-panel-header">
+                <h2 id="enduser-recent-title">Recent Purchase Requests</h2>
+                {records.length > 0 && (
+                  <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('live-status')}>Open Live Status</button>
+                )}
+              </header>
+              {!recordsLoaded && recordsLoading ? (
+                <div className="dash-panel-body"><SkeletonRows count={3} /></div>
+              ) : records.length === 0 ? (
+                <div className="dashboard-empty-state">
+                  <ClipboardList size={18} aria-hidden="true" />
+                  <span>
+                    You haven&apos;t submitted a Purchase Request yet.{' '}
+                    <button type="button" className="link-like" onClick={() => setCurrentTab('submit')}>Submit your first PR</button>
+                  </span>
+                </div>
+              ) : (
+                <table className="data-table dash-table responsive-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">PR No.</th>
+                      <th scope="col">Purpose</th>
+                      <th scope="col">Submitted</th>
+                      <th scope="col" className="num">Total</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {records.slice(0, 5).map((record) => {
+                      const stage = buyerStageFor(record)
+                      return (
+                        <tr key={record.id}>
+                          <td data-label="PR No." className="cell-strong">{record.pr_no || 'Awaiting PR number'}</td>
+                          <td data-label="Purpose" className="cell-purpose">{record.purpose || record.office_section || 'No purpose recorded'}</td>
+                          <td data-label="Submitted" className="cell-date">{buyerLongDate(record.created_at)}</td>
+                          <td data-label="Total" className="num">{buyerPeso(record.grand_total)}</td>
+                          <td data-label="Status">
+                            <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{record.display_status || BUYER_STAGE_LABELS[stage]}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        )}
+
+        {currentTab === 'submit' && (
           <div className="supplier-section">
             <div className="supplier-header">
               <h1>Submit a Purchase Request</h1>
@@ -5990,14 +6142,20 @@ const Buyer = () => {
                   Purchase Request submitted for BAC review. Follow its progress in Live Status.
                 </div>
               )}
-              <DragDropUpload reviewOnly submittedBy={user?.username || ''} onSaved={handlePrSubmitted} />
+              <DragDropUpload reviewOnly submittedBy={username} onSaved={handlePrSubmitted} />
             </section>
           </div>
         )}
 
         {currentTab === 'live-status' && (
           <div className="supplier-section">
-            <BuyerPRStatusViewer prIds={submittedPrIds} username={user?.username || ''} />
+            <BuyerPRStatusViewer
+              hasHistory={submittedPrIds.length > 0 || Boolean(username)}
+              records={records}
+              loading={recordsLoading}
+              error={recordsError}
+              onRefresh={loadRecords}
+            />
           </div>
         )}
         </ErrorBoundary>
@@ -6210,38 +6368,8 @@ const BuyerPRStatusCard = ({ record, defaultOpen = false }) => {
   )
 }
 
-const BuyerPRStatusViewer = ({ prIds, username }) => {
-  const [records, setRecords] = React.useState([])
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState('')
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-
-  const loadRecords = React.useCallback(async () => {
-    if (!prIds.length && !username) return
-    setLoading(true)
-    setError('')
-    try {
-      const response = await apiFetch(
-        `${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/?submitted_by=${encodeURIComponent(username)}&t=${Date.now()}`,
-        { cache: 'no-store' },
-      )
-      if (!response.ok) throw new Error('Unable to load your Purchase Requests')
-      const databaseRecords = await response.json()
-      setRecords(Array.isArray(databaseRecords) ? databaseRecords : [])
-    } catch (loadError) {
-      setError(loadError?.message || 'Unable to load Purchase Request status')
-    } finally {
-      setLoading(false)
-    }
-  }, [apiBaseUrl, prIds, username])
-
-  React.useEffect(() => {
-    loadRecords()
-    const refreshTimer = window.setInterval(loadRecords, 30000)
-    return () => window.clearInterval(refreshTimer)
-  }, [loadRecords])
-
-  if (!prIds.length && !username) return null
+const BuyerPRStatusViewer = ({ hasHistory, records, loading, error, onRefresh }) => {
+  if (!hasHistory) return null
 
   return (
     <>
@@ -6255,7 +6383,7 @@ const BuyerPRStatusViewer = ({ prIds, username }) => {
             <span className="section-kicker">Purchase Requests</span>
             <h2>My Purchase Requests</h2>
           </div>
-          <button type="button" className="btn-sm btn-secondary" onClick={loadRecords} disabled={loading}>
+          <button type="button" className="btn-sm btn-secondary" onClick={onRefresh} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -7694,8 +7822,8 @@ const AppLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [user, setUser] = React.useState(getStoredUser())
-  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/buyer'
-  const homeLink = user?.role === 'buyer' ? '/buyer' : '/'
+  const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/enduser'
+  const homeLink = user?.role === 'buyer' ? '/enduser' : '/'
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
 
   React.useEffect(() => {
@@ -7775,7 +7903,9 @@ const AppLayout = () => {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/buyer" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />
+          <Route path="/enduser" element={<ProtectedRoute requiredRole="buyer" element={<Buyer />} />} />
+          {/* Old End User address, kept so existing bookmarks still work. */}
+          <Route path="/buyer" element={<Navigate to="/enduser" replace />} />
           <Route path="/supplier" element={<ProtectedRoute requiredRole="supplier" element={<Supplier />} />} />
           <Route path="/supplier/register" element={<SupplierRegistration />} />
           <Route path="/admin" element={<ProtectedRoute requiredRole="admin" element={<Admin />} />} />

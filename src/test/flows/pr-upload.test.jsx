@@ -34,6 +34,8 @@ const routes = {
 }
 
 async function uploadPr(user) {
+  // The End User portal opens on the dashboard; the upload lives in Submit a PR.
+  await user.click(screen.getByRole('button', { name: 'Submit a PR' }))
   const input = document.querySelector('input[type="file"]')
   await user.upload(input, pdfFile('pr-2026.pdf'))
   await user.click(screen.getByRole('button', { name: /confirm upload/i }))
@@ -45,7 +47,7 @@ describe('End User PR upload and review', () => {
   it('extraction alone never creates a Purchase Request', async () => {
     signIn(buyerUser)
     const api = installApi(routes)
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
 
     await uploadPr(user)
 
@@ -60,7 +62,7 @@ describe('End User PR upload and review', () => {
   it('saves the reviewed record only after the declaration is acknowledged', async () => {
     signIn(buyerUser)
     const api = installApi(routes)
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
 
     await uploadPr(user)
     await user.click(screen.getByRole('checkbox', { name: /read and understood this declaration/i }))
@@ -78,7 +80,7 @@ describe('End User PR upload and review', () => {
       ...routes,
       'POST /api/pr/': { status: 400, json: { error: 'Missing signatures', missing_signatures: ['Approved By'] } },
     })
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
 
     await uploadPr(user)
     await user.click(screen.getByRole('checkbox', { name: /read and understood this declaration/i }))
@@ -120,7 +122,7 @@ describe('End User PR upload and review', () => {
         },
       },
     })
-    const { user } = renderAt('/buyer')
+    const { user } = renderAt('/enduser')
 
     await uploadPr(user)
     expect(screen.getAllByText('Please Confirm').length).toBeGreaterThan(0)
