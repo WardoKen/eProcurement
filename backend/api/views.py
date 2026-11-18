@@ -553,9 +553,6 @@ def generate_pr_number():
     return next_pr_number(lock=True)
 
 
-_RFQ_NUMBER_RE = re.compile(r'^RFQ-(\d{4})-(\d+)$')
-
-
 def validate_custom_pr_number(value, config=None):
     config = config or get_pr_number_format()
     number = str(value or '').strip()
@@ -3417,8 +3414,8 @@ def _rfq_payload(rfq, request):
         'subject': rfq.subject,
         'message': rfq.message,
         'abc': abc_value,
-        # The RFQ number is the quotation number - one shared RFQ-YYYY-NNNN
-        # sequence across registered and manual RFQs (see _rfq_number). Blank
+        # The RFQ number is the quotation number - RFQ-<PR No>:NN, counted per
+        # PR across registered and manual RFQs (see _rfq_number). Blank
         # until the RFQ is issued.
         'quotation_no': rfq.rfq_no or '',
         'mode_of_procurement': normalize_procurement_mode(rfq.mode_of_procurement),
@@ -3468,29 +3465,29 @@ def _rfq_payload(rfq, request):
     }
 
 
-def _rfq_number(today=None, lock=False):
-    """Next ``RFQ-YYYY-NNNN`` number - the single sequence every RFQ draws from.
+def _rfq_number(pr, lock=False):
+    """Next ``RFQ-<PR No>:NN`` number for ``pr``.
 
-    Registered-supplier and manual / unregistered-supplier RFQs share this one
-    counter, so a manual RFQ issued after ``RFQ-2026-0002`` becomes
-    ``RFQ-2026-0003``. The next value follows the highest number already
-    generated for the year (scan of existing ``rfq_no`` values), so a deleted
-    draft never causes a collision. This number is also what prints on the RFQ
-    as the Quotation No.
+    ``NN`` counts the RFQs issued from this specific Purchase Request (01, 02,
+    ...), shared by registered-supplier and manual / unregistered-supplier RFQs,
+    so the third RFQ sent for PR ``2026-11-0005`` is ``RFQ-2026-11-0005:03``.
+    The next value follows the highest number already issued for the PR (scan
+    of existing ``rfq_no`` values), so a deleted RFQ never causes a collision.
+    This number is also what prints on the RFQ as the Quotation No.
     """
-    today = today or timezone.localdate()
-    year = f'{today:%Y}'
+    pr_label = (pr.pr_no or f'PR-{pr.id}').strip()
+    prefix = f'RFQ-{pr_label}:'
     if lock:
         # Advisory-lock row (see next_pr_number) serialises concurrent issuance.
         PRNumberSequence.objects.get_or_create(key='rfq')
         PRNumberSequence.objects.select_for_update().filter(key='rfq').first()
 
     highest = 0
-    for value in RFQ.objects.values_list('rfq_no', flat=True):
-        match = _RFQ_NUMBER_RE.fullmatch((value or '').strip())
-        if match and match.group(1) == year:
-            highest = max(highest, int(match.group(2)))
-    return f'RFQ-{year}-{highest + 1:04d}'
+    for value in RFQ.objects.filter(rfq_no__startswith=prefix).values_list('rfq_no', flat=True):
+        suffix = value[len(prefix):]
+        if suffix.isdigit():
+            highest = max(highest, int(suffix))
+    return f'{prefix}{highest + 1:02d}'
 
 
 @require_GET
@@ -3768,7 +3765,7 @@ def admin_rfq(request, pr_id):
     # Defer the RFQ / Quotation number until the RFQ is actually issued - a
     # preview or a saved draft never consumes a number (task 12/18).
     if should_send and not rfq.rfq_no:
-        rfq.rfq_no = _rfq_number(lock=True)
+        rfq.rfq_no = _rfq_number(pr, lock=True)
         rfq.save(update_fields=['rfq_no', 'updated_at'])
 
     if generate_pdf:
@@ -3876,8 +3873,8 @@ def _rfq_email_content(rfq, pr, supplier):
 # A BAC Secretariat member issues an RFQ to a supplier that is NOT registered in
 # eProcure. No Supplier / SupplierCategory / account is ever created - the name
 # is internal metadata only and never reaches the generated PDF. The RFQ number
-# (RFQ-YYYY-NNNN, also printed as the Quotation No.) comes from the same shared
-# sequence registered-supplier RFQs use, so the two never collide.
+# (RFQ-<PR No>:NN, also printed as the Quotation No.) comes from the same per-PR
+# count registered-supplier RFQs use, so the two never collide.
 
 def _manual_rfq_defaults(pr, manual_name):
     subject = f"Request for Quotation - PR {pr.pr_no or pr.id}"
@@ -3961,7 +3958,7 @@ def manual_rfq_create(request, pr_id):
     try:
         with transaction.atomic():
             rfq = RFQ.objects.create(
-                rfq_no=_rfq_number(lock=True),
+                rfq_no=_rfq_number(pr, lock=True),
                 purchase_request=pr,
                 supplier=None,
                 category=group_category,
@@ -4043,7 +4040,8 @@ def manual_rfq_pdf(request, rfq_id):
 
     from django.http import FileResponse
 
-    download_name = f"{rfq.rfq_no}.pdf".replace(' ', '_')
+    # ':' (from RFQ-<PR No>:NN) and other path characters are not valid in filenames.
+    download_name = re.sub(r'[^\w.-]+', '_', rfq.rfq_no or 'rfq') + '.pdf'
     return FileResponse(open(pdf_path, 'rb'), as_attachment=True, filename=download_name)
 
 

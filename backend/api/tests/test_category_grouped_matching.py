@@ -218,7 +218,7 @@ class CategoryScopedRFQTests(TestCase):
             'send': True, 'generate_pdf': True,
         })
         self.assertEqual(issued.status_code, 200, issued.content)
-        self.assertRegex(issued.json()['quotation_no'], r'^RFQ-\d{4}-\d{4}$')
+        self.assertRegex(issued.json()['quotation_no'], r'^RFQ-.+:\d{2}$')
 
     # TEST 17 - duplicate item records are never created
     def test_grouping_does_not_duplicate_items(self):

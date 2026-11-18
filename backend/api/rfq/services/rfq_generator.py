@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -70,7 +71,7 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
         'pr_no': pr.pr_no or f'PR-{pr.id}',
         'pr_date': (pr.date.isoformat() if pr.date else ''),
         # The RFQ number doubles as the Quotation No. on the printed form - a
-        # single RFQ-YYYY-NNNN sequence shared by registered and manual RFQs. A
+        # RFQ-<PR No>:NN number counted per PR across registered and manual RFQs. A
         # draft preview has no number yet.
         'quotation_no': rfq.rfq_no or 'To be assigned',
         # Admin-selected value; never defaulted here so a blank never slips into
@@ -99,8 +100,8 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
 
     html = render_to_string('rfq/rfq.html', context)
     output_dir = _resolve_rfq_dir()
-    safe_name = f"{rfq.rfq_no or 'rfq'}-{rfq.id}.pdf"
-    safe_name = safe_name.replace(' ', '_')
+    # ':' (from RFQ-<PR No>:NN) and other path characters are not valid in filenames.
+    safe_name = re.sub(r'[^\w.-]+', '_', f"{rfq.rfq_no or 'rfq'}-{rfq.id}") + '.pdf'
     output_path = output_dir / safe_name
 
     with open(output_path, 'wb') as pdf_file:

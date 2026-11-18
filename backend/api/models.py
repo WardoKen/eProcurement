@@ -362,10 +362,10 @@ class RFQ(models.Model):
         (DELIVERY_MANUAL, 'Manual'),
     ]
 
-    # Null while the RFQ is still a draft - the RFQ-YYYY-NNNN number (also printed
+    # Null while the RFQ is still a draft - the RFQ-<PR No>:NN number (also printed
     # as the Quotation No.) is only assigned when the BAC issues the RFQ, so a
     # preview never consumes a number.
-    rfq_no = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    rfq_no = models.CharField(max_length=64, unique=True, null=True, blank=True)
     purchase_request = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='rfqs')
     # The procurement category group this RFQ serves. A mixed-category PR produces
     # one RFQ per (supplier, category); the RFQ only ever contains that category's
