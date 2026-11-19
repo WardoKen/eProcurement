@@ -109,12 +109,6 @@
   outline: var(--focus-ring-width) solid var(--focus-ring-on-dark);
 }
 
-/* Icon-only buttons must meet the 2.2 minimum target size. */
-.searchable-select-clear {
-  min-width: var(--target-min);
-  min-height: var(--target-min);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -129,28 +123,7 @@
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
-}
-
-/* ── Status record header (current status on every record) ─────────────── */
-
-.record-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin: 0 0 var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-.record-status strong { color: var(--text); }
-
-/* ── Contrast fixes found by the axe walkthrough (legacy colors < 4.5:1) ── */
-
-.workflow-step.step-done .step-label,
-.workflow-step.step-done .step-icon { color: var(--success); }                  /* was #8be1d7, 1.51:1 */
-.workflow-step:not(.step-done):not(.step-active) .step-label,
-.workflow-step:not(.step-done):not(.step-active) .step-icon { color: var(--text-muted); } /* was #94a3b8, 2.45:1 */
+} /* was #94a3b8, 2.45:1 */
 .buyer-timeline-node.is-upcoming .buyer-timeline-label,
 .buyer-timeline-node.is-upcoming .buyer-timeline-time,
 .buyer-timeline-node.is-upcoming .buyer-timeline-marker { color: var(--text-muted); } /* was #94a3b8, 2.51:1 */

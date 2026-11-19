@@ -416,11 +416,6 @@ summary:focus-visible {
   gap: 12px;
 }
 
-.supplier-panel-title {
-  font-weight: 700;
-  color: #0f172a;
-}
-
 .supplier-info-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -680,24 +675,10 @@ summary:focus-visible {
   border-bottom: 1px solid #d9e3e5;
 }
 
-.supplier-review-modal .supplier-panel-title {
-  color: var(--navy);
-  font-size: 21px;
-  font-weight: 700;
-}
-
 .supplier-review-header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.supplier-preview-frame {
-  width: 100%;
-  min-height: 70vh;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-panel);
-  background: #f8fafc;
 }
 
 .supplier-preview-placeholder {
@@ -716,128 +697,10 @@ summary:focus-visible {
   object-fit: contain;
 }
 
-.supplier-match-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.supplier-match-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: #ffffff;
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-  box-shadow: var(--shadow-sm);
-}
-
-.supplier-match-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.supplier-match-head h4 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
 .supplier-match-meta {
   font-size: 12px;
   color: var(--muted);
 }
-
-.supplier-match-body {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: #334155;
-}
-
-.supplier-match-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-/* ── Supplier Matching: Category-Matched vs. Other (manual BAC) sections ── */
-.match-section-heading {
-  margin: 8px 0 14px;
-}
-
-.match-section-heading h2 {
-  margin: 0 0 4px;
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.match-section-divider {
-  border-top: 2px solid var(--border);
-  margin: 28px 0 20px;
-}
-
-.other-supplier-search {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.match-tag-category {
-  color: #166534;
-  background: #dcfce7;
-  border: 1px solid #bbf7d0;
-}
-
-.match-tag-manual {
-  color: #92400e;
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-}
-
-.supplier-match-card-manual {
-  border-color: #fcd34d;
-  background: #fffdf7;
-}
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 20px;
-}
-.detail-grid > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid #eef2f7;
-  padding-bottom: 8px;
-}
-.detail-grid strong {
-  color: var(--ink-2);
-  font-size: 13px;
-}
-.detail-grid span {
-  color: #0f172a;
-  text-align: right;
-  font-size: 13px;
-}
-.unmatched-pr-section {
-  margin-top: 16px;
-}
-.unmatched-pr-table {
-  min-width: 680px;
-}
-.unmatched-pr-table td,
-.unmatched-pr-table th {
-  vertical-align: middle;
-}
-@media (max-width: 700px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }}
 
 .rfq-review-card {
   padding: 24px;
@@ -948,188 +811,6 @@ summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   padding: 18px;
-}
-
-/* ── Workflow Stepper ──────────────────────────────────────────────────── */
-
-.workflow-stepper {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 2px;
-  padding: 14px 18px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  margin-bottom: 4px;
-}
-
-.workflow-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-
-.workflow-step.step-done {
-  color: #16a34a;
-}
-
-.workflow-step.step-active {
-  color: var(--navy);
-  font-weight: 700;
-}
-
-.workflow-step-arrow {
-  color: #cbd5e1;
-  font-size: 13px;
-  padding: 0 4px;
-}
-
-.step-icon {
-  font-size: 13px;
-  font-style: normal;
-}
-
-/* ── Category Assignment Table ─────────────────────────────────────────── */
-
-.cat-assign-table {
-  width: 100%;
-  min-width: 780px;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.cat-assign-head {
-  background: var(--navy);
-  color: #e2e8f0;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-.cat-assign-table th {
-  padding: 11px 14px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-}
-
-.cat-assign-table td {
-  padding: 11px 14px;
-  font-size: 13px;
-  vertical-align: middle;
-}
-
-.cat-assign-row {
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  transition: background-color 0.15s ease;
-}
-
-.cat-assign-row:hover {
-  background: var(--teal-tint) !important;
-}
-
-.cat-row-missing {
-  background: var(--danger-tint) !important;
-}
-
-/* ── SearchableSelect (type-to-filter dropdown) ─────────────────────────── */
-.searchable-select {
-  position: relative;
-  min-width: 200px;
-}
-
-.searchable-select-input {
-  width: 100%;
-  padding: 8px 28px 8px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: var(--radius-panel);
-  background: #fff;
-  color: #0f172a;
-  font-size: 13px;
-  font-family: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.searchable-select-input::placeholder {
-  color: #0f172a;
-}
-
-.searchable-select-input:focus {
-  outline: none;
-  border-color: var(--primary-soft);
-  box-shadow: 0 0 0 3px var(--ring);
-}
-
-.searchable-select.is-invalid .searchable-select-input {
-  border-color: #fca5a5;
-  background: #fff5f5;
-}
-
-.searchable-select.is-invalid .searchable-select-input::placeholder {
-  color: #b91c1c;
-}
-
-.searchable-select-clear {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.searchable-select-clear:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.searchable-select-list {
-  list-style: none;
-  margin: 0;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: #fff;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
-  overflow-y: auto;
-  z-index: 1200;
-}
-
-.searchable-select-option {
-  padding: 7px 9px;
-  border-radius: var(--radius-control);
-  font-size: 13px;
-  color: #0f172a;
-  cursor: pointer;
-}
-
-.searchable-select-option.is-active {
-  background: #eef2ff;
-}
-
-.searchable-select-option.is-selected {
-  font-weight: 600;
-}
-
-.searchable-select-empty {
-  padding: 8px 9px;
-  font-size: 13px;
-  color: var(--ink-2);
 }
 
 .admin-layout.collapsed-nav .admin-content {
@@ -1276,20 +957,12 @@ summary:focus-visible {
 
   .table-summary {
     text-align: left;
-  }
-
-  .supplier-match-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }}
 
 @media (max-width: 900px) {
 
   .page-content {
     padding: 18px;
-  }
-
-  .supplier-match-grid {
-    grid-template-columns: 1fr;
   }}
 
 @media (max-width: 640px) {
@@ -1394,12 +1067,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   background: #e9d5ff;
   color: #6b21a8;
   border-color: #d8b4fe;
-}
-
-.status-draft {
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
 }
 
 .supplier-status-page {
@@ -1827,267 +1494,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 .notification-time {
   font-size: 12px;
   color: var(--muted);
-}
-
-/* RFQ Management (PR-centered) */
-.rfq-mgmt-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.rfq-mgmt-filter-group,
-.rfq-mgmt-toolbar-right {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.rfq-mgmt-search {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid var(--line, #d1d5db);
-  border-radius: var(--radius-control);
-  background: #fff;
-  color: var(--muted, var(--ink-2));
-}
-
-.rfq-mgmt-search input {
-  border: 0;
-  outline: 0;
-  padding: 8px 0;
-  font-size: 13px;
-  min-width: 220px;
-  background: transparent;
-}
-
-.rfq-mgmt-sort {
-  padding: 8px 10px;
-  font-size: 13px;
-  border: 1px solid var(--line, #d1d5db);
-  border-radius: var(--radius-control);
-  background: #fff;
-}
-
-.rfq-mgmt-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.rfq-mgmt-group {
-  border: 1px solid var(--line, #d1d5db);
-  border-radius: 4px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.rfq-mgmt-group.expanded {
-  border-color: var(--teal, #0b6b63);
-}
-
-.rfq-mgmt-group-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-
-.rfq-mgmt-group-header:hover {
-  background: #f1f6f5;
-}
-
-.rfq-mgmt-chevron {
-  display: inline-flex;
-  color: var(--muted, var(--ink-2));
-  flex-shrink: 0;
-}
-
-.rfq-mgmt-group-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.rfq-mgmt-group-title strong {
-  font-size: 14px;
-  color: var(--text, #1e293b);
-}
-
-.rfq-mgmt-group-category {
-  font-size: 12px;
-  color: var(--muted, var(--ink-2));
-}
-
-.rfq-mgmt-group-counts {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--muted, var(--ink-2));
-  white-space: nowrap;
-}
-
-.rfq-mgmt-group-body {
-  padding: 4px 14px 14px;
-  border-top: 1px solid var(--line, #e2e8f0);
-}
-
-.rfq-mgmt-progress {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 12px 2px;
-  font-size: 13px;
-}
-
-/* RFQ Management: category sub-group inside a PR group */
-.rfq-mgmt-category {
-  margin: 10px 0 4px;
-}
-
-.rfq-mgmt-category-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 12px;
-  padding: 6px 2px;
-}
-
-.rfq-mgmt-category-head strong {
-  font-size: 13px;
-  color: var(--text, #1e293b);
-}
-
-/* Supplier Matching: collapsible procurement category groups */
-.procurement-group-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.procurement-group {
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: var(--radius-panel);
-  background: var(--card, #fff);
-  overflow: hidden;
-}
-
-.procurement-group-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 14px 16px;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-
-.procurement-group-header:hover {
-  background: var(--hover, #f8fafc);
-}
-
-.procurement-group-chevron {
-  display: inline-flex;
-  color: var(--muted, var(--ink-2));
-}
-
-.procurement-group-title {
-  font-weight: 600;
-  flex: 1;
-}
-
-.procurement-group-count {
-  font-size: 12px;
-  color: var(--muted, var(--ink-2));
-}
-
-.procurement-group.expanded > .procurement-group-header {
-  border-bottom: 1px solid var(--line, #e2e8f0);
-}
-
-.procurement-group-body {
-  padding: 16px;
-}
-
-.procurement-group-body .match-section-heading h3 {
-  margin: 0 0 4px;
-  font-size: 15px;
-}
-
-.rfq-mgmt-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.rfq-mgmt-response-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rfq-mgmt-response-card,
-.rfq-mgmt-doc-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: 4px;
-  background: #fff;
-}
-
-.rfq-mgmt-doc-row + .rfq-mgmt-doc-row {
-  margin-top: 8px;
-}
-
-.rfq-mgmt-response-card h4 {
-  margin: 0 0 2px;
-  font-size: 14px;
-}
-
-/* RFQ Management layout guards: on narrow widths the group header wraps its
-   counts/badge onto a second line instead of drawing them over the title,
-   and the RFQ tables keep usable column widths (scrolling inside
-   .table-shell) instead of crushing quotation numbers and action buttons. */
-.rfq-mgmt-group-header {
-  flex-wrap: wrap;
-  row-gap: 8px;
-}
-
-.rfq-mgmt-group-title {
-  flex: 1 1 260px;
-}
-
-.rfq-mgmt-group-title strong,
-.rfq-mgmt-group-category {
-  overflow-wrap: anywhere;
-}
-
-.rfq-mgmt-response-card > div:first-child,
-.rfq-mgmt-doc-row > div:first-child {
-  flex: 1 1 240px;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .registration-page {
@@ -3396,12 +2802,6 @@ body {
   border-color: #a9d9d3;
 }
 
-.status-draft {
-  background: var(--neutral-tint);
-  color: var(--neutral);
-  border-color: #d3d9de;
-}
-
 /* ── Cards ── */
 .card,
 .admin-checklist,
@@ -3880,53 +3280,4 @@ textarea[readonly] { background: #eef0ec; color: #53636c; }
   line-height: 1.5;
 }
 .buyer-account-invite-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--teal); }
-
-/* ── RFQ Preparation: the automatic "Email to Supplier" summary, and the
-   supplier RFQ page's "How to respond" steps (both replace the old
-   free-text RFQ message). */
-.rfq-email-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
-.rfq-email-card h2 svg { color: var(--teal); }
-.rfq-email-summary { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--border); }
-.rfq-email-summary > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
-.rfq-email-summary dt { color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: normal; text-transform: none; }
-.rfq-email-summary dd { margin: 0; color: var(--navy); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
-.rfq-email-summary dd em { color: var(--text-secondary); font-style: normal; }
-.rfq-email-sent { margin-top: 12px; }
-.rfq-email-sent summary { color: var(--teal); font-size: 13px; font-weight: 600; cursor: pointer; }
-.rfq-email-sent pre { margin: 10px 0 0; padding: 14px; max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 3px; background: #fafaf7; color: var(--text); font: 13px/1.55 var(--font-sans); white-space: pre-wrap; }
-.rfq-respond-steps { display: grid; gap: 6px; margin: 0; padding-left: 20px; color: var(--text); font-size: 14px; line-height: 1.5; }
-
-@media (max-width: 640px) {
-  .rfq-email-summary > div { grid-template-columns: 1fr; gap: 2px; }}
-
-/* Dropdown fields: a native <select> and a free-text field with suggestions
-   (<input list>) share one look - same chevron, padding and height - so the
-   RFQ "Mode of Procurement" and "Quotation Basis" read as the same control.
-   Chrome only shows the datalist arrow on hover and Firefox never does, so the
-   native indicators are replaced with one drawn chevron. */
-.form-field .dropdown-control,
-.dropdown-control {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  padding-right: 40px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2353636c' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-  background-size: 16px 16px;
-}
-
-select.dropdown-control {
-  cursor: pointer;
-}
-
-.dropdown-control:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.dropdown-control::-webkit-calendar-picker-indicator,
-.dropdown-control::-webkit-list-button {
-  display: none !important;
-  opacity: 0;
-}} /* end @layer legacy */
+.rfq-respond-steps { display: grid; gap: 6px; margin: 0; padding-left: 20px; color: var(--text); font-size: 14px; line-height: 1.5; }} /* end @layer legacy */

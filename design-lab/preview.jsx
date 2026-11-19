@@ -20,7 +20,7 @@ import '../src/styles/screens-supplier.css'
 import '../src/styles/screens-enduser.css'
 import '../src/styles/screens-public.css'
 import App from '../src/App.jsx'
-import { dashboardSummary, prDetails, prList, suppliers } from './preview-data.js'
+import { dashboardSummary, manualRfqs, prDetails, prList, rfqGroups, supplierMatch, suppliers } from './preview-data.js'
 
 const params = new URLSearchParams(window.location.search)
 const role = params.get('as') || 'admin'
@@ -55,6 +55,11 @@ const routes = [
     return { is_posted: Boolean(record?.is_posted), posted_at: record?.posted_at, posted_by: record?.posted_by || '', can_post: !record?.is_posted, post_problem: '', min_reason_length: 10, history: [] }
   }],
   ['GET', /\/api\/buyer-accounts\/$/, () => []],
+  ['GET', /\/api\/rfqs\/responses\/$/, () => rfqGroups],
+  ['GET', /\/api\/pr\/(\d+)\/supplier-match\/$/, () => supplierMatch],
+  ['GET', /\/api\/pr\/(\d+)\/rfq\/$/, () => ({ rfqs: [] })],
+  ['GET', /\/api\/manual-rfqs\/$/, () => manualRfqs],
+  ['GET', /\/api\/pr\/next-number\/$/, () => ({ next_number: '2026-11-015' })],
   ['GET', /\/api\/procurement-modes\/$/, () => ({ modes: ['Small Value Procurement', 'Shopping', 'Negotiated Procurement'] })],
   ['GET', /\/api\/categories\/$/, () => [
     { id: 3, name: 'Advertising Agency Services', count: 2 }, { id: 4, name: 'Information Technology Parts & Peripheral', count: 1 }, { id: 5, name: 'Janitorial Supplies', count: 3 },

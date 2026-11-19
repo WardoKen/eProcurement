@@ -2315,6 +2315,20 @@ const rfqResponseIndicator = (rfq) => {
   return { label: 'Awaiting Response', className: 'awaiting' }
 }
 
+// Quotations in versus RFQs sent, one segment per RFQ (the line's segment
+// language). Display only; the count is also written out for screen readers.
+const ResponseMeter = ({ sent = 0, received = 0 }) => {
+  const total = Math.max(0, Number(sent) || 0)
+  if (total === 0) return null
+  const shown = Math.min(total, 12)
+  const filled = Math.round((Math.min(received, total) / total) * shown)
+  return (
+    <span className="response-meter" role="img" aria-label={`${received} of ${total} quotations received`}>
+      {Array.from({ length: shown }, (_, index) => <i key={index} className={index < filled ? 'is-done' : ''} />)}
+    </span>
+  )
+}
+
 // Decorative status glyph; the text beside it carries the meaning.
 const STATUS_GLYPH_ICONS = { received: CheckCircle, awaiting: Clock, draft: Circle }
 const StatusGlyph = ({ kind }) => {
@@ -2800,7 +2814,10 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
                       {summary.category_count ? `${summary.category_count} ${summary.category_count === 1 ? 'Category' : 'Categories'} • ` : ''}
                       {summary.sent} RFQ{summary.sent !== 1 ? 's' : ''} • {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''}
                     </span>
-                    <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                    <span className="rfq-mgmt-group-state">
+                      <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                      <ResponseMeter sent={summary.sent} received={summary.responses_received} />
+                    </span>
                   </button>
 
                   {expanded && (

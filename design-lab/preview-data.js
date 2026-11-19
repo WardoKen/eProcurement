@@ -104,3 +104,77 @@ export const prDetails = (id) => {
     source_filename: '',
   }
 }
+
+const rfq = (id, prNo, supplierName, fields = {}) => ({
+  id,
+  rfq_no: `RFQ-${prNo}:${String(id % 7 + 1).padStart(2, '0')}`,
+  status: 'sent',
+  has_response: false,
+  supplier: { id: 300 + id, company_name: supplierName },
+  sent_at: iso(6),
+  submitted_at: null,
+  generated_pdf_url: '/media/rfq.pdf',
+  submitted_pdf_url: '',
+  ...fields,
+})
+
+export const rfqGroups = {
+  purchase_requests: [
+    {
+      purchase_request: { id: 11, pr_no: '2026-10-004', category: 'Information Technology Parts & Peripheral' },
+      rfq_summary: { status: 'responses_in_progress', sent: 3, responses_received: 1, awaiting_response: 2, category_count: 1 },
+      categories: [{
+        category: 'Information Technology Parts & Peripheral', item_count: 7, rfq_count: 3, response_count: 1,
+        rfqs: [
+          rfq(41, '2026-10-004', 'Mactan Tech Parts Corp.', { status: 'quotation_received', has_response: true, submitted_at: iso(2), submitted_pdf_url: '/media/q.pdf' }),
+          rfq(42, '2026-10-004', 'Cebu Computer Depot'),
+          rfq(43, '2026-10-004', 'Visayan Systems Trading'),
+        ],
+      }],
+      rfqs: [],
+    },
+    {
+      purchase_request: { id: 10, pr_no: '2026-09-003', category: 'Janitorial Supplies' },
+      rfq_summary: { status: 'responses_in_progress', sent: 2, responses_received: 1, awaiting_response: 1, category_count: 1 },
+      categories: [{ category: 'Janitorial Supplies', item_count: 4, rfq_count: 2, response_count: 1, rfqs: [
+        rfq(44, '2026-09-003', 'Cebu Clean Solutions', { status: 'quotation_received', has_response: true, submitted_at: iso(5), submitted_pdf_url: '/media/q.pdf' }),
+        rfq(45, '2026-09-003', 'Tuburan Office Mart'),
+      ] }],
+      rfqs: [],
+    },
+    {
+      purchase_request: { id: 9, pr_no: '2026-09-002', category: 'Janitorial Supplies' },
+      rfq_summary: { status: 'all_responses_received', sent: 3, responses_received: 3, awaiting_response: 0, category_count: 1 },
+      categories: [{ category: 'Janitorial Supplies', item_count: 5, rfq_count: 3, response_count: 3, rfqs: [
+        rfq(46, '2026-09-002', 'Cebu Clean Solutions', { status: 'quotation_received', has_response: true, submitted_at: iso(9), submitted_pdf_url: '/media/q.pdf' }),
+        rfq(47, '2026-09-002', 'Tuburan Office Mart', { status: 'quotation_received', has_response: true, submitted_at: iso(8), submitted_pdf_url: '/media/q.pdf' }),
+        rfq(48, '2026-09-002', 'Danao Hardware Supply', { status: 'quotation_received', has_response: true, submitted_at: iso(7), submitted_pdf_url: '/media/q.pdf' }),
+      ] }],
+      rfqs: [],
+    },
+  ],
+}
+
+export const supplierMatch = {
+  pr: { pr_no: '2026-11-013' },
+  item_count: 4,
+  category_count: 1,
+  groups: [{
+    category: 'Advertising Agency Services',
+    category_id: 3,
+    item_count: 4,
+    items: prDetails(18).items,
+    suppliers: [
+      { id: 327, company_name: 'Island Signage Co.', email: 'quotes@islandsignage.ph', contact_person: 'Ramil Ouano', status: 'Approved', compliance_status: 'Eligible', compliance_percentage: 100 },
+      { id: 331, company_name: 'Visayas Print Hub, Inc.', email: 'sales@visayasprint.ph', contact_person: 'Joy Lim', status: 'Approved', compliance_status: 'Eligible', compliance_percentage: 100 },
+      { id: 340, company_name: 'Cebu Large Format Prints', email: 'bids@cebulfp.ph', contact_person: 'Arnel Tan', status: 'Approved', compliance_status: 'Eligible', compliance_percentage: 100 },
+    ],
+  }],
+  uncategorized_items: [],
+}
+
+export const manualRfqs = {
+  rfqs: [
+    { id: 61, manual_supplier_name: 'Bantayan Printing Press', status_label: 'Awaiting completed RFQ', has_response: false, purchase_request: { id: 18, pr_no: '2026-11-013' }, quotation_no: 'Q-2026-11-013-M1', rfq_no: 'RFQ-2026-11-013:04', created_by: 'admintest', sent_at: iso(1), created_at: iso(1) },
+  ],
+}
