@@ -391,6 +391,7 @@ class PrReceivedAndNumberAssignedEmailTests(TestCase):
                 'entity_name': pr.entity_name, 'office_section': 'ICT Office', 'purpose': 'Printers',
                 'items': [{'item_description': 'Printer', 'quantity': 2, 'unit_cost': 6250}],
                 'finalize_review': finalize,
+                'reason': 'BAC review corrections',
             }),
             content_type='application/json',
         )

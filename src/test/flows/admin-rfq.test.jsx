@@ -167,4 +167,56 @@ describe('assign categories', () => {
     expect(screen.getByRole('combobox', { name: 'Category for item 1' })).toHaveAttribute('aria-invalid', 'true')
     expect(api.mutations()).toHaveLength(0)
   })
+
+  it('possible contract splitting asks for a justification before the RFQ is issued', async () => {
+    const splitting = {
+      mode: 'Small Value Procurement', office_section: 'ICT Office', category: 'IT Equipment', year: 2026,
+      ceiling: 2000000, combined_total: 2400000, advise_competitive_bidding: false,
+      this_pr: { pr_id: 43, pr_no: '2026-11-001', amount: 900000 },
+      related: [{ pr_id: 40, pr_no: '2026-10-007', amount: 1500000, issued_at: '2026-10-20T08:00:00Z', rfq_no: 'RFQ-2026-10-007:01' }],
+    }
+    const justification = 'Separate request: the second laboratory was approved mid-year.'
+    signIn(adminUser)
+    const api = installApi({
+      ...routes,
+      'PATCH /api/pr/43/rfq/': ({ body }) => (body.splitting_justification
+        ? { json: { ...savedRfq(body, 'sent'), splitting_review: { justification: body.splitting_justification, justified_by: 'bac', justified_at: '2026-11-19T08:00:00Z', check: splitting } } }
+        : { status: 409, json: { success: false, code: 'possible_contract_splitting', message: 'Possible contract splitting: 1 other Purchase Request from ICT Office for IT Equipment was already issued under Small Value Procurement in 2026.', min_justification_length: 20, splitting } }),
+    })
+    const { user } = renderAt('/admin')
+    await openMatching(user)
+    await user.click(screen.getByRole('button', { name: /request quotation/i }))
+    await screen.findByRole('heading', { name: /email to supplier/i })
+    await user.type(document.querySelector('input[list="procurement-mode-options"]'), 'Small Value Procurement')
+    await user.click(screen.getByRole('button', { name: /^save rfq/i }))
+    await waitFor(() => expect(api.find('POST', '/api/pr/43/rfq/')).toHaveLength(1))
+
+    await user.click(await screen.findByRole('button', { name: /send rfq to supplier/i }))
+    await acceptConfirmation(user)
+
+    // Refused: the warning lists the related PR and the combined total.
+    const dialog = await screen.findByRole('alertdialog', { name: /possible contract splitting/i })
+    expect(dialog).toHaveTextContent('2026-10-007')
+    expect(dialog).toHaveTextContent('₱2,400,000.00')
+    expect(api.find('PATCH', '/api/pr/43/rfq/')).toHaveLength(1)
+
+    // Too short: refused in the form, nothing sent.
+    const field = within(dialog).getByLabelText(/justification/i)
+    await user.type(field, 'short')
+    await user.click(within(dialog).getByRole('button', { name: /issue with justification/i }))
+    expect(within(dialog).getByText('Enter at least 20 characters (5 so far).')).toBeInTheDocument()
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(api.find('PATCH', '/api/pr/43/rfq/')).toHaveLength(1)
+
+    await user.clear(field)
+    await user.type(field, justification)
+    await user.click(within(dialog).getByRole('button', { name: /issue with justification/i }))
+
+    await waitFor(() => expect(api.find('PATCH', '/api/pr/43/rfq/')).toHaveLength(2))
+    expect(api.find('PATCH', '/api/pr/43/rfq/')[1].body).toMatchObject({ send: true, splitting_justification: justification })
+    // The record shows who justified it.
+    expect(await screen.findByText(/issued despite possible contract splitting/i)).toBeInTheDocument()
+    expect(screen.getByText(justification)).toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
 })

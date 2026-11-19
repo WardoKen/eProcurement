@@ -675,3 +675,249 @@ button.link-like {
 }
 .procurement-step.is-current { border-color: var(--navy); box-shadow: inset 3px 0 0 var(--manila-deep); background: var(--navy-tint); }
 .procurement-step.is-current .procurement-step-marker { border-color: var(--navy); color: var(--navy); }
+
+/* ── PR change history (BAC edits vs. original upload) ──────────────────── */
+
+.field-value { position: relative; min-width: 0; }
+.field-value-full { grid-column: 1 / -1; }
+
+.field-value.is-edited:not(.field-value-inline) {
+  padding: var(--space-2);
+  margin: calc(var(--space-2) * -1);
+  border-radius: var(--radius-panel);
+  background: var(--tone-review-fill);
+  box-shadow: inset 3px 0 0 var(--tone-review);
+}
+.field-value.is-edited input,
+.field-value.is-edited textarea {
+  border-color: var(--tone-review) !important;
+  background: var(--tone-review-fill) !important;
+}
+.field-value.is-edited .signature-card { background: transparent; }
+
+.field-value-badge {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--tone-review);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--tone-review);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 18px;
+  cursor: help;
+}
+.field-value-badge:focus-visible { outline: var(--focus); outline-offset: var(--focus-offset); }
+.field-value-inline { display: block; }
+.field-value-inline .field-value-badge { position: static; margin-top: 4px; }
+
+.field-value-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: none;
+  width: max-content;
+  max-width: min(320px, 70vw);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--ink);
+  box-shadow: var(--shadow-overlay);
+  color: var(--paper);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.field-value-inline .field-value-tooltip { left: 0; right: auto; }
+.field-value-tooltip-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--manila);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field-value-badge:hover .field-value-tooltip,
+.field-value-badge:focus .field-value-tooltip { display: block; }
+
+.view-changes-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+tr.is-added-item > td { background: var(--tone-success-fill); }
+.item-added-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0 5px;
+  border-radius: var(--radius-control);
+  background: var(--tone-success);
+  color: var(--paper);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.pr-locked-notice {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--navy);
+  border-radius: var(--radius-control);
+  background: var(--navy-tint);
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+
+.pr-edit-reason {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 360px;
+  margin-right: auto;
+}
+.pr-edit-reason label { font-weight: 600; font-size: var(--text-md); color: var(--ink); }
+.pr-edit-reason textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-md);
+  resize: vertical;
+}
+.pr-edit-reason textarea:focus { border-color: var(--navy); outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.pr-edit-reason small { color: var(--ink-2); font-size: var(--text-sm); }
+
+.pr-review-split.is-doc-hidden { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+.pr-review-split.is-doc-hidden > .pr-review-preview-pane { display: none; }
+.pr-sheet-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+
+.change-history-modal { width: min(1240px, 100%); max-width: none; }
+.change-history-shell { overflow-x: auto; }
+
+/* Fixed columns so every row lines up; text wraps between words only. */
+.change-history-table { width: 100%; min-width: 900px; table-layout: fixed; }
+.change-history-table .col-field { width: 16%; }
+.change-history-table .col-original { width: 17%; }
+.change-history-table .col-current { width: 17%; }
+.change-history-table .col-editor { width: 17%; }
+.change-history-table .col-date { width: 12%; }
+.change-history-table .col-reason { width: 21%; }
+.change-history-table th,
+.change-history-table td {
+  padding: 12px 14px;
+  vertical-align: top;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+.change-history-table thead th { padding: 10px 14px; vertical-align: bottom; }
+/* Extra left room in the Field column so the expand chevron hangs in the
+   gutter and every field label starts at the same x as "Field". */
+.change-history-table th.change-field,
+.change-history-table td.change-field { padding-left: 32px; }
+.change-history-table td.change-original { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--rule-strong); }
+.change-history-table td.change-current { font-weight: 600; }
+.change-history-table td.change-when { font-variant-numeric: tabular-nums; }
+.change-when-date,
+.change-when-time { display: block; white-space: nowrap; }
+.change-when-time { color: var(--ink-2); font-size: var(--text-xs); }
+.change-history-table tr.change-step-row > td { padding-top: 8px; padding-bottom: 8px; background: var(--paper-sunken); font-size: var(--text-sm); }
+.change-field-label { font-weight: 600; }
+.change-row-toggle {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: -18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--navy);
+  font: inherit;
+  font-weight: 600;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.change-row-toggle svg { flex: none; margin-top: 0.2em; }
+.change-row-toggle:focus-visible { outline: var(--focus); outline-offset: var(--focus-offset); }
+.change-step-count,
+.change-step-label { color: var(--ink-2); font-size: var(--text-xs); font-weight: 500; }
+.change-step-count { display: block; margin-top: 2px; }
+.change-item-label { display: block; margin-top: 2px; color: var(--ink-2); font-size: var(--text-xs); }
+.change-history-table .status-badge { white-space: nowrap; }
+.change-muted { color: var(--ink-3); font-style: italic; }
+.change-history-note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--tone-review);
+  background: var(--tone-review-fill);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  .pr-sheet-actions { flex-wrap: wrap; }
+  .pr-edit-reason { flex-basis: 100%; }
+}
+
+.editor-account { display: grid; gap: 2px; justify-items: start; }
+.editor-account-name { font-weight: 600; color: var(--ink); }
+.editor-account-meta { color: var(--ink-2); font-size: var(--text-xs); }
+.pr-edited-by .editor-account-meta { font-size: inherit; }
+.editor-account-username { color: var(--navy); font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: var(--text-xs); }
+.field-value-tooltip .editor-account-username { color: inherit; }
+.field-value-tooltip-by { margin-top: var(--space-2); }
+.pr-edited-by { margin: 0 0 var(--space-3); color: var(--ink); font-size: var(--text-md); }
+.pr-edited-by-label { color: var(--ink-2); font-weight: 600; }
+.pr-sheet-meta .editor-account-username,
+.pr-sheet-meta .editor-account-meta { font-size: inherit; }
+
+/* Supplier change log (BAC supplier review). Entries since the BAC's last
+   decision carry a left rule and a "New" tag so unreviewed changes stand out. */
+.supplier-change-log .supplier-log-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); max-height: 360px; overflow-y: auto; }
+.supplier-log-entry { padding: var(--space-2) var(--space-3); border: 1px solid var(--rule); border-left: 3px solid var(--rule); border-radius: var(--radius-panel); background: var(--paper); }
+.supplier-log-entry.is-new { border-left-color: var(--warning); background: var(--warning-tint); }
+.supplier-log-meta { color: var(--ink-2); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.supplier-log-new-badge { margin-left: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--warning); border-radius: var(--radius-control); color: var(--warning); font-size: var(--text-xs); font-weight: 600; }
+.supplier-log-lines { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.supplier-log-line { display: grid; grid-template-columns: minmax(120px, 30%) 1fr; column-gap: var(--space-3); overflow-wrap: anywhere; }
+.supplier-log-field { font-weight: 600; color: var(--ink); }
+.supplier-log-old { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--rule-strong); }
+.supplier-log-new { color: var(--ink); font-weight: 600; }
+.supplier-log-note { grid-column: 2; color: var(--ink-2); font-size: var(--text-sm); }
+@media (max-width: 640px) {
+  .supplier-log-line { grid-template-columns: 1fr; }
+  .supplier-log-note { grid-column: 1; }
+}
+
+/* Possible contract splitting: the justification dialog and the recorded
+   justification on the RFQ record. */
+.splitting-dialog { width: min(640px, 100%); }
+.splitting-dialog .table-shell { margin: var(--space-3) 0; overflow-x: auto; }
+.splitting-table { width: 100%; }
+.splitting-table th, .splitting-table td { padding: var(--space-2) var(--space-3); text-align: left; }
+.splitting-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.splitting-table tfoot th, .splitting-table tfoot td { border-top: 1px solid var(--rule-strong); }
+.splitting-dialog textarea { width: 100%; }
+.splitting-review { margin-top: var(--space-3); }
+.splitting-review p { margin: var(--space-1) 0; }
+.splitting-review blockquote { margin: var(--space-2) 0; padding-left: var(--space-3); border-left: 3px solid var(--warning); white-space: pre-wrap; overflow-wrap: anywhere; }
+.splitting-review details { margin-top: var(--space-2); }
+.splitting-review summary { cursor: pointer; font-weight: 600; }
+
+/* Public posting control in the BAC's PR details. */
+.pr-posting { margin-top: var(--space-2); }
+.pr-posting-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--ink-2); font-size: var(--text-sm); }
+.pr-posting-row .btn-sm { margin-left: auto; }
+.pr-posting-history { margin-top: var(--space-1); font-size: var(--text-sm); }
+.pr-posting-history summary { cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-1); }
+.pr-posting-history ol { margin: var(--space-1) 0 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
+.pr-posted-badge { margin-left: var(--space-1); }

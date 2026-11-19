@@ -1116,7 +1116,7 @@ class RFQModeOfProcurementTests(TestCase):
             'rfq_no': 'RFQ-1', 'pr_no': '2026-08-001', 'pr_date': '', 'quotation_no': '',
             'mode_of_procurement': 'Negotiated Procurement', 'quotation_basis': 'LOT',
             'supplier': {}, 'abc': 'Php0.00', 'additional_notes': '', 'items': [],
-            'signatory_name': 'X', 'signatory_role': 'Y', 'signature_url': '',
+            'signatory_role': 'Y',
         })
         self.assertIn('Negotiated Procurement', html)
 
@@ -1290,7 +1290,7 @@ class SupplierRFQResponseTests(TestCase):
 
 class PurchaseRequestNumberTests(TestCase):
     def setUp(self):
-        _login_as(self.client, 'buyer')
+        self.buyer = _login_as(self.client, 'buyer')
 
     def create_pr(self, entity='Test Entity'):
         return self.client.post(
@@ -1394,6 +1394,9 @@ class PurchaseRequestNumberTests(TestCase):
                 'entityName': 'Buyer Entity',
                 'reviewOnly': True,
                 'sourceFilename': 'buyer-pr.pdf',
+                # The upload screen sends the signed-in End User's username;
+                # an End User may open only their own PR's details.
+                'submittedBy': self.buyer.username,
                 'requested_items': [],
                 'declaration_acknowledged': True,
             }}),
@@ -1417,6 +1420,7 @@ class PurchaseRequestNumberTests(TestCase):
                 'entity_name': 'Corrected Buyer Entity',
                 'items': [],
                 'finalize_review': True,
+                'reason': 'Corrected entity name',
             }),
             content_type='application/json',
         )
@@ -1848,7 +1852,7 @@ class SignaturePresenceValidationTests(TestCase):
         _login_as(self.client, 'admin')
         response = self.client.patch(
             f'/api/pr/{pr.id}/edit/',
-            data=json.dumps({'entity_name': 'Legacy PR (edited)', 'items': []}),
+            data=json.dumps({'entity_name': 'Legacy PR (edited)', 'items': [], 'reason': 'Typo'}),
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 200)
@@ -2425,6 +2429,23 @@ class RFQItemTableRenderingTests(TestCase):
         self.assertNotIn('123 Real Street', text)
         self.assertNotIn('123-456-789-000', text)
 
+    def test_bac_signatory_block_is_a_blank_line_with_typed_role(self):
+        # No signatory name and no signature image: the BAC Secretariat signs
+        # and prints their name by hand above the typed role.
+        PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Aircon unit', quantity=1, unit='unit',
+        )
+        from api.rfq.services.rfq_generator import generate_rfq_pdf
+        _, path = generate_rfq_pdf(self._rfq())
+        text = '\n'.join(t for t, _ in self._pdf_lines(path))
+
+        self.assertIn('Member, BAC Secretariat', text)
+        self.assertNotIn('PRESBITERO', text.upper())
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        images = [image for page in reader.pages for image in page.images]
+        self.assertEqual(images, [])
+
     def test_template_converts_description_newlines_to_breaks(self):
         from django.template.loader import render_to_string
         html = render_to_string('rfq/rfq.html', {
@@ -2433,14 +2454,19 @@ class RFQItemTableRenderingTests(TestCase):
             'abc': 'Php0.00', 'additional_notes': '',
             'items': [{'index': 1, 'item_description': 'Line one\nLine two',
                        'quantity': 1, 'quantity_display': '1', 'unit': 'lot', 'stock_property_no': ''}],
-            'signatory_name': 'X', 'signatory_role': 'Y', 'signature_url': '',
+            'signatory_role': 'Y',
         })
         self.assertIn('Line one<br>Line two', html.replace('<br />', '<br>'))
 
 
 class BuyerLiveStatusTests(TestCase):
     """End-user Live Status: GET /api/pr/list/?submitted_by= exposes a
-    high-level, supplier-free procurement stage per Purchase Request."""
+    high-level, supplier-free procurement stage per Purchase Request.
+    The list needs a sign-in, and an End User only ever gets their own PRs."""
+
+    def setUp(self):
+        role = Role.objects.get_or_create(name='buyer')[0]
+        _login_as(self.client, 'buyer', user=User.objects.create(username='buyer1', password_hash='x', role=role))
 
     def _pr(self, no, status, submitted_by='buyer1', **kwargs):
         return PurchaseRequest.objects.create(

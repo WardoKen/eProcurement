@@ -142,4 +142,32 @@ describe('supplier verification', () => {
 
     await waitFor(() => expect(api.find('DELETE', '/api/suppliers/7/')).toHaveLength(1))
   })
+
+  it('shows the change log, marking what changed since the last BAC decision', async () => {
+    const changeLog = [
+      // Newest first: the supplier's category change after approval...
+      { id: 4, event_type: 'status_changed', field_name: 'status', field_label: 'Status', old_value: 'Approved', new_value: 'Pending Review', note: 'Category change sent the account back for BAC review.', changed_by: 'acme', changed_by_role: 'supplier', changed_at: '2026-11-18T09:00:00+00:00' },
+      { id: 3, event_type: 'categories_changed', field_name: 'categories', field_label: 'Categories', old_value: 'IT Equipment', new_value: 'IT Equipment, Janitorial', note: 'Added: Janitorial', changed_by: 'acme', changed_by_role: 'supplier', changed_at: '2026-11-18T09:00:00+00:00' },
+      { id: 2, event_type: 'field_edit', field_name: 'contact_person', field_label: 'Contact Person', old_value: 'Rep', new_value: 'New Rep', note: '', changed_by: 'acme', changed_by_role: 'supplier', changed_at: '2026-11-18T09:00:00+00:00' },
+      // ...and the BAC's approval before it.
+      { id: 1, event_type: 'status_changed', field_name: 'status', field_label: 'Status', old_value: 'Pending Review', new_value: 'Approved', note: '', changed_by: 'bac', changed_by_role: 'admin', changed_at: '2026-11-10T09:00:00+00:00' },
+    ]
+    signIn(adminUser)
+    installApi({ ...routes, 'GET /api/suppliers/7/profile/': { json: { ...supplierProfile, change_log: changeLog } } })
+    const { user } = renderAt('/admin')
+    const review = await openSupplierReview(user)
+
+    expect(await within(review).findByText(/1 new since last bac decision/i)).toBeInTheDocument()
+    const entries = within(review).getAllByRole('listitem').filter((item) => item.classList.contains('supplier-log-entry'))
+    expect(entries).toHaveLength(2)
+    // The supplier's change set is one entry, flagged New.
+    expect(entries[0]).toHaveClass('is-new')
+    expect(entries[0]).toHaveTextContent('acme (Supplier)')
+    expect(entries[0]).toHaveTextContent(/contact person\s*rep\s*→?\s*changed to\s*new rep/i)
+    expect(entries[0]).toHaveTextContent('Added: Janitorial')
+    expect(entries[0]).toHaveTextContent(/approved.*pending review/i)
+    // The BAC's own approval is history, not new.
+    expect(entries[1]).not.toHaveClass('is-new')
+    expect(entries[1]).toHaveTextContent('bac (BAC)')
+  })
 })

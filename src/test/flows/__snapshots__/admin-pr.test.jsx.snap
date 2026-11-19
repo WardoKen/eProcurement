@@ -13,6 +13,7 @@ exports[`BAC PR review and numbering > Assign PR Number finalizes the review wit
   "items": [
     {
       "category": "IT Equipment",
+      "id": 100,
       "item_description": "Laptop, 16GB RAM",
       "quantity": 2,
       "stock_property_no": "SP-1",
@@ -24,6 +25,7 @@ exports[`BAC PR review and numbering > Assign PR Number finalizes the review wit
   "pr_no": "",
   "pr_number_mode": "automatic",
   "purpose": "Laptops for the computer laboratory",
+  "reason": "",
   "requested_by": "Ana Cruz",
   "responsibility_center_code": "RC-100",
   "twg_verified_by": "",
@@ -43,6 +45,7 @@ exports[`BAC PR review and numbering > Save Corrections sends the edited record 
   "items": [
     {
       "category": "IT Equipment",
+      "id": 100,
       "item_description": "Laptop, 16GB RAM",
       "quantity": 2,
       "stock_property_no": "SP-1",
@@ -54,6 +57,7 @@ exports[`BAC PR review and numbering > Save Corrections sends the edited record 
   "pr_no": "",
   "pr_number_mode": "automatic",
   "purpose": "Laptops for the computer laboratory",
+  "reason": "Entity name misread",
   "requested_by": "Ana Cruz",
   "responsibility_center_code": "RC-100",
   "twg_verified_by": "",

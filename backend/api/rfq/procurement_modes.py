@@ -21,7 +21,10 @@ the *display string* produced by :func:`mode_display` - e.g.
 
 PROCUREMENT_MODES = [
     # From the supplied sample RFQ document.
-    {"code": "", "label": "Small Value Procurement", "is_active": True},
+    # max_abc: the highest ABC (pesos) the mode may be used for, enforced when
+    # an RFQ is issued (api/rfq/procurement_checks.py). SVP: up to P2M under
+    # Sec. 39, as specified by the BAC. None = no ceiling enforced here.
+    {"code": "", "label": "Small Value Procurement", "is_active": True, "max_abc": 2_000_000, "legal_basis": "Sec. 39"},
     {"code": "", "label": "Shopping", "is_active": True},
     {"code": "", "label": "Negotiated Procurement", "is_active": True},
     {"code": "", "label": "Competitive Bidding", "is_active": True},

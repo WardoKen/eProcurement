@@ -101,28 +101,21 @@
         vertical-align: bottom;
       }
 
+      /* The top padding is the open area for a handwritten signature over a
+         printed name. (xhtml2pdf ignores margin-top on a block inside a table
+         cell, so the space has to live on the cell itself.) */
       td.sig-cell {
         width: 240pt;
         text-align: center;
+        padding-top: 50pt;
       }
 
-      .sig-img {
-        width: 130pt;
-        height: 65pt;
-      }
-
-      .sig-name {
-        font-weight: bold;
+      /* Blank signature line with the typed role beneath it. No name or
+         signature image is printed; the BAC Secretariat signatory signs over
+         their printed name by hand in the open space above the line. */
+      .sig-role {
         border-top: 1px solid #000;
         padding-top: 2pt;
-      }
-
-      .sig-name.no-sig {
-        margin-top: 34pt;
-      }
-
-      .sig-role {
-        font-size: 8pt;
       }
 
       /* Width matches the printable area (A4 595pt - 72pt margins). The same
@@ -276,12 +269,7 @@
       <tr>
         <td>&nbsp;</td>
         <td class="sig-cell">
-          {% if signature_url %}
-            <img class="sig-img" src="{{ signature_url }}" alt="{{ signatory_name|default:'LURIZA L. PRESBITERO' }}" />
-          {% else %}
-            <div class="sig-name no-sig">{{ signatory_name|default:'LURIZA L. PRESBITERO' }}</div>
-            <div class="sig-role">{{ signatory_role|default:'Member, BAC Secretariat' }}</div>
-          {% endif %}
+          <div class="sig-role">{{ signatory_role|default:'Member, BAC Secretariat' }}</div>
         </td>
       </tr>
     </table>

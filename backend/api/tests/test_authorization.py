@@ -320,7 +320,12 @@ class PurchaseRequestDetailsRedactionTests(TestCase):
     quotations (other suppliers' bids) are redacted by role/ownership."""
 
     def setUp(self):
-        self.pr = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-09-001')
+        # A posted opportunity, so suppliers may open it (unposted PRs are
+        # hidden from suppliers - see the posting tests).
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU', pr_no='2026-09-001', status=PurchaseRequest.STATUS_MATCHED,
+            is_posted=True, submitted_by='enduser1',
+        )
         self.supplier_a = Supplier.objects.create(company_name='Supplier A', email='a@example.com', status='Approved')
         self.supplier_b = Supplier.objects.create(company_name='Supplier B', email='b@example.com', status='Approved')
         Quotation.objects.create(supplier=self.supplier_a, purchase_request=self.pr, quoted_amount=1000)
@@ -345,7 +350,8 @@ class PurchaseRequestDetailsRedactionTests(TestCase):
         self.assertEqual(quotations[0]['supplier_id'], self.supplier_a.id)
 
     def test_buyer_sees_no_quotations(self):
-        _login_as(self.client, 'buyer')
+        role = Role.objects.get_or_create(name='buyer')[0]
+        _login_as(self.client, 'buyer', user=User.objects.create(username='enduser1', password_hash='x', role=role))
         response = self.client.get(f'/api/pr/{self.pr.id}/details/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['quotations'], [])
@@ -523,12 +529,15 @@ class PurchaseRequestImmutabilityAuthTests(TestCase):
         self.assertTrue(PurchaseRequest.objects.filter(id=self.pr.id).exists())
 
     def test_admin_can_edit_the_submitted_pr_without_touching_the_original_document(self):
+        # Edits are only allowed before the PR number is assigned.
+        PurchaseRequest.objects.filter(id=self.pr.id).update(pr_no=None)
         _login_as(self.client, 'admin')
         response = self.client.patch(
             f'/api/pr/{self.pr.id}/edit/',
             data=json.dumps({
                 'entity_name': 'Corrected Entity',
                 'items': [{'item_description': 'Corrected item', 'quantity': 5, 'unit_cost': 10}],
+                'reason': 'Corrected OCR misread',
             }),
             content_type='application/json',
         )

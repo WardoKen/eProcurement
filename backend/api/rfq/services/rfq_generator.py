@@ -26,12 +26,9 @@ def _resolve_rfq_dir() -> Path:
     return target_dir
 
 
-# Scanned signature of the BAC Secretariat signatory. Drop a PNG (transparent or
-# white background, signature strokes only) at this path to have it embedded in
-# the generated RFQ; if the file is absent the template falls back to a blank
-# signature line.
-SIGNATURE_FILE = Path(settings.BASE_DIR) / 'api' / 'rfq' / 'assets' / 'signature.png'
-SIGNATORY_NAME = 'LURIZA L. PRESBITERO'
+# The generated RFQ carries no signatory name or signature image: the BAC
+# Secretariat signs and prints their name by hand on the blank line above this
+# typed role.
 SIGNATORY_ROLE = 'Member, BAC Secretariat'
 
 
@@ -93,9 +90,7 @@ def generate_rfq_pdf(rfq) -> tuple[str, str]:
         'abc': abc_value,
         'additional_notes': rfq.additional_notes or '',
         'items': items,
-        'signatory_name': SIGNATORY_NAME,
         'signatory_role': SIGNATORY_ROLE,
-        'signature_url': str(SIGNATURE_FILE) if SIGNATURE_FILE.is_file() else '',
     }
 
     html = render_to_string('rfq/rfq.html', context)

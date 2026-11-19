@@ -127,11 +127,11 @@ describe('modal focus management on real screens', () => {
     expect(window.alert).not.toHaveBeenCalled()
   })
 
-  it('the PR summary shows when and by whom the PR was posted to suppliers', async () => {
+  it('the PR summary shows when and by whom the PR was posted', async () => {
     signIn(adminUser)
     installApi({
       ...adminRoutes,
-      'GET /api/pr/list/': { json: [{ ...numberedPr, status: 'matched', posted_at: '2026-11-02T01:30:00Z', posted_by: 'bac-secretariat' }] },
+      'GET /api/pr/list/': { json: [{ ...numberedPr, status: 'matched', is_posted: true, posted_at: '2026-11-02T01:30:00Z', posted_by: 'bac-secretariat' }] },
     })
     const { user } = renderAt('/admin')
     await openPrMonitoring(user)
@@ -139,12 +139,12 @@ describe('modal focus management on real screens', () => {
     await user.click(screen.getByRole('button', { name: 'View 2026-11-001' }))
 
     const dialog = await screen.findByRole('dialog', { name: /purchase request 2026-11-001/i })
-    const posted = within(dialog).getByText('Posted to suppliers').closest('div')
+    const posted = within(dialog).getByText('Public posting').closest('div')
     expect(posted).toHaveTextContent('Nov 2, 2026')
     expect(posted).toHaveTextContent('by bac-secretariat')
   })
 
-  it('a PR that has not reached suppliers reads as not yet posted', async () => {
+  it('a matched PR the BAC has not posted reads as not posted', async () => {
     signIn(adminUser)
     installApi(adminRoutes)
     const { user } = renderAt('/admin')
@@ -153,6 +153,6 @@ describe('modal focus management on real screens', () => {
     await user.click(screen.getByRole('button', { name: 'View 2026-11-001' }))
 
     const dialog = await screen.findByRole('dialog', { name: /purchase request 2026-11-001/i })
-    expect(within(dialog).getByText('Posted to suppliers').closest('div')).toHaveTextContent('Not yet posted')
+    expect(within(dialog).getByText('Public posting').closest('div')).toHaveTextContent('Not posted')
   })
 })

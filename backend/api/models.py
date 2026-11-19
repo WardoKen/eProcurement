@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Role(models.Model):
@@ -105,6 +106,69 @@ class SupplierDocument(models.Model):
         return f"{self.supplier.company_name} - {self.doc_type}"
 
 
+class SupplierChangeLogQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise PermissionError('Supplier change log rows are append-only and cannot be updated.')
+
+    def delete(self):
+        raise PermissionError('Supplier change log rows are append-only and cannot be deleted.')
+
+
+class SupplierChangeLog(models.Model):
+    """Append-only history of a supplier account, for BAC review.
+
+    One row per change: each profile field the supplier edits, a category
+    change, a document resubmission, and every status change (the automatic
+    return to Pending Review and the BAC's own decisions). Rows written by
+    one save share ``changed_at`` so they read as one change set. Rows are
+    never updated or deleted (the model, its queryset and the Django admin all
+    refuse); they go away only if the supplier itself is deleted.
+    """
+
+    EVENT_FIELD_EDIT = 'field_edit'
+    EVENT_CATEGORIES = 'categories_changed'
+    EVENT_DOCUMENT = 'document_resubmitted'
+    EVENT_STATUS = 'status_changed'
+    EVENT_CHOICES = [
+        (EVENT_FIELD_EDIT, 'Profile field edited'),
+        (EVENT_CATEGORIES, 'Categories changed'),
+        (EVENT_DOCUMENT, 'Document resubmitted'),
+        (EVENT_STATUS, 'Status changed'),
+    ]
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='change_logs')
+    event_type = models.CharField(max_length=24, choices=EVENT_CHOICES)
+    field_name = models.CharField(max_length=64, blank=True)
+    old_value = models.TextField(blank=True)
+    new_value = models.TextField(blank=True)
+    # Free text shown with the change: BAC remarks on a decision, or why a
+    # status changed automatically.
+    note = models.TextField(blank=True)
+    changed_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='supplier_changes')
+    # Kept alongside the FK so the actor stays named if the account is removed.
+    changed_by_username = models.CharField(max_length=255, blank=True)
+    changed_by_role = models.CharField(max_length=20, blank=True)
+    changed_at = models.DateTimeField(default=timezone.now)
+
+    objects = SupplierChangeLogQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'supplier_change_log'
+        ordering = ['changed_at', 'id']
+        indexes = [models.Index(fields=['supplier', 'changed_at'])]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise PermissionError('Supplier change log rows are append-only and cannot be updated.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('Supplier change log rows are append-only and cannot be deleted.')
+
+    def __str__(self):
+        return f"Supplier {self.supplier_id} {self.event_type} {self.field_name} by {self.changed_by_username}"
+
+
 class PurchaseRequest(models.Model):
     STATUS_UPLOADED = 'uploaded'
     STATUS_IN_REVIEW = 'in_review'
@@ -145,14 +209,44 @@ class PurchaseRequest(models.Model):
     # submitter confirmed by hand against the document, for the BAC's review:
     # [{"key", "label", "confirmed_by", "confirmed_at"}].
     signature_confirmations = models.JSONField(default=list, blank=True)
-    # Posting record: when the PR was first posted to suppliers as a
-    # procurement opportunity (it reached Matched or Approved with at least
-    # one categorized line item) and the username of the BAC user whose
-    # action posted it. Set once by ``record_pr_posting`` and never cleared,
-    # so it stays a true record even if the status later moves back.
+    # Posting: the BAC posts a PR explicitly (api/pr_posting.py) to make it a
+    # procurement opportunity - on the public Opportunities page and in the
+    # supplier portal. ``is_posted`` is the current state; ``posted_at`` /
+    # ``posted_by`` describe the current posting (cleared on unpost). Every
+    # post and unpost, with who, when and why, is kept in PRPostingLog.
+    is_posted = models.BooleanField(default=False)
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.CharField(max_length=255, blank=True)
+    # Change-history baseline: the PR exactly as it came out of upload and
+    # extraction (see api.pr_changes.build_original_snapshot). Written once,
+    # when the PR is created, and never updated - BAC edits are compared
+    # against it. Null for PRs created before change history existed.
+    original_extract_json = models.JSONField(null=True, blank=True)
+    # SHA-256 (hex) of the uploaded PR document, taken at creation.
+    original_file_hash = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Fields that may be written once (null/blank -> value) and never changed.
+    WRITE_ONCE_FIELDS = ('original_extract_json', 'original_file_hash')
+
+    def save(self, *args, **kwargs):
+        if self.pk and not self._state.adding:
+            update_fields = kwargs.get('update_fields')
+            guarded = [
+                name for name in self.WRITE_ONCE_FIELDS
+                if update_fields is None or name in update_fields
+            ]
+            if guarded:
+                stored = type(self).objects.filter(pk=self.pk).values(*guarded).first() or {}
+                for name in guarded:
+                    if stored.get(name) not in (None, '') and stored.get(name) != getattr(self, name):
+                        raise ValueError(f'PurchaseRequest.{name} is write-once and cannot be changed.')
+        super().save(*args, **kwargs)
+
+    @property
+    def is_locked(self) -> bool:
+        """A PR is locked for editing once its official PR number is assigned."""
+        return bool((self.pr_no or '').strip())
 
     def __str__(self):
         return f"PR {self.pr_no or self.id} - {self.entity_name}"
@@ -246,6 +340,123 @@ class PurchaseRequestItem(models.Model):
 
     def __str__(self):
         return f"{self.purchase_request_id} - {self.item_description[:40]}"
+
+
+class PRPostingLogQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise PermissionError('PR posting log rows are append-only and cannot be updated.')
+
+    def delete(self):
+        raise PermissionError('PR posting log rows are append-only and cannot be deleted.')
+
+
+class PRPostingLog(models.Model):
+    """Append-only history of a PR's public posting.
+
+    One row per post or unpost: who, when and why. ``automatic`` marks rows
+    the system wrote (a PR taken down because its status left the postable
+    statuses, or the one-time migration of the old automatic posting stamps)
+    rather than a BAC user's explicit action. Rows are never updated or
+    deleted; they go away only with the PR itself.
+    """
+
+    ACTION_POSTED = 'posted'
+    ACTION_UNPOSTED = 'unposted'
+    ACTION_CHOICES = [(ACTION_POSTED, 'Posted'), (ACTION_UNPOSTED, 'Unposted')]
+
+    pr = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='posting_logs')
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    reason = models.TextField(blank=True)
+    automatic = models.BooleanField(default=False)
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='pr_postings')
+    # Kept alongside the FK so the actor stays named if the account is removed.
+    changed_by_username = models.CharField(max_length=255, blank=True)
+    changed_at = models.DateTimeField(default=timezone.now)
+
+    objects = PRPostingLogQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'pr_posting_log'
+        ordering = ['changed_at', 'id']
+        indexes = [models.Index(fields=['pr', 'changed_at'])]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise PermissionError('PR posting log rows are append-only and cannot be updated.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('PR posting log rows are append-only and cannot be deleted.')
+
+    def __str__(self):
+        return f"PR {self.pr_id} {self.action} by {self.changed_by_username or 'system'}"
+
+
+class PRAuditLogQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise PermissionError('PR edit log rows are append-only and cannot be updated.')
+
+    def delete(self):
+        raise PermissionError('PR edit log rows are append-only and cannot be deleted.')
+
+
+class PRAuditLog(models.Model):
+    """Append-only record of every BAC edit to a Purchase Request.
+
+    One row per changed field (``field_edit``), plus one row per line item
+    added or removed during review. Rows are written inside the same
+    transaction as the edit they describe and are never updated or deleted
+    (the model, its queryset and the Django admin all refuse). They go away
+    only if the Purchase Request itself is deleted.
+
+    ``item`` keeps the line item's id even after that item is removed
+    (``db_constraint=False`` + ``DO_NOTHING``), so history for a removed item
+    stays addressable. ``old_value``/``new_value`` hold normalized strings
+    (see api.pr_changes.normalize_value); item events hold a JSON summary of
+    the item.
+    """
+
+    EVENT_FIELD_EDIT = 'field_edit'
+    EVENT_ITEM_ADDED = 'item_added'
+    EVENT_ITEM_REMOVED = 'item_removed'
+    EVENT_CHOICES = [
+        (EVENT_FIELD_EDIT, 'Field edited'),
+        (EVENT_ITEM_ADDED, 'Item added'),
+        (EVENT_ITEM_REMOVED, 'Item removed'),
+    ]
+
+    pr = models.ForeignKey(PurchaseRequest, on_delete=models.CASCADE, related_name='audit_logs')
+    item = models.ForeignKey(
+        PurchaseRequestItem, on_delete=models.DO_NOTHING, db_constraint=False,
+        null=True, blank=True, related_name='+',
+    )
+    field_name = models.CharField(max_length=64)
+    old_value = models.TextField(null=True, blank=True)
+    new_value = models.TextField(null=True, blank=True)
+    event_type = models.CharField(max_length=20, choices=EVENT_CHOICES, default=EVENT_FIELD_EDIT)
+    edited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='pr_edits')
+    # Kept alongside the FK so the editor stays named if the account is removed.
+    edited_by_username = models.CharField(max_length=255, blank=True)
+    edited_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    objects = PRAuditLogQuerySet.as_manager()
+
+    class Meta:
+        db_table = 'pr_edit_log'
+        ordering = ['edited_at', 'id']
+        indexes = [models.Index(fields=['pr', 'edited_at'])]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise PermissionError('PR edit log rows are append-only and cannot be updated.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('PR edit log rows are append-only and cannot be deleted.')
+
+    def __str__(self):
+        return f"PR {self.pr_id} {self.event_type} {self.field_name} by {self.edited_by_username}"
 
 
 class Quotation(models.Model):
@@ -401,6 +612,20 @@ class RFQ(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Possible contract splitting (see api/rfq/procurement_checks.py): when an
+    # SVP RFQ is issued while same-office, same-category SVP procurement this
+    # year already brings the combined amount over the SVP ceiling, the BAC
+    # must justify issuing it. Recorded once, at issue, for audit.
+    splitting_justification = models.TextField(blank=True)
+    splitting_justified_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='justified_rfqs',
+    )
+    # Kept alongside the FK so the justifier stays named if the account is removed.
+    splitting_justified_by_username = models.CharField(max_length=255, blank=True)
+    splitting_justified_at = models.DateTimeField(null=True, blank=True)
+    # The check as it stood at that moment: related PRs, amounts, combined total.
+    splitting_check = models.JSONField(null=True, blank=True)
 
     @property
     def supplier_display_name(self) -> str:

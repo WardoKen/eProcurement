@@ -19,10 +19,11 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Case, Count, Exists, IntegerField, Min, OuterRef, Q, Value, When
+from django.db.models import Avg, Case, Count, Exists, F, IntegerField, Min, OuterRef, Q, Value, When
 from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.utils.text import slugify
+from django.core.serializers.json import DjangoJSONEncoder
 from botocore.exceptions import BotoCoreError, ClientError
 from xhtml2pdf import pisa
 
@@ -49,7 +50,10 @@ except ImportError:  # pragma: no cover
 
 from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCategory, PasswordResetToken
 from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, PRNumberFormat, PRNotificationSettings, Quotation, Notification, RFQ, RFQItem
+from .models import PRAuditLog, PRPostingLog, SupplierChangeLog
 from .auth import require_auth
+from . import pr_changes, pr_posting, supplier_changes, supplier_emails
+from .rfq import procurement_checks
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
     REQUIRED_UPLOAD_KEYS,
@@ -189,6 +193,40 @@ def _write_textract_blocks(filename: str, blocks) -> None:
             json.dump({'Blocks': blocks}, handle)
     except OSError:
         pass
+
+
+def _extract_path(filename: str) -> Path:
+    safe = Path(str(filename or '')).name
+    return UPLOADS_DIR / f'{safe}.extract.json'
+
+
+def _write_extract_sidecar(filename: str, fields: dict) -> None:
+    """Keep the raw extraction from an upload so create_pr can store it in
+    the PR's write-once ``original_extract_json`` (server-side, so the
+    browser never supplies its own "original")."""
+    if not filename:
+        return
+    payload = {
+        'filename': Path(str(filename)).name,
+        'generated_at': timezone.now().isoformat(),
+        'fields': fields,
+    }
+    try:
+        with open(_extract_path(filename), 'w', encoding='utf-8') as handle:
+            json.dump(payload, handle, cls=DjangoJSONEncoder)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _read_extract_sidecar(filename: str):
+    if not filename:
+        return None
+    try:
+        with open(_extract_path(filename), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _read_textract_blocks(filename: str):
@@ -727,6 +765,7 @@ def upload_file(request):
         'signature_validation': signature_validation,
     }
     write_debug_json('final_output.json', response_payload)
+    _write_extract_sidecar(filename, response_payload['fields'])
     return JsonResponse(response_payload)
 
 
@@ -957,6 +996,16 @@ def create_pr(request):
                     unit_cost=unit_cost_d,
                     total_cost=total_cost_d,
                 )
+
+            # Change-history baseline, written once here and never again.
+            pr.refresh_from_db()
+            sidecar = _read_extract_sidecar(pr.source_filename)
+            pr.original_extract_json = pr_changes.build_original_snapshot(
+                pr, extraction=(sidecar or {}).get('fields'),
+            )
+            if pr.source_filename:
+                pr.original_file_hash = pr_changes.file_sha256(UPLOADS_DIR / Path(pr.source_filename).name)
+            pr.save(update_fields=['original_extract_json', 'original_file_hash'])
     except IntegrityError:
         return json_error('PR number is already assigned', 409)
     except Exception as exc:
@@ -1063,16 +1112,101 @@ OPPORTUNITY_CATEGORIES = [
 ]
 
 
+def _posted_category_counts():
+    """{category name (lowercase): number of posted PRs with an item in it}."""
+    counts = {}
+    rows = (
+        PurchaseRequestItem.objects
+        .filter(purchase_request__in=posted_prs())
+        .exclude(category__isnull=True).exclude(category='')
+        .values_list('category', 'purchase_request_id')
+        .distinct()
+    )
+    for category, _ in rows:
+        key = category.strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 @require_GET
 def categories_view(request):
     categories = list(
         Category.objects.filter(is_active=True).order_by('name')
     )
-
+    # ``count``: posted opportunities with at least one item in the category
+    # (what the public Opportunities page shows for it).
+    counts = _posted_category_counts()
     result = []
     for category in categories:
-        result.append({'id': category.id, 'name': category.name, 'count': 0})
+        result.append({'id': category.id, 'name': category.name, 'count': counts.get(category.name.strip().lower(), 0)})
     return JsonResponse(result, safe=False)
+
+
+@require_GET
+def public_opportunities(request):
+    """Posted procurement opportunities, for the public Opportunities page.
+
+    No sign-in. Only PRs the BAC has posted, and only what a public posting
+    shows: no requester/approver names, no source document, no per-item
+    estimated costs. ``?category=`` keeps PRs with an item in that category.
+    """
+    category = ' '.join(request.GET.get('category', '').split()).lower()
+    prs = posted_prs().order_by(F('posted_at').desc(nulls_last=True), '-id').prefetch_related('line_items')
+    results = []
+    for pr in prs:
+        items = list(pr.line_items.all())
+        categories = sorted({(item.category or '').strip() for item in items if (item.category or '').strip()})
+        if category and category not in {name.lower() for name in categories}:
+            continue
+        results.append({
+            'id': pr.id,
+            'pr_no': pr.pr_no or f'PR-{pr.id}',
+            'entity_name': pr.entity_name,
+            'office_section': pr.office_section or '',
+            'purpose': pr.purpose or '',
+            'categories': categories,
+            'abc': float(pr.grand_total or 0),
+            'posted_at': pr.posted_at.isoformat() if pr.posted_at else None,
+            'items': [
+                {'description': item.item_description or '', 'quantity': float(item.quantity or 0), 'unit': item.unit or ''}
+                for item in items
+            ],
+        })
+    return JsonResponse({'opportunities': results})
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+@require_auth(role='admin')
+def pr_posting_view(request, pr_id):
+    """The BAC's explicit post / unpost of a PR as a procurement opportunity.
+
+    GET  -> posting state and history.
+    POST {"action": "post"} or {"action": "unpost", "reason": "..."}.
+    """
+    try:
+        pr = PurchaseRequest.objects.get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
+        return json_error('Purchase Request not found', 404)
+
+    if request.method == 'POST':
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except (TypeError, json.JSONDecodeError):
+            return json_error('Invalid JSON payload', 400)
+        action = str(payload.get('action') or '').strip()
+        try:
+            if action == 'post':
+                pr_posting.post(pr, request)
+            elif action == 'unpost':
+                pr_posting.unpost(pr, request, payload.get('reason'))
+            else:
+                return json_error('action must be "post" or "unpost"', 400)
+        except pr_posting.PostingError as exc:
+            return json_error(str(exc), 400)
+        pr.refresh_from_db()
+
+    return JsonResponse({'success': True, **pr_posting.serialize(pr)})
 
 
 @require_GET
@@ -1129,9 +1263,19 @@ def _buyer_pr_stage(pr_status, rfq_sent_count, rfq_response_count):
 
 
 @require_GET
+@require_auth(role=('admin', 'buyer'))
 def pr_list(request):
+    """Purchase Requests for the BAC (all) or an End User (only their own).
+
+    Signed in only: these records carry requester/approver names, the source
+    document link and the ABC. The public sees posted opportunities through
+    ``public_opportunities`` instead.
+    """
     category = request.GET.get('category', '').strip()
     submitted_by = request.GET.get('submitted_by', '').strip()
+    if request.auth_role == 'buyer':
+        # An End User only ever sees their own PRs, whatever they ask for.
+        submitted_by = getattr(request.auth_user, 'username', '') or ''
     qs = (
         PurchaseRequest.objects.order_by('-created_at')
         .annotate(items_count=Count('line_items'))
@@ -1160,6 +1304,7 @@ def pr_list(request):
             'approved_by',
             'grand_total',
             'created_at',
+            'is_posted',
             'posted_at',
             'posted_by',
             'items_count',
@@ -1187,6 +1332,14 @@ def pr_list(request):
         )
     }
 
+    # First time each PR was posted (including the legacy automatic stamps
+    # kept in the posting history), for the Supplier Matching timestamp.
+    first_posted = dict(
+        PRPostingLog.objects
+        .filter(pr_id__in=[r['id'] for r in records], action=PRPostingLog.ACTION_POSTED)
+        .values('pr').annotate(first=Min('changed_at')).values_list('pr', 'first')
+    )
+
     for record in records:
         if record.pop('assigned_category_exists') is False and record['status'] == PurchaseRequest.STATUS_MATCHED:
             record['status'] = PurchaseRequest.STATUS_IN_REVIEW
@@ -1208,11 +1361,10 @@ def pr_list(request):
         record['status_description'] = BUYER_PR_STAGE_DESCRIPTIONS[stage]
         # Real timestamps only - stages without a dedicated timestamp field
         # (review, completed) are left out rather than invented. Supplier
-        # matching uses the posting record (null for PRs posted before it
-        # existed).
+        # matching uses the PR's first posting (null if never posted).
         record['stage_timestamps'] = {
             'submitted': record['created_at'],
-            'supplier_matching': record['posted_at'],
+            'supplier_matching': first_posted.get(record['id']),
             'rfq_sent': rollup.get('first_sent_at'),
             'supplier_response': rollup.get('first_response_at'),
         }
@@ -1222,35 +1374,10 @@ def pr_list(request):
 
 PR_STATUS_LABELS = dict(PurchaseRequest.STATUS_CHOICES)
 
-# Statuses at which a PR appears in matching suppliers' Opportunities feed
-# (see supplier_matching_opportunities).
-PR_POSTED_STATUSES = {PurchaseRequest.STATUS_MATCHED, PurchaseRequest.STATUS_APPROVED}
-
-
-def record_pr_posting(pr, request):
-    """Stamp the PR's posting record the first time it is posted.
-
-    A PR counts as posted once it is at a supplier-visible status and has at
-    least one categorized line item (the Opportunities feed matches suppliers
-    by item category). The first posting is kept: ``posted_at`` and
-    ``posted_by`` are never overwritten or cleared. Returns the field names
-    that changed, for the caller's ``save(update_fields=...)``.
-    """
-    if pr.posted_at or pr.status not in PR_POSTED_STATUSES:
-        return []
-    has_categorized_item = (
-        pr.line_items.exclude(category__isnull=True).exclude(category='').exists()
-    )
-    if not has_categorized_item:
-        return []
-    auth_user = getattr(request, 'auth_user', None)
-    pr.posted_at = timezone.now()
-    pr.posted_by = (
-        getattr(auth_user, 'username', '')
-        or request.session.get('username', '')
-        or ''
-    )
-    return ['posted_at', 'posted_by']
+# A PR is an opportunity only when the BAC has posted it (api/pr_posting.py):
+# posted, and still at a postable status.
+def posted_prs():
+    return PurchaseRequest.objects.filter(is_posted=True, status__in=pr_posting.POSTABLE_STATUSES)
 
 # 'uploaded' has no toggle - it's the PR's initial state, never something a
 # status change *reaches* as a transition worth muting.
@@ -1508,7 +1635,8 @@ def pr_update_status(request, pr_id: int):
 
     old_status = pr.status
     pr.status = status
-    pr.save(update_fields=['status', *record_pr_posting(pr, request)])
+    with transaction.atomic():
+        pr.save(update_fields=['status', *pr_posting.unpost_if_ineligible(pr, request)])
     _notify_pr_status_change(pr, old_status, status)
 
     return JsonResponse({
@@ -1517,10 +1645,38 @@ def pr_update_status(request, pr_id: int):
     })
 
 
+def _pr_locked_response(pr):
+    return JsonResponse({
+        'success': False,
+        'locked': True,
+        'message': (
+            f'Purchase Request {pr.pr_no} is locked: its PR number has been assigned, so its '
+            'details can no longer be edited. Its change history remains viewable.'
+        ),
+    }, status=409)
+
+
+class _PrUpdateAbort(Exception):
+    """Carries an error response out of pr_update's transaction (rolling it back)."""
+
+    def __init__(self, response):
+        super().__init__()
+        self.response = response
+
+
 @csrf_exempt
 @require_http_methods(["PATCH"])
 @require_auth(role='admin')
 def pr_update(request, pr_id: int):
+    """BAC review/edit of an unnumbered PR, optionally assigning its number.
+
+    Locked once ``pr_no`` is assigned (409). Every tracked field that actually
+    changes gets one ``PRAuditLog`` row, and line items added or removed get
+    ``item_added`` / ``item_removed`` rows - all in the same transaction as the
+    save. A non-empty ``reason`` is required whenever the save changes any
+    tracked data. Line items are matched to existing rows by ``id`` and updated
+    in place, so their ids (and any history keyed on them) stay stable.
+    """
     try:
         payload = json.loads(request.body.decode('utf-8'))
     except Exception:
@@ -1531,6 +1687,9 @@ def pr_update(request, pr_id: int):
     except PurchaseRequest.DoesNotExist:
         return json_error('Purchase Request not found', 404)
 
+    if pr.is_locked:
+        return _pr_locked_response(pr)
+
     entity_name = str(payload.get('entity_name') or '').strip()
     if not entity_name:
         return json_error('Entity name is required', 400)
@@ -1539,25 +1698,19 @@ def pr_update(request, pr_id: int):
     if not isinstance(items, list):
         return json_error('Items must be a list', 400)
 
+    reason = str(payload.get('reason') or '').strip()
     old_status = pr.status
     try:
         from decimal import Decimal
         with transaction.atomic():
+            pr = PurchaseRequest.objects.select_for_update().get(id=pr_id)
+            if pr.is_locked:
+                raise _PrUpdateAbort(_pr_locked_response(pr))
+
             finalize_review = bool(payload.get('finalize_review'))
             numbering_mode = str(payload.get('pr_number_mode') or 'automatic').lower()
-            if finalize_review and not pr.pr_no:
-                if numbering_mode == 'custom':
-                    pr_number_config = get_pr_number_format()
-                    assigned_number = validate_custom_pr_number(payload.get('custom_pr_number'), config=pr_number_config)
-                    if not assigned_number:
-                        return json_error(f'Custom PR number must use {_pr_number_pattern_description(pr_number_config)} format', 400)
-                    if PurchaseRequest.objects.filter(pr_no=assigned_number).exclude(id=pr.id).exists():
-                        return json_error('PR number is already assigned', 409)
-                else:
-                    assigned_number = generate_pr_number()
-                pr.pr_no = assigned_number
-            if finalize_review:
-                pr.status = PurchaseRequest.STATUS_IN_REVIEW
+            before_pr = pr_changes.pr_field_values(pr)
+
             pr.entity_name = entity_name
             pr.source_filename = str(payload.get('source_filename') or pr.source_filename or '').strip()
             pr.category = str(payload.get('category') or '').strip() or None
@@ -1570,28 +1723,112 @@ def pr_update(request, pr_id: int):
             pr.funds_available_by = str(payload.get('funds_available_by') or '').strip()
             pr.approved_by = str(payload.get('approved_by') or '').strip()
             pr.twg_verified_by = str(payload.get('twg_verified_by') or '').strip()
-            pr.grand_total = sum(
-                Decimal(str(item.get('quantity') or 0)) * Decimal(str(item.get('unit_cost') or 0))
-                for item in items
-            )
+            after_pr = pr_changes.pr_field_values(pr)
+            pr_diffs = [
+                (field, before_pr[field], after_pr[field])
+                for field, _ in pr_changes.TRACKED_PR_FIELDS
+                if before_pr[field] != after_pr[field]
+            ]
+
+            # Match submitted items to existing rows by id; anything unmatched
+            # is new, and any existing row that was not submitted is removed.
+            existing = {item.id: item for item in pr.line_items.select_for_update().order_by('id')}
+            matched_ids = set()
+            plan = []
+            for raw in items:
+                if not isinstance(raw, dict):
+                    raise ValueError('Each item must be an object')
+                quantity = Decimal(str(raw.get('quantity') or 0))
+                unit_cost = Decimal(str(raw.get('unit_cost') or 0))
+                values = {
+                    'stock_property_no': str(raw.get('stock_property_no') or '').strip(),
+                    'unit': str(raw.get('unit') or '').strip(),
+                    'item_description': str(raw.get('item_description') or '').strip(),
+                    'quantity': quantity,
+                    'unit_cost': unit_cost,
+                    'total_cost': quantity * unit_cost,
+                    'category': str(raw.get('category') or '').strip() or None,
+                }
+                try:
+                    item_id = int(raw.get('id'))
+                except (TypeError, ValueError):
+                    item_id = None
+                target = existing.get(item_id) if item_id not in matched_ids else None
+                if target is not None:
+                    matched_ids.add(item_id)
+                plan.append((target, values))
+            removed = [item for item_id, item in existing.items() if item_id not in matched_ids]
+
+            item_diffs = []
+            for target, values in plan:
+                if target is None:
+                    continue
+                before = pr_changes.item_field_values(target)
+                for field, value in values.items():
+                    setattr(target, field, value)
+                after = pr_changes.item_field_values(target)
+                item_diffs.extend(
+                    (target.id, field, before[field], after[field])
+                    for field, _ in pr_changes.TRACKED_ITEM_FIELDS
+                    if before[field] != after[field]
+                )
+            added = [values for target, values in plan if target is None]
+
+            has_changes = bool(pr_diffs or item_diffs or added or removed)
+            if has_changes and not reason:
+                raise _PrUpdateAbort(JsonResponse({
+                    'success': False,
+                    'reason_required': True,
+                    'message': 'Enter a reason for your edits. Every change to a Purchase Request is recorded with its reason.',
+                }, status=400))
+
+            if finalize_review:
+                if numbering_mode == 'custom':
+                    pr_number_config = get_pr_number_format()
+                    assigned_number = validate_custom_pr_number(payload.get('custom_pr_number'), config=pr_number_config)
+                    if not assigned_number:
+                        raise _PrUpdateAbort(json_error(f'Custom PR number must use {_pr_number_pattern_description(pr_number_config)} format', 400))
+                    if PurchaseRequest.objects.filter(pr_no=assigned_number).exclude(id=pr.id).exists():
+                        raise _PrUpdateAbort(json_error('PR number is already assigned', 409))
+                else:
+                    assigned_number = generate_pr_number()
+                pr.pr_no = assigned_number
+                pr.status = PurchaseRequest.STATUS_IN_REVIEW
+
+            pr.grand_total = sum((values['total_cost'] for _, values in plan), Decimal('0'))
             update_fields = ['entity_name', 'source_filename', 'category', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose', 'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'grand_total']
             if finalize_review:
                 update_fields.extend(['pr_no', 'status'])
             pr.save(update_fields=update_fields)
-            pr.line_items.all().delete()
-            for item in items:
-                quantity = Decimal(str(item.get('quantity') or 0))
-                unit_cost = Decimal(str(item.get('unit_cost') or 0))
-                PurchaseRequestItem.objects.create(
-                    purchase_request=pr,
-                    stock_property_no=str(item.get('stock_property_no') or '').strip(),
-                    unit=str(item.get('unit') or '').strip(),
-                    item_description=str(item.get('item_description') or '').strip(),
-                    quantity=quantity,
-                    unit_cost=unit_cost,
-                    total_cost=quantity * unit_cost,
-                    category=str(item.get('category') or '').strip() or None,
+
+            user = request.auth_user
+            for field, old, new in pr_diffs:
+                pr_changes.log_edit(pr, user, reason, field_name=field, old_value=old, new_value=new)
+
+            for item in removed:
+                pr_changes.log_edit(
+                    pr, user, reason, field_name='item', item_id=item.id,
+                    old_value=pr_changes.item_summary(pr_changes.item_field_values(item)), new_value=None,
+                    event_type=PRAuditLog.EVENT_ITEM_REMOVED,
                 )
+            if removed:
+                PurchaseRequestItem.objects.filter(id__in=[item.id for item in removed]).delete()
+
+            for target, values in plan:
+                if target is not None:
+                    target.save()
+                    continue
+                created = PurchaseRequestItem.objects.create(purchase_request=pr, **values)
+                pr_changes.log_edit(
+                    pr, user, reason, field_name='item', item_id=created.id,
+                    old_value=None, new_value=pr_changes.item_summary(pr_changes.item_field_values(created)),
+                    event_type=PRAuditLog.EVENT_ITEM_ADDED,
+                )
+
+            for item_id, field, old, new in item_diffs:
+                pr_changes.log_edit(pr, user, reason, field_name=field, item_id=item_id, old_value=old, new_value=new)
+    except _PrUpdateAbort as abort:
+        return abort.response
     except (ArithmeticError, ValueError, TypeError):
         return json_error('Invalid Purchase Request values', 400)
 
@@ -1600,7 +1837,49 @@ def pr_update(request, pr_id: int):
     # emails a number that was not kept).
     _notify_pr_status_change(pr, old_status, pr.status)
 
-    return JsonResponse({'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status, 'grand_total': float(pr.grand_total)})
+    return JsonResponse({
+        'success': True, 'id': pr.id, 'pr_no': pr.pr_no, 'status': pr.status,
+        'grand_total': float(pr.grand_total),
+        'logged_changes': len(pr_diffs) + len(item_diffs) + len(added) + len(removed),
+    })
+
+
+# Roles that may read any PR's change history. 'bac_chair' is not seeded yet;
+# listing it here means a BAC Chair role gets access as soon as it exists.
+PR_CHANGES_STAFF_ROLES = {'admin', 'bac_chair'}
+
+
+@require_GET
+@require_auth()
+def pr_change_history(request, pr_id: int):
+    """Change history for one PR: original values, current values and every
+    logged edit. Readable in every status - including after the PR number is
+    assigned and the PR is locked. Restricted to the BAC (admin / BAC Chair)
+    and the End User who submitted the PR; suppliers never see it.
+    """
+    role = request.auth_role
+    if role not in PR_CHANGES_STAFF_ROLES and role != 'buyer':
+        return json_error('You do not have permission to view this change history.', 403)
+
+    try:
+        pr = PurchaseRequest.objects.get(id=pr_id)
+    except PurchaseRequest.DoesNotExist:
+        return json_error('Purchase Request not found', 404)
+
+    if role == 'buyer' and (pr.submitted_by or '').strip() != request.auth_user.username:
+        return json_error('You do not have permission to view this change history.', 403)
+
+    result = pr_changes.compute_changes(pr)
+    return JsonResponse({
+        'success': True,
+        'pr_id': pr.id,
+        'pr_no': pr.pr_no,
+        'status': pr.status,
+        'locked': pr.is_locked,
+        'original_file_hash': pr.original_file_hash or None,
+        'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
+        **result,
+    })
 
 
 @csrf_exempt
@@ -2251,6 +2530,28 @@ def admin_export_suppliers(request):
     return _csv_stream_response('suppliers.csv', header, rows())
 
 
+def _edited_fields_notice(pr):
+    """Short "Edited fields" summary for exports: blank when the PR has no
+    changes from its original upload, else the count and field labels."""
+    if not pr.original_extract_json and not pr.audit_logs.exists():
+        return ''
+    result = pr_changes.compute_changes(pr)
+    if not result['changed_count']:
+        return ''
+    def by(entry):
+        return f" (by {entry['by_username'] or entry['by']})" if entry else ''
+
+    labels = [
+        change['label'] + by(change['history'][-1] if change['history'] else None)
+        for change in result['changes'].values()
+    ]
+    labels += [
+        f"{'Added' if event['type'] == PRAuditLog.EVENT_ITEM_ADDED else 'Removed'} item: {event['item_label']}{by(event)}"
+        for event in result['events']
+    ]
+    return f"{result['changed_count']} edited: " + '; '.join(labels)
+
+
 @require_GET
 @require_auth(role='admin')
 def admin_export_purchase_requests(request):
@@ -2282,11 +2583,13 @@ def admin_export_purchase_requests(request):
                 pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else '',
                 timezone.localtime(pr.posted_at).strftime('%Y-%m-%d %H:%M') if pr.posted_at else '',
                 pr.posted_by or '',
+                _edited_fields_notice(pr),
             ]
 
     header = [
         'ID', 'PR No.', 'Entity Name', 'Category', 'Office/Section', 'Status',
         'Grand Total', 'Requested By', 'PR Date', 'Created At', 'Posted At', 'Posted By',
+        'Edited Fields',
     ]
     return _csv_stream_response('purchase_requests.csv', header, rows())
 
@@ -2511,9 +2814,21 @@ def supplier_update_status(request, supplier_id: int):
         return json_error('Remarks are required for this decision.', 400)
 
     was_approved = supplier.status == 'Approved'
-    supplier.status = status
-    supplier.review_remarks = remarks
-    supplier.save(update_fields=['status', 'review_remarks', 'updated_at'])
+    before_status = supplier.status
+    # Read before this decision is logged (logging it resets "since the last
+    # decision"): the supplier's own changes awaiting review. An approval is a
+    # re-approval of changes when the account was approved at some point
+    # before - by a logged BAC approval, or (for accounts approved before the
+    # log existed) by a logged move away from Approved.
+    pending_changes = supplier_changes.changes_since_last_decision(supplier)
+    is_reapproval_of_changes = bool(pending_changes) and SupplierChangeLog.objects.filter(
+        supplier=supplier, event_type=SupplierChangeLog.EVENT_STATUS,
+    ).filter(Q(new_value='Approved', changed_by_role='admin') | Q(old_value='Approved')).exists()
+    with transaction.atomic():
+        supplier.status = status
+        supplier.review_remarks = remarks
+        supplier.save(update_fields=['status', 'review_remarks', 'updated_at'])
+        supplier_changes.record_status_change(supplier, request, before_status, status, note=remarks)
 
     document_status_updates = payload.get('document_statuses') or {}
     for document_id, document_status in document_status_updates.items():
@@ -2528,7 +2843,17 @@ def supplier_update_status(request, supplier_id: int):
     # None when no email was due (not a fresh approval); otherwise whether
     # the approval email went out, so the admin screen can say so.
     approval_email_sent = None
-    if status == 'Approved' and not was_approved:
+    if status == 'Approved' and not was_approved and is_reapproval_of_changes:
+        # Re-approval after the supplier's own changes: say what was approved,
+        # not the first-time registration welcome.
+        Notification.objects.create(
+            supplier=supplier,
+            notification_type=Notification.TYPE_PROFILE_APPROVED,
+            title='Profile Changes Approved',
+            message='The BAC Secretariat approved your profile changes. Your account is Approved again.',
+        )
+        approval_email_sent = supplier_emails.send_changes_approved(supplier, pending_changes)
+    elif status == 'Approved' and not was_approved:
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_PROFILE_APPROVED,
@@ -2625,9 +2950,10 @@ def supplier_matching_opportunities(request, supplier_id):
     if not supplier_category_ids:
         return JsonResponse({'opportunities': []})
 
-    # Get all approved/matched PRs with assigned categories
-    prs = PurchaseRequest.objects.filter(
-        status__in=['matched', 'approved']
+    # Only PRs the BAC has posted, newest posting first (the supplier
+    # dashboard previews the first few).
+    prs = posted_prs().order_by(
+        F('posted_at').desc(nulls_last=True), '-created_at', '-id'
     ).prefetch_related('line_items', 'quotations')
 
     matching_opportunities = []
@@ -2681,9 +3007,7 @@ def supplier_dashboard_summary(request, supplier_id):
         SupplierCategory.objects.filter(supplier=supplier, category__is_active=True).values_list('category_id', flat=True)
     )
 
-    prs = PurchaseRequest.objects.filter(
-        status__in=['matched', 'approved']
-    ).prefetch_related('line_items', 'quotations')
+    prs = posted_prs().prefetch_related('line_items', 'quotations')
 
     matching_count = 0
     for pr in prs:
@@ -2873,6 +3197,7 @@ def supplier_notifications(request, supplier_id):
     return JsonResponse({'notifications': notification_list})
 
 
+@csrf_exempt
 @require_POST
 @require_auth(role='supplier')
 def supplier_mark_notification_read(request, notification_id):
@@ -2893,6 +3218,29 @@ def supplier_mark_notification_read(request, notification_id):
     return JsonResponse({'success': True})
 
 
+def _email_changes_submitted(supplier) -> bool:
+    """The supplier's own changes just sent the account to Pending Review:
+    confirm to the supplier and alert the BAC. Returns whether the supplier's
+    confirmation went out (failures are logged, never raised)."""
+    rows = supplier_changes.changes_since_last_decision(supplier)
+    sent = supplier_emails.send_changes_submitted(supplier, rows)
+    supplier_emails.notify_bac_of_changes(supplier, rows)
+    return sent
+
+
+SUPPLIER_FIELDS_LOCKED_WHEN_APPROVED = ('company_name', 'tin', 'business_type')
+
+
+def _locked_field_value(field, value):
+    """Comparable form of a locked profile field, so a resent but unchanged
+    value is not mistaken for an edit (whitespace; TIN punctuation)."""
+    text = str(value or '').strip()
+    if field == 'tin':
+        return re.sub(r'\D', '', text)
+    return text
+
+
+@csrf_exempt
 @require_http_methods(['GET', 'PATCH'])
 @require_auth(role=('supplier', 'admin'), owner_param='supplier_id', owner_exempt_roles=('admin',))
 def supplier_profile(request, supplier_id):
@@ -2927,7 +3275,7 @@ def supplier_profile(request, supplier_id):
         category_ids = list(
             SupplierCategory.objects.filter(supplier=supplier).values_list('category_id', flat=True)
         )
-        return JsonResponse({
+        payload = {
             'id': supplier.id,
             'company_name': supplier.company_name,
             'business_type': supplier.business_type,
@@ -2946,7 +3294,11 @@ def supplier_profile(request, supplier_id):
             'category_ids': category_ids,
             'created_at': supplier.created_at.isoformat(),
             'documents': documents,
-        })
+        }
+        # The change log is for BAC review; suppliers don't receive it.
+        if request.auth_role == 'admin':
+            payload['change_log'] = supplier_changes.serialize(supplier)
+        return JsonResponse(payload)
 
     elif request.method == 'PATCH':
         try:
@@ -2964,15 +3316,48 @@ def supplier_profile(request, supplier_id):
                 if len(selected_categories) != len(normalized_ids):
                     return JsonResponse({'error': 'One or more selected categories are invalid or inactive'}, status=400)
 
+            # Once the BAC has approved a supplier, the identity it verified
+            # against the permits and BIR registration is locked. Unchanged
+            # values may still be sent back (the form posts the whole profile).
+            if supplier.status == 'Approved':
+                changed_locked = [
+                    field for field in SUPPLIER_FIELDS_LOCKED_WHEN_APPROVED
+                    if field in data
+                    and _locked_field_value(field, data[field]) != _locked_field_value(field, getattr(supplier, field))
+                ]
+                if changed_locked:
+                    return JsonResponse({
+                        'error': 'Company name, TIN and business type cannot be changed after BAC approval. '
+                                 'Contact the BAC to update them.',
+                        'locked_fields': changed_locked,
+                    }, status=400)
+
             # Only allow updating specific fields
             allowed_fields = [
                 'company_name', 'business_address', 'tin', 'contact_person',
                 'contact_phone', 'email', 'nature_of_business', 'goods_services', 'business_type'
             ]
 
+            # Snapshot for the change log before anything is applied.
+            before_fields = {field: getattr(supplier, field) for field in allowed_fields if field in data}
+            before_status = supplier.status
+            before_category_names = set(
+                SupplierCategory.objects.filter(supplier=supplier).values_list('category__name', flat=True)
+            )
+
             for field in allowed_fields:
                 if field in data:
                     setattr(supplier, field, data[field])
+
+            # A category change for an approved supplier goes back to the BAC
+            # for review, as a document resubmission does: the supplier is
+            # Pending Review (no opportunities) until the BAC approves again.
+            categories_changed = selected_categories is not None and (
+                {category.id for category in selected_categories}
+                != set(SupplierCategory.objects.filter(supplier=supplier).values_list('category_id', flat=True))
+            )
+            if categories_changed and supplier.status == 'Approved':
+                supplier.status = 'Pending Review'
 
             with transaction.atomic():
                 supplier.save()
@@ -2982,12 +3367,34 @@ def supplier_profile(request, supplier_id):
                     for category in selected_categories:
                         SupplierCategory.objects.get_or_create(supplier=supplier, category=category)
 
+                changed_at = timezone.now()
+                supplier_changes.record_field_changes(
+                    supplier, request, before_fields,
+                    {field: getattr(supplier, field) for field in before_fields}, changed_at,
+                )
+                if categories_changed:
+                    supplier_changes.record_category_change(
+                        supplier, request, before_category_names,
+                        {category.name for category in selected_categories}, changed_at,
+                    )
+                supplier_changes.record_status_change(
+                    supplier, request, before_status, supplier.status,
+                    note='Category change sent the account back for BAC review.', changed_at=changed_at,
+                )
+
+            # After the commit: emails never describe a save that rolled back.
+            review_email_sent = None
+            if supplier.status == 'Pending Review' and before_status != supplier.status:
+                review_email_sent = _email_changes_submitted(supplier)
+
             updated_categories = list(
                 SupplierCategory.objects.filter(supplier=supplier).select_related('category').values_list('category__name', flat=True)
             )
-            return JsonResponse({'success': True, 'supplier': {
+            return JsonResponse({'success': True, 'review_email_sent': review_email_sent, 'supplier': {
                 'id': supplier.id,
                 'company_name': supplier.company_name,
+                'business_type': supplier.business_type,
+                'status': supplier.status,
                 'business_address': supplier.business_address,
                 'tin': supplier.tin,
                 'contact_person': supplier.contact_person,
@@ -3004,6 +3411,7 @@ def supplier_profile(request, supplier_id):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
+@csrf_exempt
 @require_POST
 @require_auth(role='supplier', owner_param='supplier_id')
 def supplier_resubmit_document(request, supplier_id):
@@ -3023,18 +3431,35 @@ def supplier_resubmit_document(request, supplier_id):
         return JsonResponse({'error': exc.message}, status=400)
 
     filename = _save_supplier_upload(uploaded)
-    document = SupplierDocument.objects.create(
-        supplier=supplier,
-        doc_type=document_type,
-        filename=filename,
-        original_name=uploaded.name,
-        verification_status='Pending',
-    )
-    # A replacement document must send the supplier account back through BAC review.
-    if supplier.status == 'For Compliance':
-        supplier.status = 'Pending Review'
-        supplier.save(update_fields=['status'])
-    return JsonResponse({'success': True, 'supplier_status': supplier.status, 'document': {
+    previous = supplier.documents.filter(doc_type=document_type).order_by('-uploaded_at', '-id').first()
+    before_status = supplier.status
+    with transaction.atomic():
+        document = SupplierDocument.objects.create(
+            supplier=supplier,
+            doc_type=document_type,
+            filename=filename,
+            original_name=uploaded.name,
+            verification_status='Pending',
+        )
+        # A replacement document must send the supplier account back through BAC review.
+        if supplier.status == 'For Compliance':
+            supplier.status = 'Pending Review'
+            supplier.save(update_fields=['status'])
+
+        changed_at = timezone.now()
+        supplier_changes.record(
+            supplier, request, SupplierChangeLog.EVENT_DOCUMENT, field_name=document_type,
+            old_value=(previous.original_name or previous.filename) if previous else '',
+            new_value=uploaded.name, changed_at=changed_at,
+        )
+        supplier_changes.record_status_change(
+            supplier, request, before_status, supplier.status,
+            note='Document resubmission sent the account back for BAC review.', changed_at=changed_at,
+        )
+    review_email_sent = None
+    if supplier.status == 'Pending Review' and before_status != supplier.status:
+        review_email_sent = _email_changes_submitted(supplier)
+    return JsonResponse({'success': True, 'supplier_status': supplier.status, 'review_email_sent': review_email_sent, 'document': {
         'id': document.id, 'doc_type': document.doc_type,
         'filename': document.filename, 'original_name': document.original_name,
         'verification_status': document.verification_status,
@@ -3059,6 +3484,20 @@ def purchase_request_details(request, pr_id):
     except PurchaseRequest.DoesNotExist:
         return JsonResponse({'error': 'Purchase Request not found'}, status=404)
 
+    # A supplier sees a PR only once it is a posted opportunity, or when the
+    # BAC has issued them an RFQ for it. Unposted PRs answer as not found, so
+    # their existence is not revealed either.
+    if request.auth_role == 'supplier':
+        is_open_opportunity = posted_prs().filter(id=pr.id).exists()
+        has_rfq = RFQ.objects.filter(
+            purchase_request=pr, supplier_id=request.auth_supplier_id,
+        ).exclude(status=RFQ.STATUS_DRAFT).exists()
+        if not (is_open_opportunity or has_rfq):
+            return JsonResponse({'error': 'Purchase Request not found'}, status=404)
+    # An End User sees only their own PRs.
+    if request.auth_role == 'buyer' and pr.submitted_by != getattr(request.auth_user, 'username', None):
+        return JsonResponse({'error': 'Purchase Request not found'}, status=404)
+
     items = []
     for item in pr.line_items.all():
         items.append({
@@ -3071,6 +3510,8 @@ def purchase_request_details(request, pr_id):
             'total_cost': float(item.total_cost),
             'category': item.category,
         })
+    if request.auth_role == 'supplier':
+        items = _without_item_costs(items)
 
     all_quotations = pr.quotations.select_related('supplier').all()
     if request.auth_role == 'admin':
@@ -3177,7 +3618,7 @@ def pr_items_assign_categories(request, pr_id):
             and not pr.line_items.filter(category='').exists()
         )
         pr.status = PurchaseRequest.STATUS_MATCHED if all_items_categorized else PurchaseRequest.STATUS_IN_REVIEW
-        pr.save(update_fields=['category', 'status', *record_pr_posting(pr, request)])
+        pr.save(update_fields=['category', 'status', *pr_posting.unpost_if_ineligible(pr, request)])
 
     _notify_pr_status_change(pr, old_status, pr.status, is_automatic=True)
 
@@ -3372,6 +3813,16 @@ def _pr_rfq_progress_status(sent, received):
     return 'all_responses_received'
 
 
+def _without_item_costs(items):
+    """Strip per-item estimated costs before line items reach a supplier.
+
+    A supplier is shown only the ABC (Approved Budget for the Contract) for
+    the whole procurement, never the end user's estimated unit or total cost
+    for each item.
+    """
+    return [{k: v for k, v in item.items() if k not in ('unit_cost', 'total_cost')} for item in items]
+
+
 def _rfq_payload(rfq, request):
     pr = rfq.purchase_request
     # This RFQ's own items - the category group it covers, not the whole PR.
@@ -3389,6 +3840,8 @@ def _rfq_payload(rfq, request):
         'total_cost': float(item.total_cost or 0),
         'category': item.category or '',
     } for item in source_items]
+    if getattr(request, 'auth_role', None) == 'supplier':
+        items = _without_item_costs(items)
     pdf_url = ''
     if rfq.pdf_file:
         pdf_url = request.build_absolute_uri(f'/uploads/{rfq.pdf_file}')
@@ -3400,7 +3853,7 @@ def _rfq_payload(rfq, request):
         stored_name = Path(rfq.submitted_pdf).name
         submitted_filename = re.sub(r'^[0-9a-f]{32}_', '', stored_name) or stored_name
     abc_value = _rfq_abc(rfq)
-    return {
+    payload = {
         'id': rfq.id,
         'rfq_no': rfq.rfq_no or '',
         'status': rfq.status,
@@ -3463,6 +3916,16 @@ def _rfq_payload(rfq, request):
             'contact_phone': '', 'email': '',
         },
     }
+    # The BAC's contract-splitting justification is an internal audit record:
+    # shown on the RFQ to the BAC, never sent to the supplier.
+    if getattr(request, 'auth_role', None) != 'supplier':
+        payload['splitting_review'] = {
+            'justification': rfq.splitting_justification,
+            'justified_by': rfq.splitting_justified_by_username,
+            'justified_at': rfq.splitting_justified_at.isoformat() if rfq.splitting_justified_at else None,
+            'check': rfq.splitting_check or {},
+        } if rfq.splitting_justification else None
+    return payload
 
 
 def _rfq_number(pr, lock=False):
@@ -3503,6 +3966,31 @@ def procurement_modes_view(request):
 
 def _format_peso(amount) -> str:
     return f"₱{float(amount or 0):,.2f}"
+
+
+def _issue_checks(request, pr, category, mode, payload):
+    """Mode/ABC and splitting checks for issuing an RFQ (never for drafts).
+
+    Returns ``(error_response, record)``. ``error_response`` is set when the
+    RFQ must not be issued as requested: the ABC is above the mode's ceiling
+    (400), or possible splitting needs a justification (409, with the related
+    PRs so the BAC can see why). Otherwise ``record(rfq)`` stores any
+    justification on the RFQ and returns the fields it set.
+    """
+    ceiling_error = procurement_checks.check_abc_ceiling(mode, pr.grand_total)
+    if ceiling_error:
+        return JsonResponse(ceiling_error, status=400), None
+
+    check = procurement_checks.find_possible_splitting(pr, category, mode)
+    if not check:
+        return None, lambda rfq: []
+    text = str(payload.get('splitting_justification') or '')
+    if not text.strip():
+        return JsonResponse(procurement_checks.splitting_error(check), status=409), None
+    problem = procurement_checks.justification_problem(text)
+    if problem:
+        return JsonResponse(procurement_checks.splitting_error(check, problem), status=409), None
+    return None, lambda rfq: procurement_checks.record_justification(rfq, request, text, check)
 
 
 def _pr_abc(pr) -> str:
@@ -3762,6 +4250,14 @@ def admin_rfq(request, pr_id):
         if request.method == 'PATCH':
             rfq.save(update_fields=['subject', 'message', 'abc', 'additional_notes', 'mode_of_procurement', 'quotation_basis', 'selection_type', 'category', 'created_by', 'updated_at'])
 
+    # Mode/ABC ceiling and contract-splitting checks apply only when issuing.
+    justification_fields = []
+    if should_send:
+        issue_error, record_issue_checks = _issue_checks(request, pr, group_category, mode_of_procurement, payload)
+        if issue_error:
+            return issue_error
+        justification_fields = record_issue_checks(rfq)
+
     # Defer the RFQ / Quotation number until the RFQ is actually issued - a
     # preview or a saved draft never consumes a number (task 12/18).
     if should_send and not rfq.rfq_no:
@@ -3800,7 +4296,7 @@ def admin_rfq(request, pr_id):
 
         rfq.status = RFQ.STATUS_SENT
         rfq.sent_at = timezone.now()
-        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'quotation_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at'])
+        rfq.save(update_fields=['status', 'sent_at', 'subject', 'message', 'mode_of_procurement', 'quotation_basis', 'abc', 'additional_notes', 'selection_type', 'category', 'pdf_file', 'updated_at', *justification_fields])
         Notification.objects.create(
             supplier=supplier,
             notification_type=Notification.TYPE_RFQ_RECEIVED,
@@ -3950,6 +4446,11 @@ def manual_rfq_create(request, pr_id):
     if len(mode_of_procurement) > 200:
         return json_error('Mode of procurement must be 200 characters or fewer.', 400)
 
+    # A manual RFQ is issued on creation, so the issue checks run now.
+    issue_error, record_issue_checks = _issue_checks(request, pr, group_category, mode_of_procurement, payload)
+    if issue_error:
+        return issue_error
+
     subject_default, message_default = _manual_rfq_defaults(pr, manual_name)
     # Same rule as registered-supplier RFQs: the PR's full grand total.
     abc_value = _pr_abc(pr)
@@ -3976,10 +4477,11 @@ def manual_rfq_create(request, pr_id):
                 sent_at=timezone.now(),
             )
             _sync_rfq_items(rfq, group_items)
+            justification_fields = record_issue_checks(rfq)
             try:
                 file_url, _ = generate_rfq_pdf(rfq)
                 rfq.pdf_file = file_url.replace('/uploads/', '').lstrip('/')
-                rfq.save(update_fields=['pdf_file', 'updated_at'])
+                rfq.save(update_fields=['pdf_file', 'updated_at', *justification_fields])
             except ValueError:
                 raise RuntimeError('pdf')
     except RuntimeError:

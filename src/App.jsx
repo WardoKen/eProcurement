@@ -7,7 +7,6 @@ import {
   BriefcaseBusiness,
   Pencil,
   Plus,
-  CircleHelp,
   ClipboardList,
   House,
   LayoutDashboard,
@@ -17,15 +16,12 @@ import {
   ChevronRight,
   ChevronDown,
   RefreshCw,
-  ScanSearch,
   Search,
   Trash2,
   Users,
   X,
   Menu,
   Bell,
-  Calendar,
-  MapPin,
   Phone,
   Mail,
   Edit2,
@@ -36,7 +32,6 @@ import {
   CircleDot,
   Clock,
   AlertCircle,
-  Save,
   FileUp,
   Download,
   Send,
@@ -57,6 +52,8 @@ import DragDropUpload, {
   SignatureBlock,
   AutoGrowTextarea,
 } from './components/DragDropUpload'
+import { ChangeHistoryModal, EditedBySummary, FieldValue, ViewChangesButton } from './components/PRChangeHistory'
+import { prChangeKey, usePrChanges } from './lib/prChanges'
 import SupplierRegistration from './components/SupplierRegistration'
 import ProcessGuide from './components/ProcessGuide'
 import PhoneField from './components/ui/PhoneField'
@@ -70,6 +67,9 @@ import ToastProvider from './components/ui/ToastProvider'
 import Modal from './components/ui/Modal'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import useConfirm from './components/ui/useConfirm'
+import SupplierChangeLog from './components/SupplierChangeLog'
+import PRPosting from './components/PRPosting'
+import { SPLITTING_CODE, SplittingJustificationDialog, SplittingReviewNote } from './components/SplittingJustification'
 import { useToast } from './components/ui/toast-context'
 import { FieldError, RequiredLegend, RequiredMark } from './components/ui/FormParts'
 import KpiTile from './components/ui/KpiTile'
@@ -125,12 +125,11 @@ const formatPostingDate = (value) => new Date(value).toLocaleString('en-PH', {
   year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
 })
 
-// The PR's posting record: when it was first posted to suppliers as an
-// opportunity, and by whom (see record_pr_posting in api/views.py).
+// The PR's current posting as a procurement opportunity: posted explicitly by
+// the BAC (see api/pr_posting.py), with when and by whom.
 const formatPostingRecord = (pr) => {
-  if (pr?.posted_at) return `${formatPostingDate(pr.posted_at)}${pr.posted_by ? ` by ${pr.posted_by}` : ''}`
-  if (pr?.status === 'matched' || pr?.status === 'approved') return 'Not recorded (posted before posting records were kept)'
-  return 'Not yet posted'
+  if (pr?.is_posted && pr?.posted_at) return `${formatPostingDate(pr.posted_at)}${pr.posted_by ? ` by ${pr.posted_by}` : ''}`
+  return 'Not posted'
 }
 
 const SkeletonRows = ({ count = 4 }) => (
@@ -325,9 +324,9 @@ export const Opportunities = () => {
   const [prLoading, setPrLoading] = React.useState(false)
   const [prError, setPrError] = React.useState('')
 
+  // catLoading starts true and apiBaseUrl is a build-time constant, so the
+  // effect only runs once and has no loading state to reset.
   React.useEffect(() => {
-    setCatLoading(true)
-    setCatError('')
     apiFetch(`${apiBaseUrl}/api/categories/`)
       .then((r) => {
         if (!r.ok) throw new Error(`Server error ${r.status}`)
@@ -337,7 +336,7 @@ export const Opportunities = () => {
         setCategories(data)
         setCatLoading(false)
       })
-      .catch((err) => {
+      .catch(() => {
         setCatError('Failed to load categories. Please try again.')
         setCatLoading(false)
       })
@@ -348,27 +347,20 @@ export const Opportunities = () => {
     setPrLoading(true)
     setPrError('')
     setCategoryPRs([])
-    apiFetch(`${apiBaseUrl}/api/pr/list/?category=${encodeURIComponent(cat.name)}`)
+    // Only Purchase Requests the BAC has posted (no sign-in needed).
+    apiFetch(`${apiBaseUrl}/api/public/opportunities/?category=${encodeURIComponent(cat.name)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`Server error ${r.status}`)
         return r.json()
       })
       .then((data) => {
-        setCategoryPRs(data)
+        setCategoryPRs(Array.isArray(data.opportunities) ? data.opportunities : [])
         setPrLoading(false)
       })
       .catch(() => {
         setPrError('Failed to load opportunities for this category.')
         setPrLoading(false)
       })
-  }
-
-  const statusMeta = {
-    uploaded: { label: 'Submitted', className: 'tone-neutral' },
-    in_review: { label: 'In Review', className: 'status-review' },
-    matched: { label: 'Matched', className: 'tone-progress' },
-    approved: { label: 'Completed', className: 'tone-success' },
-    rejected: { label: 'Rejected', className: 'tone-danger' },
   }
 
   const pageSize = 12
@@ -432,28 +424,29 @@ export const Opportunities = () => {
             <table className="opportunity-table">
               <thead>
                 <tr>
-                  <th>PR No.</th>
-                  <th>Purpose</th>
-                  <th>Office / Section</th>
-                  <th>Total (₱)</th>
-                  <th>Date</th>
-                  <th>Status</th>
+                  <th scope="col">PR No.</th>
+                  <th scope="col">Purpose</th>
+                  <th scope="col">Office / Section</th>
+                  <th scope="col">Items</th>
+                  <th scope="col">ABC (₱)</th>
+                  <th scope="col">Posted</th>
                 </tr>
               </thead>
               <tbody>
-                {categoryPRs.map((pr) => {
-                  const meta = statusMeta[pr.status] || { label: pr.status, className: 'status-review' }
-                  return (
-                    <tr key={pr.id}>
-                      <td style={{ fontWeight: 600, color: '#312e81' }}>{pr.pr_no || `PR-${pr.id}`}</td>
-                      <td>{pr.purpose || '—'}</td>
-                      <td>{pr.office_section || '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{pr.grand_total ? `₱${Number(pr.grand_total).toLocaleString()}` : '—'}</td>
-                      <td>{pr.created_at ? new Date(pr.created_at).toLocaleDateString() : '—'}</td>
-                      <td><span className={`status-badge ${meta.className}`}>{meta.label}</span></td>
-                    </tr>
-                  )
-                })}
+                {categoryPRs.map((pr) => (
+                  <tr key={pr.id}>
+                    <td style={{ fontWeight: 600, color: '#312e81' }}>{pr.pr_no}</td>
+                    <td>{pr.purpose || '—'}</td>
+                    <td>{pr.office_section || '—'}</td>
+                    <td>
+                      {pr.items?.length
+                        ? pr.items.map((item) => `${item.description} (${item.quantity} ${item.unit})`.trim()).join('; ')
+                        : '—'}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>₱{Number(pr.abc || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{pr.posted_at ? new Date(pr.posted_at).toLocaleDateString('en-PH', { dateStyle: 'medium' }) : '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
 
@@ -505,10 +498,15 @@ export const Opportunities = () => {
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((item) => (
+                {pageItems.map((item, index) => (
                   <tr key={item.id} onClick={() => handleCategoryClick(item)} className="clickable-row">
-                    <td>{item.id}</td>
-                    <td className="category-link">{item.name}</td>
+                    {/* Row number across pages (1, 2, 3...), not the category's database id. */}
+                    <td>{(currentPage - 1) * pageSize + index + 1}</td>
+                    <td className="category-link">
+                      <button type="button" className="link-like" onClick={(event) => { event.stopPropagation(); handleCategoryClick(item) }}>
+                        {item.name}
+                      </button>
+                    </td>
                     <td>{item.count}</td>
                   </tr>
                 ))}
@@ -582,171 +580,6 @@ export const Opportunities = () => {
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-const Tracking = () => {
-  const [query, setQuery] = React.useState('')
-  const [fetchedPR, setFetchedPR] = React.useState(null)
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState('')
-  const [recentPRs, setRecentPRs] = React.useState([])
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-
-  const normalizeValue = (value) => String(value || '').trim().toLowerCase()
-  const isLikelyPrNumber = (value) => /^\d{4}-\d{2}-\d{3}$/.test(String(value || '').trim())
-
-  const statusMeta = {
-    uploaded: { label: 'Submitted', className: 'tone-neutral' },
-    in_review: { label: 'In Review', className: 'status-review' },
-    matched: { label: 'Matched', className: 'tone-progress' },
-    approved: { label: 'Completed', className: 'tone-success' },
-    rejected: { label: 'Rejected', className: 'tone-danger' },
-  }
-
-  const formatStatus = (status) => statusMeta[status] || { label: status || 'Unknown', className: 'status-review' }
-
-  const loadTrackingRecords = React.useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
-      if (!res.ok) {
-        throw new Error('Failed to load tracking records')
-      }
-      const data = await res.json()
-      const records = Array.isArray(data) ? data : []
-      setRecentPRs(records)
-    } catch (err) {
-      setError(err?.message || 'Failed to fetch PR information')
-      setRecentPRs([])
-    } finally {
-      setLoading(false)
-    }
-  }, [apiBaseUrl])
-
-  React.useEffect(() => {
-    loadTrackingRecords()
-  }, [loadTrackingRecords])
-
-  async function fetchPR(e) {
-    e && e.preventDefault()
-    setError('')
-    setFetchedPR(null)
-
-    const trimmedQuery = query.trim()
-    if (!trimmedQuery) {
-      setError('Please provide a PR Control Number or employee name.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      let records = recentPRs
-      if (!records.length) {
-        const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/list/`)
-        if (!res.ok) {
-          throw new Error('Failed to load tracking records')
-        }
-        const data = await res.json()
-        records = Array.isArray(data) ? data : []
-        setRecentPRs(records)
-      }
-
-      const normalizedQuery = normalizeValue(trimmedQuery)
-      const exactPrMatch = records.find((pr) => normalizeValue(pr.pr_no) === normalizedQuery)
-      const partialMatch = records.find((pr) => {
-        if (isLikelyPrNumber(trimmedQuery)) {
-          return normalizeValue(pr.pr_no) === normalizedQuery
-        }
-        return [pr.requested_by, pr.entity_name, pr.pr_no].some((field) => normalizeValue(field).includes(normalizedQuery))
-      })
-
-      const match = exactPrMatch || partialMatch
-      if (!match) {
-        throw new Error('No matching Purchase Request found')
-      }
-
-      setFetchedPR(match)
-    } catch (err) {
-      setError(err?.message || 'Failed to fetch PR information')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="page-content">
-      <div>
-        <h1>Purchase Request Tracking Portal</h1>
-        <p>Search by PR Control Number, Requestor, or Entity Name.</p>
-
-        <form className="pr-lookup" onSubmit={fetchPR}>
-          <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start', flexDirection: 'column'}}>
-            <label style={{fontWeight: 600, color: '#1f2937'}}>Assigned PR Control Number</label>
-            <div style={{display: 'flex', gap: 8, width: '100%', maxWidth: '500px'}}>
-              <input
-                placeholder="Example: 2026-01-010"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                maxLength="80"
-                style={{flex: 1, padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '4px'}}
-              />
-              <button className="btn-primary" type="submit">
-                <Search size={16} />
-                Search
-              </button>
-            </div>
-            <small style={{color: '#6b7280', marginTop: '4px'}}>Use PR number (YYYY-MM-NNN) or type requestor/entity keywords.</small>
-          </div>
-        </form>
-
-        {loading && <div className="pr-loading"><SkeletonRows count={5} /></div>}
-        {error && <div className="alert alert-error" style={{marginTop: '12px'}}>{error}</div>}
-
-        {fetchedPR && (
-          <div className="pr-details" style={{marginTop: '20px', padding: '16px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px'}}>
-            <h2 style={{marginTop: 0}}>{fetchedPR.entity_name || 'Purchase Request'} <small style={{fontWeight:600,color:'#374151'}}>({fetchedPR.pr_no || `ID ${fetchedPR.id}`})</small></h2>
-            <div style={{display:'flex',gap:12,alignItems:'center',marginTop:6}}>
-              <div className={`status-badge ${formatStatus(fetchedPR.status).className}`}>
-                {formatStatus(fetchedPR.status).label}
-              </div>
-              <div style={{color:'#6b7280'}}>Created: {fetchedPR.created_at ? new Date(fetchedPR.created_at).toLocaleString() : 'N/A'}</div>
-            </div>
-            <p style={{marginTop:12,whiteSpace:'pre-wrap'}}>{fetchedPR.purpose || 'No additional details available.'}</p>
-            <div style={{marginTop: 10, color: '#374151'}}>
-              <div><strong>Requestor:</strong> {fetchedPR.requested_by || 'N/A'}</div>
-              <div><strong>Office:</strong> {fetchedPR.office_section || 'N/A'}</div>
-              <div><strong>Items:</strong> {fetchedPR.items_count ?? 0}</div>
-              <div><strong>Grand Total:</strong> {fetchedPR.grand_total ?? '0.00'}</div>
-            </div>
-          </div>
-        )}
-
-        <div style={{marginTop: '32px'}}>
-          <h3 style={{marginBottom: '12px'}}>Recent Purchase Requests</h3>
-          <ul className="pr-list">
-            {recentPRs.map(pr => (
-              <li key={pr.id} className="pr-item" style={{padding: '12px', borderBottom: '1px solid #e5e7eb'}}>
-                <div className="pr-info"><strong>{pr.pr_no || `ID ${pr.id}`}</strong> — {pr.entity_name || 'N/A'}</div>
-                <div className={`status-badge ${formatStatus(pr.status).className}`}>
-                  {formatStatus(pr.status).label}
-                </div>
-              </li>
-            ))}
-            {!recentPRs.length && !loading && (
-              <li className="pr-item" style={{padding: '12px', color: '#6b7280'}}>No purchase requests found.</li>
-            )}
-          </ul>
-        </div>
-
-        <div style={{marginTop: '32px', padding: '16px', backgroundColor: '#f0f9ff', borderRadius: '8px', borderLeft: '4px solid #3b82f6'}}>
-          <p style={{margin: 0, color: '#1e40af'}}>
-            <strong>Note:</strong> Data is pulled from the live eProcure database. If you have questions about your purchase request, contact the BAC office.
-          </p>
-        </div>
-      </div>
     </div>
   )
 }
@@ -1499,9 +1332,9 @@ const AssignCategories = ({ prId, apiBase, onComplete, onBack }) => {
   const [error, setError] = React.useState('')
   const [touched, setTouched] = React.useState(false)
 
+  // The parent keys this component by prId, so a new PR remounts it with
+  // fresh loading/error state instead of resetting them here.
   React.useEffect(() => {
-    setLoading(true)
-    setError('')
     Promise.all([
       apiFetch(`${apiBase}/api/categories/`).then((r) => { if (!r.ok) throw new Error('Failed to load categories'); return r.json() }),
       apiFetch(`${apiBase}/api/pr/${prId}/items/`).then((r) => { if (!r.ok) throw new Error('Failed to load PR items'); return r.json() }),
@@ -1654,6 +1487,8 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   const [procurementModes, setProcurementModes] = React.useState([])
   const [additionalNotes, setAdditionalNotes] = React.useState('')
   const [pendingAction, setPendingAction] = React.useState('')
+  // The 409 "possible contract splitting" response awaiting a justification.
+  const [splittingPrompt, setSplittingPrompt] = React.useState(null)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
   const [previewUrl, setPreviewUrl] = React.useState('')
@@ -1721,13 +1556,15 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
   // Save applies the current edits and always refreshes the RFQ preview.
   // Send emails the saved RFQ (with its PDF) to the supplier; the backend
   // writes that email from the RFQ's details, so there is nothing to type.
-  const persistRfq = async (action) => {
+  // `justification` is given when re-sending after the possible-splitting
+  // warning; the send was already confirmed, so the confirm step is skipped.
+  const persistRfq = async (action, { justification } = {}) => {
     const send = action === 'send'
     if (!canPrepare) {
       setError('Please enter a mode of procurement.')
       return
     }
-    if (send) {
+    if (send && !justification) {
       if (!rfq) {
         setError('Save the RFQ first, then send it to the supplier.')
         return
@@ -1765,10 +1602,17 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
           generate_pdf: true,
           preview: !send,
           send,
+          ...(justification ? { splitting_justification: justification } : {}),
         }),
       })
       const data = await response.json().catch(() => ({}))
+      if (data.code === SPLITTING_CODE) {
+        // Not issued: the BAC must justify it first (see SplittingJustificationDialog).
+        setSplittingPrompt(data)
+        return
+      }
       if (!response.ok) throw new Error(data.message || `Unable to ${send ? 'send' : 'save'} RFQ (HTTP ${response.status})`)
+      setSplittingPrompt(null)
       setRfq(data)
       setAbc(data.abc || computedAbc)
       setQuotationBasis(data.quotation_basis === 'LINE' ? 'LINE' : 'LOT')
@@ -1802,6 +1646,17 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       <ProcurementStepper status={rfq?.status} label={`RFQ progress for ${supplier.company_name}`} />
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       {notice && <div className={`alert ${isSent ? 'alert-success' : 'alert-info'}`} role="status">{notice}</div>}
+      <SplittingReviewNote review={rfq?.splitting_review} />
+      {splittingPrompt && (
+        <SplittingJustificationDialog
+          // Remount when the server answers again (e.g. a too-short justification).
+          key={splittingPrompt.message}
+          prompt={splittingPrompt}
+          busy={pendingAction === 'send'}
+          onSubmit={(justification) => persistRfq('send', { justification })}
+          onCancel={() => setSplittingPrompt(null)}
+        />
+      )}
       {isManualSelection && (
         <div className="alert alert-warning">
           <strong>Manual BAC Selection.</strong> You are proceeding with a supplier outside the PR's registered
@@ -2116,6 +1971,11 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [reloadToken, setReloadToken] = React.useState(0)
+  const reload = () => {
+    setLoading(true)
+    setError('')
+    setReloadToken((t) => t + 1)
+  }
 
   // ── Manual / unregistered supplier RFQ (scoped to one category group) ──
   const [manualRfqGroup, setManualRfqGroup] = React.useState(null)
@@ -2124,6 +1984,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
   const [manualRfqQuotationBasis, setManualRfqQuotationBasis] = React.useState('LOT')
   const [manualRfqModes, setManualRfqModes] = React.useState([])
   const [manualRfqBusy, setManualRfqBusy] = React.useState(false)
+  const [manualSplittingPrompt, setManualSplittingPrompt] = React.useState(null)
   const [manualRfqError, setManualRfqError] = React.useState('')
   const [manualRfqResult, setManualRfqResult] = React.useState(null)
   const [confirmDialog, confirm] = useConfirm()
@@ -2140,17 +2001,21 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     return issuedMap[`${categoryName}::${supplierId}`]
   }, [issuedMap])
 
-  const createManualRfq = async () => {
+  // `justification` is given when re-issuing after the possible-splitting
+  // warning; the issue was already confirmed, so the confirm step is skipped.
+  const createManualRfq = async ({ justification } = {}) => {
     const name = manualRfqName.trim()
     if (!name) { setManualRfqError('Enter the supplier / company name.'); return }
     if (!manualRfqMode.trim()) { setManualRfqError('Enter a mode of procurement.'); return }
-    const confirmed = await confirm({
-      title: 'Issue manual RFQ?',
-      message: `An RFQ for the ${manualRfqGroup?.item_count ?? ''} item(s) in ${manualRfqGroup?.category || 'this category'} will be issued to "${name}".`,
-      consequence: 'A quotation number is assigned immediately and recorded on this Purchase Request. It cannot be withdrawn or reused.',
-      confirmLabel: 'Create RFQ',
-    })
-    if (!confirmed) return
+    if (!justification) {
+      const confirmed = await confirm({
+        title: 'Issue manual RFQ?',
+        message: `An RFQ for the ${manualRfqGroup?.item_count ?? ''} item(s) in ${manualRfqGroup?.category || 'this category'} will be issued to "${name}".`,
+        consequence: 'A quotation number is assigned immediately and recorded on this Purchase Request. It cannot be withdrawn or reused.',
+        confirmLabel: 'Create RFQ',
+      })
+      if (!confirmed) return
+    }
     setManualRfqBusy(true)
     setManualRfqError('')
     try {
@@ -2162,16 +2027,23 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
           category: manualRfqGroup?.category || '',
           mode_of_procurement: manualRfqMode.trim(),
           quotation_basis: manualRfqQuotationBasis,
+          ...(justification ? { splitting_justification: justification } : {}),
         }),
       })
       const body = await res.json().catch(() => ({}))
+      if (body.code === SPLITTING_CODE) {
+        // Not issued: the BAC must justify it first.
+        setManualSplittingPrompt(body)
+        return
+      }
       if (!res.ok) throw new Error(body.message || body.error || `Failed to create RFQ (HTTP ${res.status})`)
+      setManualSplittingPrompt(null)
       setManualRfqResult({ ...body, _category: manualRfqGroup?.category || '' })
       toast.success(`Manual RFQ issued. Quotation No. ${body.quotation_no}.`)
       setManualRfqGroup(null)
       setManualRfqName('')
       setManualRfqMode('')
-      setReloadToken((t) => t + 1)
+      reload()
     } catch (err) {
       setManualRfqError(err.message || 'Failed to create the manual RFQ.')
     } finally {
@@ -2179,9 +2051,9 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
     }
   }
 
+  // Initial loading state comes from useState (the parent keys this view by
+  // prId); later refreshes go through reload(), which resets it up front.
   React.useEffect(() => {
-    setLoading(true)
-    setError('')
     Promise.all([
       apiFetch(`${apiBase}/api/pr/${prId}/supplier-match/`).then((r) => { if (!r.ok) throw new Error('Failed to load supplier matches'); return r.json() }),
       apiFetch(`${apiBase}/api/pr/${prId}/details/`).then((r) => { if (!r.ok) throw new Error('Failed to load Purchase Request details'); return r.json() }),
@@ -2230,7 +2102,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
         apiBase={apiBase}
         supplier={selectedSupplier}
         prDetails={prDetails}
-        onBack={() => { setSelectedSupplier(null); setReloadToken((token) => token + 1) }}
+        onBack={() => { setSelectedSupplier(null); reload() }}
       />
     )
   }
@@ -2258,6 +2130,16 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
           {manualRfqResult.manual_supplier_name}, Quotation No. <strong>{manualRfqResult.quotation_no}</strong>.{' '}
           <a href={`${apiBase}/api/manual-rfqs/${manualRfqResult.id}/pdf/`} target="_blank" rel="noreferrer">Download RFQ PDF</a>.
         </div>
+      )}
+      <SplittingReviewNote review={manualRfqResult?.splitting_review} />
+      {manualSplittingPrompt && (
+        <SplittingJustificationDialog
+          key={manualSplittingPrompt.message}
+          prompt={manualSplittingPrompt}
+          busy={manualRfqBusy}
+          onSubmit={(justification) => createManualRfq({ justification })}
+          onCancel={() => setManualSplittingPrompt(null)}
+        />
       )}
 
       {loading ? (
@@ -2329,7 +2211,7 @@ const SupplierMatchingView = ({ prId, apiBase, onBack }) => {
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setManualRfqGroup(null)} disabled={manualRfqBusy}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={createManualRfq} disabled={manualRfqBusy}>
+              <button type="button" className="btn btn-primary" onClick={() => createManualRfq()} disabled={manualRfqBusy}>
                 {manualRfqBusy ? 'Creating…' : 'Create RFQ'}
               </button>
             </div>
@@ -2352,7 +2234,6 @@ const UnmatchedPurchaseRequests = ({ apiBase, onContinue }) => {
 
   React.useEffect(() => {
     let cancelled = false
-    setLoading(true)
     apiFetch(`${apiBase}/api/pr/unmatched/`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to load unmatched Purchase Requests')
@@ -2566,7 +2447,10 @@ const RFQDetailView = ({ group, rfq, onBack, onView }) => {
           <div><strong>Created: </strong><span>{rfqMgmtFormatDate(rfq.created_at)}</span></div>
           <div><strong>Sent: </strong><span>{rfqMgmtFormatDate(rfq.sent_at)}</span></div>
           <div><strong>Response Received: </strong><span>{rfq.submitted_at ? rfqMgmtFormatDateTime(rfq.submitted_at) : 'Not yet submitted'}</span></div>
+          <div><strong>Mode of Procurement: </strong><span>{rfq.mode_of_procurement || '—'}</span></div>
+          <div><strong>ABC: </strong><span>{rfq.abc || '—'}</span></div>
         </div>
+        <SplittingReviewNote review={rfq.splitting_review} />
       </div>
 
       <div className="card rfq-review-card">
@@ -2661,6 +2545,8 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
     }
   }, [base])
 
+  // load() is shared with the search form, so it sets its own loading state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { load('') }, [load])
 
   const uploadCompleted = async (rfq, file) => {
@@ -2758,6 +2644,7 @@ const ManualRFQsView = ({ apiBaseUrl }) => {
                 <div><strong>Status: </strong><span>{openRfq.status_label}</span></div>
                 {openRfq.created_by && <div><strong>Issued by: </strong><span>{openRfq.created_by}</span></div>}
               </div>
+              <SplittingReviewNote review={openRfq.splitting_review} />
 
               <div className="form-actions" style={{ marginTop: 14 }}>
                 <a className="btn-secondary" href={`${base}/api/manual-rfqs/${openRfq.id}/pdf/`} target="_blank" rel="noreferrer">Download Generated RFQ</a>
@@ -2835,6 +2722,8 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
     }
   }, [base, filter, sort, search])
 
+  // Refetch when the filter, sort, or search changes; load() owns its loading state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { load() }, [load])
 
   const openDocument = (url, title) => setViewer({ url: bustCache(url), title })
@@ -3032,6 +2921,25 @@ const ADMIN_TAB_LABELS = {
 // Workflow screens reached from PR Review & Monitoring, not from the sidebar.
 const ADMIN_WORKFLOW_TABS = new Set(['assign-categories', 'supplier-matching'])
 
+// Normalized form of the review form's tracked values, used to tell whether
+// the BAC has actually changed anything (and so must give a reason).
+const prFormSignature = (form) => {
+  if (!form) return ''
+  const text = (value) => String(value ?? '').trim()
+  const num = (value) => {
+    const parsed = parseFloat(String(value ?? '').replace(/,/g, ''))
+    return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00'
+  }
+  return JSON.stringify({
+    fields: ['entity_name', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose',
+      'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'category'].map((key) => text(form[key])),
+    items: (form.items || []).map((item) => [item.id ?? null, text(item.stock_property_no), text(item.unit),
+      text(item.item_description), num(item.quantity), num(item.unit_cost), text(item.category)]),
+  })
+}
+
+const PR_STATUS_LABELS = { uploaded: 'Submitted', in_review: 'In Review', matched: 'Matched', approved: 'Completed', rejected: 'Rejected' }
+
 const Admin = () => {
   const navigate = useNavigate()
   const [currentTab, setCurrentTab] = React.useState('dashboard')
@@ -3045,6 +2953,12 @@ const Admin = () => {
   const [viewingPr, setViewingPr] = React.useState(null)
   const [prStatusFilter, setPrStatusFilter] = React.useState('all')
   const [editingPr, setEditingPr] = React.useState(null)
+  // A post / take-down from the PR details: reflect it in the open PR and the list.
+  const handlePostingChange = React.useCallback((prId, posting) => {
+    const patch = { is_posted: posting.is_posted, posted_at: posting.posted_at, posted_by: posting.posted_by }
+    setEditingPr((current) => (current?.id === prId ? { ...current, ...patch } : current))
+    setPrRecords((current) => current.map((record) => (record.id === prId ? { ...record, ...patch } : record)))
+  }, [])
   const [editPrForm, setEditPrForm] = React.useState(null)
   const [editPrLoading, setEditPrLoading] = React.useState(false)
   const [editPrSaving, setEditPrSaving] = React.useState(false)
@@ -3085,6 +2999,8 @@ const Admin = () => {
   const [supplierDetails, setSupplierDetails] = React.useState({})
   const [selectedSupplierId, setSelectedSupplierId] = React.useState(null)
   const [selectedSupplierDetails, setSelectedSupplierDetails] = React.useState(null)
+  // Which supplier review the latest details request belongs to.
+  const reviewRequestRef = React.useRef(null)
   const [reviewRemarks, setReviewRemarks] = React.useState('')
   const [reviewAction, setReviewAction] = React.useState(null)
   const [supplierDeleteConfirm, setSupplierDeleteConfirm] = React.useState(null)
@@ -3102,6 +3018,13 @@ const Admin = () => {
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
   const [buyerDeleteConfirm, setBuyerDeleteConfirm] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+  // Change history for the PR open in the review modal (BAC edits vs. the
+  // original upload). Loaded in every status, including locked/numbered PRs.
+  const editPrChanges = usePrChanges(apiBaseUrl, editingPr?.id, { enabled: Boolean(editingPr) })
+  const [editPrInitialSignature, setEditPrInitialSignature] = React.useState('')
+  const [editPrReason, setEditPrReason] = React.useState('')
+  const [editPrShowChanges, setEditPrShowChanges] = React.useState(false)
+  const [editPrDocHidden, setEditPrDocHidden] = React.useState(false)
   const [confirmDialog, confirm] = useConfirm()
   const toast = useToast()
   const prStatusOptions = [
@@ -3374,16 +3297,29 @@ const Admin = () => {
     setReviewRemarks(supplier.review_remarks || '')
     setDocumentStatusDrafts({})
 
-    if (supplierDetails[supplier.id]) {
-      setSelectedSupplierDetails(supplierDetails[supplier.id])
-      return
-    }
+    // Show the cached copy at once, but always refetch: the supplier may have
+    // edited their profile since it was cached, and the change log must be
+    // current for review.
+    const cached = supplierDetails[supplier.id]
+    setSelectedSupplierDetails(cached || null)
+    reviewRequestRef.current = supplier.id
 
     try {
       const payload = await loadSupplierDetails(supplier.id)
-      setSelectedSupplierDetails(payload)
+      // Ignore a late response for a review that was closed or switched.
+      if (reviewRequestRef.current === supplier.id) setSelectedSupplierDetails(payload)
     } catch (error) {
-      setSupplierError(error?.message || 'Failed to load supplier details')
+      if (!cached && reviewRequestRef.current === supplier.id) setSupplierError(error?.message || 'Failed to load supplier details')
+    }
+  }
+
+  // Re-read the open review (e.g. after a decision) so the change log shows it.
+  const refreshSupplierReview = async (supplierId) => {
+    try {
+      const payload = await loadSupplierDetails(supplierId)
+      if (reviewRequestRef.current === supplierId) setSelectedSupplierDetails(payload)
+    } catch {
+      // The decision itself succeeded; a stale log until reopen is acceptable.
     }
   }
 
@@ -3441,6 +3377,7 @@ const Admin = () => {
       setDocumentStatusDrafts({})
       setSupplierError('')
       setReviewAction(null)
+      refreshSupplierReview(supplierId)
       const supplierName = supplierRegistrations.find((item) => item.id === supplierId)?.company_name || 'Supplier'
       // approval_email_sent is only true/false on a fresh approval.
       if (payload?.approval_email_sent === true) {
@@ -3559,12 +3496,6 @@ const Admin = () => {
   })
   const filteredSuppliers = supplierTable.rows
 
-  const selectedSupplier = React.useMemo(() => (
-    supplierRegistrations.find((supplier) => supplier.id === selectedSupplierId) || null
-  ), [selectedSupplierId, supplierRegistrations])
-
-  const PR_STATUS_LABELS = { uploaded: 'Submitted', in_review: 'In Review', matched: 'Matched', approved: 'Completed', rejected: 'Rejected' }
-
   const dashboardBreakdowns = React.useMemo(() => {
     const toBarItems = (rows, labels = {}) => (rows || []).map((row) => ({
       label: labels[row.status] || row.status,
@@ -3641,6 +3572,7 @@ const Admin = () => {
   }
 
   const closeSupplierReview = () => {
+    reviewRequestRef.current = null
     setSelectedSupplierId(null)
     setSelectedSupplierDetails(null)
     setReviewRemarks('')
@@ -3665,7 +3597,10 @@ const Admin = () => {
   }, [apiBaseUrl])
 
   React.useEffect(() => {
+    // The loaders are shared with refresh buttons and polling, so each one
+    // sets its own loading state when a tab opens.
     if (currentTab === 'dashboard') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadDashboardStats()
       loadPrRecords()
       loadSupplierRegistrations()
@@ -3795,7 +3730,7 @@ const Admin = () => {
       const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/pr/${pr.id}/details/`)
       if (!res.ok) throw new Error('Failed to load Purchase Request details')
       const details = await res.json()
-      setEditPrForm({
+      const loadedForm = {
         pr_no: details.pr_no || '',
         entity_name: details.entity_name || '',
         category: details.category || '',
@@ -3809,6 +3744,9 @@ const Admin = () => {
         approved_by: details.approved_by || '',
         twg_verified_by: details.twg_verified_by || '',
         items: (details.items || []).map((item) => ({
+          // The id lets the backend update the item in place and keep its
+          // change history; new rows have no id.
+          id: item.id,
           stock_property_no: item.stock_property_no || '',
           unit: item.unit || '',
           item_description: item.item_description || '',
@@ -3816,7 +3754,10 @@ const Admin = () => {
           unit_cost: item.unit_cost ?? 0,
           category: item.category || '',
         })),
-      })
+      }
+      setEditPrForm(loadedForm)
+      setEditPrInitialSignature(prFormSignature(loadedForm))
+      setEditPrReason('')
       setEditPrNumberMode(details.pr_no ? 'existing' : 'automatic')
       setEditPrCustomNumber(details.pr_no || '')
       setEditPrSourceUrl(details.source_file_url || '')
@@ -3874,6 +3815,8 @@ const Admin = () => {
     if (editPrSaving) return
     setEditingPr(null)
     setEditPrForm(null)
+    setEditPrReason('')
+    setEditPrShowChanges(false)
     setEditPrSignatureValidation(null)
     setEditPrSourceFilename('')
   }
@@ -3891,10 +3834,15 @@ const Admin = () => {
           finalize_review: finalizeReview,
           pr_number_mode: editPrNumberMode === 'custom' ? 'custom' : 'automatic',
           custom_pr_number: editPrCustomNumber,
+          reason: editPrReason.trim(),
         }),
       })
       const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.message || 'Failed to update Purchase Request')
+      if (!res.ok) {
+        // Locked (already numbered) - refresh so the modal shows read-only.
+        if (res.status === 409 && payload?.locked) editPrChanges.reload()
+        throw new Error(payload?.message || 'Failed to update Purchase Request')
+      }
       setPrRecords((prev) => prev.map((row) => row.id === editingPr.id ? {
         ...row,
         entity_name: editPrForm.entity_name,
@@ -3942,6 +3890,12 @@ const Admin = () => {
     },
     pageSize: 10,
   })
+
+  const editPrLocked = Boolean(editPrForm?.pr_no)
+  const editPrChangeMap = editPrChanges.data.changes || {}
+  const editPrAddedItemIds = new Set((editPrChanges.data.events || []).filter((event) => event.type === 'item_added').map((event) => event.item_id))
+  const editPrDirty = Boolean(editPrForm) && !editPrLocked && prFormSignature(editPrForm) !== editPrInitialSignature
+  const editPrReasonMissing = editPrDirty && !editPrReason.trim()
 
   const handleSelectMatchedSupplier = (card) => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
@@ -4425,6 +4379,8 @@ const Admin = () => {
                       </div>
                     </div>
 
+                    <SupplierChangeLog rows={selectedSupplierDetails.change_log || []} documentLabel={getDocumentLabel} />
+
                     <div className="supplier-detail-panel">
                       <div className="supplier-panel-title">Document Verification</div>
                       <div className="supplier-document-list">
@@ -4808,9 +4764,10 @@ const Admin = () => {
 
         {currentTab === 'assign-categories' && workflowPrId && (
           <AssignCategories
+            key={workflowPrId}
             prId={workflowPrId}
             apiBase={apiBaseUrl}
-            onComplete={(prId) => setCurrentTab('supplier-matching')}
+            onComplete={() => setCurrentTab('supplier-matching')}
             onBack={() => setCurrentTab('pr-monitoring')}
           />
         )}
@@ -4824,6 +4781,7 @@ const Admin = () => {
 
         {currentTab === 'supplier-matching' && workflowPrId && (
           <SupplierMatchingView
+            key={workflowPrId}
             prId={workflowPrId}
             apiBase={apiBaseUrl}
             onBack={() => setCurrentTab('assign-categories')}
@@ -4985,9 +4943,12 @@ const Admin = () => {
                       <span role="cell" data-label="Grand Total" className="pr-currency">{formatPeso(pr.grand_total ?? 0)}</span>
                       <span role="cell" data-label="Status">
                         {!isEditing ? (
-                          <span className={`status-badge ${statusMeta.className}`}>
-                            {statusMeta.label}
-                          </span>
+                          <>
+                            <span className={`status-badge ${statusMeta.className}`}>
+                              {statusMeta.label}
+                            </span>
+                            {pr.is_posted && <span className="status-badge tone-success pr-posted-badge" title={`Posted ${formatPostingRecord(pr)}`}>Posted</span>}
+                          </>
                         ) : (
                           <select
                             value={pendingStatusById[pr.id] || pr.status || 'uploaded'}
@@ -5031,12 +4992,12 @@ const Admin = () => {
                           <button
                             type="button"
                             className="icon-action-btn"
-                            title="Edit Purchase Request"
-                            aria-label={`Edit ${prLabel}`}
+                            title="Open details and change history (locked)"
+                            aria-label={`Open details for ${prLabel}`}
                             disabled={rowBusy}
                             onClick={() => handleEditPr(pr)}
                           >
-                            <Pencil size={14} aria-hidden="true" />
+                            <FileText size={14} aria-hidden="true" />
                           </button>
                         ) : (
                           <>
@@ -5097,17 +5058,36 @@ const Admin = () => {
               <Modal labelledBy="edit-pr-title" className="modal-content pr-edit-modal" onClose={closeEditPr} dismissible={!editPrSaving}>
                   <div className="modal-header">
                     <div className="pr-sheet-title">
-                      <h2 id="edit-pr-title">Review Purchase Request {editingPr.pr_no || `#${editingPr.id}`}</h2>
-                      <p className="pr-sheet-meta">Posted to suppliers: {formatPostingRecord(editingPr)}</p>
+                      <h2 id="edit-pr-title">
+                        {editPrLocked
+                          ? `Purchase Request ${editPrForm?.pr_no || editingPr.pr_no}`
+                          : `Review Purchase Request ${editingPr.pr_no || `#${editingPr.id}`}`}
+                      </h2>
+                      {editPrLocked && <p className="pr-sheet-meta">Locked · read-only</p>}
+                      <EditedBySummary editors={editPrChanges.data.editors} className="pr-sheet-meta pr-edited-by" />
+                      <PRPosting apiBase={apiBaseUrl} prId={editingPr.id} onChange={(posting) => handlePostingChange(editingPr.id, posting)} />
                     </div>
-                    <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close Purchase Request review">×</button>
+                    <div className="pr-sheet-actions">
+                      <ViewChangesButton count={editPrChanges.data.changed_count} onClick={() => setEditPrShowChanges(true)} />
+                      {editPrSourceUrl && (
+                        <button
+                          type="button"
+                          className="btn-sm btn-outline"
+                          onClick={() => setEditPrDocHidden((hidden) => !hidden)}
+                          aria-pressed={!editPrDocHidden}
+                        >
+                          {editPrDocHidden ? 'Show original document' : 'Hide original document'}
+                        </button>
+                      )}
+                      <button type="button" className="modal-close" onClick={closeEditPr} aria-label="Close Purchase Request review">×</button>
+                    </div>
                   </div>
                   {editPrLoading || !editPrForm ? (
                     <div className="modal-body" aria-busy="true"><SkeletonRows count={4} /></div>
                   ) : (
                     <>
                       <div className="modal-body pr-edit-body">
-                        <div className="pr-review-split">
+                        <div className={`pr-review-split ${editPrDocHidden ? 'is-doc-hidden' : ''}`}>
                           <aside className="pr-review-preview-pane card">
                             <header className="panel-header">
                               <h3>Original PR Document</h3>
@@ -5129,6 +5109,18 @@ const Admin = () => {
                               <header className="panel-header">
                                 <h3><Search size={18} /> Purchase Request Details</h3>
                               </header>
+
+                              {editPrLocked && (
+                                <p className="pr-locked-notice" role="note">
+                                  PR No. <strong>{editPrForm.pr_no}</strong> has been assigned, so this Purchase Request is locked and shown read-only.
+                                  {editPrChanges.data.changed_count > 0
+                                    ? ' Fields marked Edited were changed by the BAC during review; hover or focus the badge to see the original value.'
+                                    : ' No details were changed from the original upload.'}
+                                </p>
+                              )}
+                              {editPrChanges.error && (
+                                <p className="field-error" role="status">Change history unavailable: {editPrChanges.error}</p>
+                              )}
 
                               {!editPrForm.pr_no && (
                                 <div className="pr-review-numbering">
@@ -5156,47 +5148,27 @@ const Admin = () => {
                                 {editPrForm.pr_no && (
                                   <FieldShell id="edit-pr-no" label="Assigned PR Number" value={editPrForm.pr_no} readOnly full />
                                 )}
-                                <FieldShell
-                                  id="edit-entity-name"
-                                  label="Entity Name *"
-                                  value={editPrForm.entity_name}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, entity_name: value }))}
-                                  full
-                                />
-                                <FieldShell
-                                  id="edit-fund-cluster"
-                                  label="Fund Cluster"
-                                  value={editPrForm.fund_cluster}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, fund_cluster: value }))}
-                                />
-                                <FieldShell
-                                  id="edit-office-section"
-                                  label="Office / Section"
-                                  value={editPrForm.office_section}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, office_section: value }))}
-                                />
-                                <FieldShell
-                                  id="edit-rc-code"
-                                  label="Responsibility Center Code"
-                                  value={editPrForm.responsibility_center_code}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, responsibility_center_code: value }))}
-                                  full
-                                />
-                                <FieldShell
-                                  id="edit-date"
-                                  label="Date"
-                                  type="date"
-                                  value={editPrForm.date}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, date: value }))}
-                                />
-                                <FieldShell
-                                  id="edit-purpose"
-                                  label="Purpose"
-                                  value={editPrForm.purpose}
-                                  onChange={(value) => setEditPrForm((prev) => ({ ...prev, purpose: value }))}
-                                  full
-                                  isTextarea
-                                />
+                                {[
+                                  { field: 'entity_name', id: 'edit-entity-name', label: editPrLocked ? 'Entity Name' : 'Entity Name *', full: true },
+                                  { field: 'fund_cluster', id: 'edit-fund-cluster', label: 'Fund Cluster' },
+                                  { field: 'office_section', id: 'edit-office-section', label: 'Office / Section' },
+                                  { field: 'responsibility_center_code', id: 'edit-rc-code', label: 'Responsibility Center Code', full: true },
+                                  { field: 'date', id: 'edit-date', label: 'Date', type: 'date' },
+                                  { field: 'purpose', id: 'edit-purpose', label: 'Purpose', full: true, isTextarea: true },
+                                ].map(({ field, id, label, full, type, isTextarea }) => (
+                                  <FieldValue key={field} change={editPrChangeMap[prChangeKey(null, field)]} full={full}>
+                                    <FieldShell
+                                      id={id}
+                                      label={label}
+                                      type={type}
+                                      value={editPrForm[field]}
+                                      onChange={(value) => setEditPrForm((prev) => ({ ...prev, [field]: value }))}
+                                      full={full}
+                                      isTextarea={isTextarea}
+                                      readOnly={editPrLocked}
+                                    />
+                                  </FieldValue>
+                                ))}
                               </div>
 
                               <div className="signature-grid">
@@ -5206,14 +5178,16 @@ const Admin = () => {
                                   ['approved_by', 'Approved By'],
                                   ['twg_verified_by', 'Technical Working Group'],
                                 ].map(([field, title]) => (
-                                  <SignatureBlock
-                                    key={field}
-                                    title={title}
-                                    nameKey={field}
-                                    fields={editPrForm}
-                                    onFieldChange={(key, value) => setEditPrForm((prev) => ({ ...prev, [key]: value }))}
-                                    signatureState={editPrSignatureValidation?.signatories?.[ADMIN_SIGNATORY_DETECTOR_KEY[field]] || null}
-                                  />
+                                  <FieldValue key={field} change={editPrChangeMap[prChangeKey(null, field)]}>
+                                    <SignatureBlock
+                                      title={title}
+                                      nameKey={field}
+                                      fields={editPrForm}
+                                      onFieldChange={(key, value) => setEditPrForm((prev) => ({ ...prev, [key]: value }))}
+                                      signatureState={editPrSignatureValidation?.signatories?.[ADMIN_SIGNATORY_DETECTOR_KEY[field]] || null}
+                                      readOnly={editPrLocked}
+                                    />
+                                  </FieldValue>
                                 ))}
                               </div>
 
@@ -5228,16 +5202,18 @@ const Admin = () => {
                               <div className="requested-items-block">
                                 <div className="items-header">
                                   <h4>Requested Items</h4>
-                                  <div className="items-header-actions">
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}
-                                    >
-                                      <Plus size={16} />
-                                      Add Item
-                                    </button>
-                                  </div>
+                                  {!editPrLocked && (
+                                    <div className="items-header-actions">
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setEditPrForm((prev) => ({ ...prev, items: [...prev.items, { stock_property_no: '', unit: '', item_description: '', quantity: 0, unit_cost: 0, category: '' }] }))}
+                                      >
+                                        <Plus size={16} />
+                                        Add Item
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="table-shell" tabIndex={0} role="region" aria-label="Requested items">
@@ -5252,7 +5228,7 @@ const Admin = () => {
                                         <th style={{ width: '120px' }}>Unit Cost</th>
                                         <th style={{ width: '120px' }}>Total</th>
                                         <th style={{ width: '160px' }}>Category</th>
-                                        <th style={{ width: '56px' }}>Actions</th>
+                                        {!editPrLocked && <th style={{ width: '56px' }}>Actions</th>}
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -5264,48 +5240,66 @@ const Admin = () => {
                                           ...prev,
                                           items: prev.items.map((current, itemIndex) => itemIndex === index ? { ...current, ...patch } : current),
                                         }))
+                                        const itemChange = (field) => (item.id ? editPrChangeMap[prChangeKey(item.id, field)] : null)
+                                        const addedInReview = Boolean(item.id) && editPrAddedItemIds.has(item.id)
                                         return (
-                                          <tr key={`${editingPr.id}-item-${index}`}>
-                                            <td>{index + 1}</td>
+                                          <tr key={item.id ? `item-${item.id}` : `${editingPr.id}-new-${index}`} className={addedInReview ? 'is-added-item' : undefined}>
                                             <td>
-                                              <input aria-label={`Item ${index + 1} stock number`} value={item.stock_property_no} onChange={(event) => updateItem({ stock_property_no: event.target.value })} />
+                                              {index + 1}
+                                              {addedInReview && <span className="item-added-badge" title="Added by the BAC during review (not in the original upload)">Added</span>}
+                                            </td>
+                                            <td>
+                                              <FieldValue inline change={itemChange('stock_property_no')}>
+                                                <input aria-label={`Item ${index + 1} stock number`} value={item.stock_property_no} readOnly={editPrLocked} onChange={(event) => updateItem({ stock_property_no: event.target.value })} />
+                                              </FieldValue>
                                             </td>
                                             <td className="requested-item-unit-cell">
-                                              <input aria-label={`Item ${index + 1} unit`} value={item.unit} onChange={(event) => updateItem({ unit: event.target.value })} />
+                                              <FieldValue inline change={itemChange('unit')}>
+                                                <input aria-label={`Item ${index + 1} unit`} value={item.unit} readOnly={editPrLocked} onChange={(event) => updateItem({ unit: event.target.value })} />
+                                              </FieldValue>
                                             </td>
                                             <td className="requested-item-description-cell">
-                                              <AutoGrowTextarea
-                                                value={item.item_description}
-                                                onChange={(event) => updateItem({ item_description: event.target.value })}
-                                                className="requested-item-description"
-                                                aria-label={`Item ${index + 1} description`}
-                                              />
+                                              <FieldValue inline change={itemChange('item_description')}>
+                                                <AutoGrowTextarea
+                                                  value={item.item_description}
+                                                  onChange={(event) => updateItem({ item_description: event.target.value })}
+                                                  className="requested-item-description"
+                                                  aria-label={`Item ${index + 1} description`}
+                                                  readOnly={editPrLocked}
+                                                />
+                                              </FieldValue>
                                             </td>
                                             <td>
-                                              <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateItem({ quantity: event.target.value })} />
+                                              <FieldValue inline change={itemChange('quantity')}>
+                                                <input aria-label={`Item ${index + 1} quantity`} type="number" min="0" step="0.01" value={item.quantity} readOnly={editPrLocked} onChange={(event) => updateItem({ quantity: event.target.value })} />
+                                              </FieldValue>
                                             </td>
                                             <td>
-                                              <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" value={item.unit_cost} onChange={(event) => updateItem({ unit_cost: event.target.value })} />
+                                              <FieldValue inline change={itemChange('unit_cost')}>
+                                                <input aria-label={`Item ${index + 1} unit cost`} type="number" min="0" step="0.01" value={item.unit_cost} readOnly={editPrLocked} onChange={(event) => updateItem({ unit_cost: event.target.value })} />
+                                              </FieldValue>
                                             </td>
                                             <td>{total}</td>
                                             <td>
-                                              <input aria-label={`Item ${index + 1} category`} value={item.category} onChange={(event) => updateItem({ category: event.target.value })} />
+                                              <input aria-label={`Item ${index + 1} category`} value={item.category} readOnly={editPrLocked} onChange={(event) => updateItem({ category: event.target.value })} />
                                             </td>
-                                            <td>
-                                              <button
-                                                type="button"
-                                                className="icon-action-btn delete-icon-btn"
-                                                aria-label={`Remove item ${index + 1}`}
-                                                onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}
-                                              >
-                                                <Trash2 size={15} />
-                                              </button>
-                                            </td>
+                                            {!editPrLocked && (
+                                              <td>
+                                                <button
+                                                  type="button"
+                                                  className="icon-action-btn delete-icon-btn"
+                                                  aria-label={`Remove item ${index + 1}`}
+                                                  onClick={() => setEditPrForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) }))}
+                                                >
+                                                  <Trash2 size={15} />
+                                                </button>
+                                              </td>
+                                            )}
                                           </tr>
                                         )
                                       }) : (
                                         <tr>
-                                          <td colSpan={9}>
+                                          <td colSpan={editPrLocked ? 8 : 9}>
                                             <div className="table-empty-state">
                                               <p>No line items yet.</p>
                                             </div>
@@ -5320,9 +5314,31 @@ const Admin = () => {
                           </div>
                         </div>
                       </div>
+                      {editPrLocked ? (
+                        <div className="modal-actions">
+                          <button type="button" className="btn btn-secondary" onClick={closeEditPr}>Close</button>
+                        </div>
+                      ) : (
                       <div className="modal-actions">
+                        <div className="pr-edit-reason">
+                          <label htmlFor="edit-pr-reason">Reason for edits{editPrDirty ? ' *' : ''}</label>
+                          <textarea
+                            id="edit-pr-reason"
+                            rows={1}
+                            value={editPrReason}
+                            onChange={(event) => setEditPrReason(event.target.value)}
+                            placeholder="e.g. Quantity misread from the scanned document"
+                            aria-invalid={editPrReasonMissing || undefined}
+                            aria-describedby="edit-pr-reason-help"
+                          />
+                          <small id="edit-pr-reason-help">
+                            {editPrDirty
+                              ? 'Required. Saved with every change in this PR\'s change history.'
+                              : 'Required when you change any detail. Saved with each change in the change history.'}
+                          </small>
+                        </div>
                         <button type="button" className="btn btn-outline" onClick={closeEditPr} disabled={editPrSaving}>Cancel</button>
-                        <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim()}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
+                        <button type="button" className="btn btn-secondary" onClick={() => handleSavePrEdit(false)} disabled={editPrSaving || !editPrForm.entity_name.trim() || editPrReasonMissing}>{editPrSaving ? 'Saving...' : 'Save Corrections'}</button>
                         {!editPrForm.pr_no && (
                           <button
                             type="button"
@@ -5334,12 +5350,12 @@ const Admin = () => {
                               const confirmed = await confirm({
                                 title: 'Assign the official PR number?',
                                 message: `This saves your corrections and assigns ${numberText}.`,
-                                consequence: 'PR numbers are permanent. Once assigned, the request moves into PR monitoring and the number cannot be changed or reused.',
+                                consequence: 'PR numbers are permanent. Once assigned, the request moves into PR monitoring, its details are locked from further edits, and the number cannot be changed or reused.',
                                 confirmLabel: 'Assign PR Number',
                               })
                               if (confirmed) handleSavePrEdit(true)
                             }}
-                            disabled={editPrSaving || !editPrForm.entity_name.trim()}
+                            disabled={editPrSaving || !editPrForm.entity_name.trim() || editPrReasonMissing}
                           >
                             {editPrSaving ? 'Assigning...' : 'Assign PR Number'}
                           </button>
@@ -5350,9 +5366,17 @@ const Admin = () => {
                           </p>
                         )}
                       </div>
+                      )}
                     </>
                   )}
               </Modal>
+            )}
+            {editingPr && editPrShowChanges && (
+              <ChangeHistoryModal
+                data={editPrChanges.data}
+                prLabel={editPrForm?.pr_no || editingPr.pr_no || `#${editingPr.id}`}
+                onClose={() => setEditPrShowChanges(false)}
+              />
             )}
 
             {matchedSupplierCards.length > 0 && (
@@ -5459,12 +5483,12 @@ const Admin = () => {
                 <div><dt>Items</dt><dd>{viewingPr.items_count ?? 0}</dd></div>
                 <div><dt>Grand total</dt><dd>{formatPeso(viewingPr.grand_total)}</dd></div>
                 <div><dt>Created</dt><dd>{viewingPr.created_at ? new Date(viewingPr.created_at).toLocaleString() : 'N/A'}</dd></div>
-                <div><dt>Posted to suppliers</dt><dd>{formatPostingRecord(viewingPr)}</dd></div>
+                <div><dt>Public posting</dt><dd>{formatPostingRecord(viewingPr)}</dd></div>
               </dl>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setViewingPr(null)}>Close</button>
-              <button type="button" className="btn btn-primary" onClick={() => { const pr = viewingPr; setViewingPr(null); setCurrentTab('pr-monitoring'); handleEditPr(pr) }}>Open Review</button>
+              <button type="button" className="btn btn-primary" onClick={() => { const pr = viewingPr; setViewingPr(null); setCurrentTab('pr-monitoring'); handleEditPr(pr) }}>{viewingPr.pr_no ? 'Open Details' : 'Open Review'}</button>
             </div>
           </Modal>
         )}
@@ -5522,63 +5546,6 @@ const Admin = () => {
         )
       })()}
     </div>
-  )
-}
-
-const UploadForm = () => {
-  const [file, setFile] = React.useState(null)
-  const [uploading, setUploading] = React.useState(false)
-  const [result, setResult] = React.useState(null)
-
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!file) return alert('Please choose a file')
-    setUploading(true)
-    setResult(null)
-
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-
-      const res = await apiFetch(`${apiBaseUrl}/api/upload/`, {
-        method: 'POST',
-        body: fd,
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.message || 'Upload failed')
-      setResult(data)
-    } catch (err) {
-      console.error(err)
-      alert('Upload failed: ' + err.message)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="upload-form">
-      <div style={{ marginBottom: 12 }}>
-        <input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn-primary" type="submit" disabled={uploading}>{uploading ? 'Uploading...' : 'Upload and Scan'}</button>
-        <button type="button" className="btn-secondary" onClick={() => { setFile(null); setResult(null) }}>Reset</button>
-      </div>
-
-      {result && (
-        <div style={{ marginTop: 16 }}>
-          <h3>Extracted Fields</h3>
-          <pre style={{ whiteSpace: 'pre-wrap', background: '#f7f7f7', padding: 12 }}>{JSON.stringify(result.fields, null, 2)}</pre>
-          <details style={{ marginTop: 8 }}>
-            <summary>Raw text (truncated)</summary>
-            <pre style={{ whiteSpace: 'pre-wrap', background: '#fff', padding: 12, maxHeight: 300, overflow: 'auto' }}>{(result.rawText || '').slice(0, 2000)}</pre>
-          </details>
-        </div>
-      )}
-    </form>
   )
 }
 
@@ -5977,6 +5944,8 @@ const Buyer = () => {
   }, [apiBaseUrl, username])
 
   React.useEffect(() => {
+    // loadRecords() is also the 30s poll, so it sets its own loading state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRecords()
     const refreshTimer = window.setInterval(loadRecords, 30000)
     return () => window.clearInterval(refreshTimer)
@@ -6262,6 +6231,9 @@ const BuyerPRTimeline = ({ record }) => {
 const BuyerPRStatusCard = ({ record, defaultOpen = false }) => {
   const [open, setOpen] = React.useState(defaultOpen)
   const [showDetails, setShowDetails] = React.useState(false)
+  const [showChanges, setShowChanges] = React.useState(false)
+  // Corrections the BAC made to this PR during review (loaded with the details).
+  const prChanges = usePrChanges(import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000', record.id, { enabled: showDetails })
   const bodyId = React.useId()
   const stage = buyerStageFor(record)
   const statusLabel = record.display_status || BUYER_STAGE_LABELS[stage] || 'Submitted'
@@ -6346,12 +6318,28 @@ const BuyerPRStatusCard = ({ record, defaultOpen = false }) => {
               <p>{record.purpose}</p>
             </div>
           )}
+          {prChanges.data.changed_count > 0 && (
+            <div className="form-actions" style={{ justifyContent: 'flex-start' }}>
+              <span className="supplier-subtext">
+                The BAC Secretariat corrected {prChanges.data.changed_count === 1 ? '1 detail' : `${prChanges.data.changed_count} details`} of this request during review.
+              </span>
+              <ViewChangesButton count={prChanges.data.changed_count} onClick={() => setShowChanges(true)} />
+            </div>
+          )}
+          <EditedBySummary editors={prChanges.data.editors} className="pr-edited-by" />
           <p className="supplier-subtext" style={{ margin: 0 }}>
             Supplier selection and evaluation are handled by the BAC Secretariat and are not shown here.
           </p>
         </div>
       )}
       </div>
+      {showChanges && (
+        <ChangeHistoryModal
+          data={prChanges.data}
+          prLabel={record.pr_no || `Reference #${record.id}`}
+          onClose={() => setShowChanges(false)}
+        />
+      )}
     </article>
   )
 }
@@ -6395,7 +6383,20 @@ const Supplier = () => {
   const [navCollapsed, setNavCollapsed] = React.useState(false)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   const supplierId = user?.supplier_id || authStore.get('supplier_id')
-  const supplierStatus = user?.supplier_status || authStore.get('supplier_status') || 'Pending Review'
+  const [supplierStatus, setSupplierStatus] = React.useState(
+    () => user?.supplier_status || authStore.get('supplier_status') || 'Pending Review',
+  )
+
+  // A profile change can send the account back to BAC review (a category
+  // change or a document resubmission). Update the portal now, and the
+  // stored session so a reload agrees, instead of waiting for the next login.
+  const handleStatusChange = (status) => {
+    if (!status) return
+    setSupplierStatus(status)
+    authStore.set('supplier_status', status)
+    const stored = getStoredUser()
+    if (stored) authStore.set('eProcureUser', JSON.stringify({ ...stored, supplier_status: status }))
+  }
 
   const handleLogout = () => {
     apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
@@ -6408,7 +6409,6 @@ const Supplier = () => {
     window.scrollTo(0, 0)
   }
 
-  const normalizedStatus = (supplierStatus || '').toLowerCase().replace(/\s+/g, '-')
   const isApproved = supplierStatus === 'Approved'
   const isCompliance = supplierStatus === 'For Compliance'
   const isPending = supplierStatus === 'Pending Review'
@@ -6446,7 +6446,7 @@ const Supplier = () => {
         {currentPage === 'opportunities' && (isApproved ? <ProcurementOpportunities supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'quotations' && (isApproved ? <MyQuotations supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
         {currentPage === 'rfqs' && (isApproved ? <SupplierRFQs supplierId={supplierId} apiBaseUrl={apiBaseUrl} /> : <SupplierAccessStatus status={supplierStatus} isRejected={isRejected} isCompliance={isCompliance} isPending={isPending} />)}
-        {currentPage === 'profile' && <CompanyProfile supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
+        {currentPage === 'profile' && <CompanyProfile supplierId={supplierId} apiBaseUrl={apiBaseUrl} onStatusChange={handleStatusChange} />}
         {currentPage === 'notifications' && <SupplierNotifications supplierId={supplierId} apiBaseUrl={apiBaseUrl} />}
         </ErrorBoundary>
       </div>
@@ -6488,28 +6488,59 @@ const SUPPLIER_RFQ_STATUS_LABELS = {
 
 const rfqSupplierStatusLabel = (rfq) => SUPPLIER_RFQ_STATUS_LABELS[rfq?.status] || rfq?.status_label || rfq?.status || 'Unknown'
 
+// "Needs action" order for the supplier: RFQs still awaiting their quotation
+// come first, then submitted ones, then closed.
+const SUPPLIER_RFQ_STATUS_RANK = { sent: 0, quotation_received: 1, completed: 2, draft: 3 }
+
+const SUPPLIER_RFQ_SORTS = [
+  ['received:descending', 'Newest first'],
+  ['received:ascending', 'Oldest first'],
+  ['status:ascending', 'Awaiting quotation first'],
+  ['rfq_no:ascending', 'RFQ No. (A–Z)'],
+  ['rfq_no:descending', 'RFQ No. (Z–A)'],
+  ['pr_no:ascending', 'PR No. (A–Z)'],
+  ['pr_no:descending', 'PR No. (Z–A)'],
+]
+
 const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
   const [rfqs, setRfqs] = React.useState([])
   const [selectedRfqId, setSelectedRfqId] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
-  const loadRFQs = React.useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
-      if (!response.ok) throw new Error('Unable to load RFQs')
-      const data = await response.json()
-      setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
-    } catch (loadError) {
-      setError(loadError.message || 'Unable to load RFQs')
-    } finally {
-      setLoading(false)
-    }
+  // Loading starts true, so nothing needs resetting before the request.
+  React.useEffect(() => {
+    let cancelled = false
+    apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/rfqs/`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Unable to load RFQs')
+        return response.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        setRfqs(Array.isArray(data.rfqs) ? data.rfqs : [])
+        setError('')
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError.message || 'Unable to load RFQs')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [apiBaseUrl, supplierId])
 
-  React.useEffect(() => { loadRFQs() }, [loadRFQs])
+  const table = useTableControls(rfqs, {
+    search: (rfq) => [rfq.rfq_no, rfq.purchase_request?.pr_no, rfq.purchase_request?.office_section, rfq.purchase_request?.entity_name, rfq.purchase_request?.category],
+    sorters: {
+      received: (rfq) => rfq.sent_at || rfq.created_at || '',
+      status: (rfq) => SUPPLIER_RFQ_STATUS_RANK[rfq.status] ?? 9,
+      rfq_no: (rfq) => rfq.rfq_no,
+      pr_no: (rfq) => rfq.purchase_request?.pr_no,
+    },
+    initialSort: { key: 'received', direction: 'descending' },
+    pageSize: 10,
+  })
 
   const selectedRfq = rfqs.find((rfq) => rfq.id === selectedRfqId) || null
 
@@ -6530,8 +6561,27 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
       <div className="supplier-header"><h1>Requests for Quotation</h1><p>Download each RFQ, complete and sign it, then upload the completed document.</p></div>
       {error && <div className="alert alert-error">{error}</div>}
       {loading ? <SkeletonRows count={4} /> : rfqs.length === 0 ? <div className="empty-state"><Send size={48} /><h3>No RFQs received</h3><p>New requests for quotation will appear here.</p></div> : (
+        <>
+        <TableToolbar table={table} searchLabel="Search RFQs" searchPlaceholder="RFQ number, PR number, office or category" noun="RFQ">
+          <div className="data-toolbar-field">
+            <label htmlFor="supplier-rfq-sort">Sort by</label>
+            <select
+              id="supplier-rfq-sort"
+              value={table.sort ? `${table.sort.key}:${table.sort.direction}` : 'received:descending'}
+              onChange={(event) => {
+                const [key, direction] = event.target.value.split(':')
+                table.setSort({ key, direction })
+              }}
+            >
+              {SUPPLIER_RFQ_SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        </TableToolbar>
+        {table.total === 0 ? (
+          <div className="empty-state"><Search size={48} aria-hidden="true" /><h3>No RFQs match your search</h3><p>Try a different RFQ number, PR number or office.</p></div>
+        ) : (
         <div className="rfq-supplier-list">
-          {rfqs.map((rfq) => {
+          {table.rows.map((rfq) => {
             const pr = rfq.purchase_request
             const responded = rfq.status === 'quotation_received' || rfq.status === 'completed'
             return (
@@ -6560,6 +6610,9 @@ const SupplierRFQs = ({ supplierId, apiBaseUrl }) => {
             )
           })}
         </div>
+        )}
+        <Pagination table={table} label="RFQ pages" />
+        </>
       )}
     </div>
   )
@@ -6869,7 +6922,7 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
                 <th scope="col">Office</th>
                 <th scope="col">Purpose</th>
                 <th scope="col">Category</th>
-                <th scope="col" className="num">Budget</th>
+                <th scope="col" className="num">ABC</th>
                 <th scope="col">Status</th>
               </tr>
             </thead>
@@ -6880,7 +6933,7 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
                   <td data-label="Office">{opp.office_section}</td>
                   <td data-label="Purpose" className="cell-purpose">{opp.purpose}</td>
                   <td data-label="Category">{opp.category}</td>
-                  <td data-label="Budget" className="num">{formatPesoAmount(opp.grand_total)}</td>
+                  <td data-label="ABC" className="num">{formatPesoAmount(opp.grand_total)}</td>
                   <td data-label="Status"><span className={`status-badge status-${opp.status}`}>{humanizeStatus(opp.status)}</span></td>
                 </tr>
               ))}
@@ -6936,6 +6989,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
       status: (opp) => opp.status,
       posted: (opp) => opp.posted_at || '',
     },
+    initialSort: { key: 'posted', direction: 'descending' },
     pageSize: 10,
   })
 
@@ -6971,7 +7025,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
                 <SortableHeader table={table} sortKey="office">Office</SortableHeader>
                 <th scope="col">Purpose</th>
                 <SortableHeader table={table} sortKey="category">Category</SortableHeader>
-                <SortableHeader table={table} sortKey="budget">Budget</SortableHeader>
+                <SortableHeader table={table} sortKey="budget">ABC</SortableHeader>
                 <SortableHeader table={table} sortKey="status">Status</SortableHeader>
                 <SortableHeader table={table} sortKey="posted">Posted</SortableHeader>
                 <th scope="col">Action</th>
@@ -6984,7 +7038,7 @@ const ProcurementOpportunities = ({ supplierId, apiBaseUrl }) => {
                   <td data-label="Office">{opp.office_section}</td>
                   <td data-label="Purpose">{opp.purpose}</td>
                   <td data-label="Category">{opp.category}</td>
-                  <td data-label="Budget">{formatPesoAmount(opp.grand_total)}</td>
+                  <td data-label="ABC">{formatPesoAmount(opp.grand_total)}</td>
                   <td data-label="Status">
                     <span className={`status-badge status-${opp.status}`}>{humanizeStatus(opp.status)}</span>
                   </td>
@@ -7078,7 +7132,7 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
             <span>{prDetails?.category}</span>
           </div>
           <div className="detail-row">
-            <label>Grand Total:</label>
+            <label>Approved Budget for the Contract (ABC):</label>
             <span>{formatPesoAmount(prDetails?.grand_total ?? opportunity.grand_total)}</span>
           </div>
           <div className="detail-row">
@@ -7096,17 +7150,15 @@ const OpportunityDetail = ({ opportunity, onBack, apiBaseUrl }) => {
                   <tr>
                     <th>Description</th>
                     <th>Qty</th>
-                    <th>Unit Cost</th>
-                    <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Suppliers see only the ABC, never the per-item estimated
+                      costs, so this table has no price columns. */}
                   {prDetails.items.map((item, idx) => (
-                    <tr key={idx}>
+                    <tr key={item.id ?? idx}>
                       <td>{item.item_description}</td>
                       <td>{item.quantity} {item.unit}</td>
-                      <td>{formatPesoAmount(item.unit_cost)}</td>
-                      <td>{formatPesoAmount(item.total_cost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -7275,7 +7327,7 @@ const getSupplierDocumentStatusMeta = (status) => {
   return { label: 'Pending Re-evaluation', className: 'status-review' }
 }
 
-const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
+const CompanyProfile = ({ supplierId, apiBaseUrl, onStatusChange }) => {
   const [profile, setProfile] = React.useState(null)
   const [categories, setCategories] = React.useState([])
   const [selectedCategories, setSelectedCategories] = React.useState([])
@@ -7287,6 +7339,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
   const [resubmitFiles, setResubmitFiles] = React.useState({})
   const [resubmitting, setResubmitting] = React.useState('')
   const [resubmitConfirm, setResubmitConfirm] = React.useState(null)
+  const [categoryConfirm, setCategoryConfirm] = React.useState(false)
   // The phone is edited as a country plus national digits (see PhoneField),
   // read from whatever was stored: "+63 917 123 4567" or a legacy "0917...".
   const [phone, setPhone] = React.useState({ countryCode: DEFAULT_PHONE_COUNTRY, digits: '' })
@@ -7322,18 +7375,54 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
     if (supplierId) fetchProfile()
   }, [supplierId, apiBaseUrl])
 
-  const handleSave = async (e) => {
+  // After BAC approval, the verified identity (company name, TIN, business
+  // type) is read-only, and a category change goes back to the BAC for review.
+  // The server enforces both; this only reflects them in the form.
+  const isApprovedSupplier = profile?.status === 'Approved'
+  const savedCategoryIds = new Set(profile?.category_ids || [])
+  const categoriesChanged = selectedCategories.length !== savedCategoryIds.size
+    || selectedCategories.some((category) => !savedCategoryIds.has(category.id))
+
+  const cancelEdit = () => {
+    setEditMode(false)
+    setFormData(profile)
+    setSelectedCategories(categories.filter((category) => savedCategoryIds.has(category.id)))
+    setFieldErrors({})
+  }
+
+  const handleSave = (e) => {
     e.preventDefault()
     const phoneCountry = findPhoneCountry(phone.countryCode)
     const tinDigits = parseTin(formData.tin)
     const errors = {}
     if (!phone.digits) errors.contact_phone = 'Phone is required'
     else if (!isValidPhoneNumber(phone.digits, phoneCountry)) errors.contact_phone = `Enter a complete ${phoneCountry.name} number, e.g. +${phoneCountry.dial} ${phoneCountry.example}`
-    if (tinDigits && !isValidTin(tinDigits)) errors.tin = `Enter a 9-digit TIN, with an optional 3- or 5-digit branch code, e.g. ${TIN_EXAMPLE}`
+    if (!isApprovedSupplier && tinDigits && !isValidTin(tinDigits)) errors.tin = `Enter a 9-digit TIN, with an optional 3- or 5-digit branch code, e.g. ${TIN_EXAMPLE}`
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) {
       document.getElementById(errors.tin ? 'tin' : 'contact_phone')?.focus()
       return
+    }
+
+    if (isApprovedSupplier && categoriesChanged) {
+      setCategoryConfirm(true)
+      return
+    }
+    saveProfile()
+  }
+
+  const saveProfile = async () => {
+    const phoneCountry = findPhoneCountry(phone.countryCode)
+    const payload = {
+      ...formData,
+      tin: formatTin(parseTin(formData.tin)),
+      contact_phone: formatPhoneNumber(phone.digits, phoneCountry),
+      category_ids: selectedCategories.map((category) => category.id),
+    }
+    if (isApprovedSupplier) {
+      delete payload.company_name
+      delete payload.tin
+      delete payload.business_type
     }
 
     setSaving(true)
@@ -7343,25 +7432,27 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
       const response = await apiFetch(`${apiBaseUrl}/api/suppliers/${supplierId}/profile/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          tin: formatTin(tinDigits),
-          contact_phone: formatPhoneNumber(phone.digits, phoneCountry),
-          category_ids: selectedCategories.map((category) => category.id),
-        }),
+        body: JSON.stringify(payload),
       })
+      const data = await response.json().catch(() => ({}))
 
       if (response.ok) {
-        const data = await response.json()
-        setProfile(data.supplier)
+        const sentForReview = profile.status !== data.supplier?.status && data.supplier?.status === 'Pending Review'
+        setProfile((current) => ({ ...current, ...data.supplier }))
         setFormData((current) => ({ ...current, ...data.supplier }))
         setEditMode(false)
-        setMessage({ type: 'success', text: 'Profile updated successfully!' })
-        setTimeout(() => setMessage(null), 3000)
+        if (data.supplier?.status && data.supplier.status !== profile.status) onStatusChange?.(data.supplier.status)
+        if (sentForReview) {
+          const emailNote = data.review_email_sent ? ` A confirmation was emailed to ${data.supplier?.email || 'you'}.` : ''
+          setMessage({ type: 'success', text: `Profile saved. Your category changes were sent to the BAC for review, so your status is Pending Review until the BAC approves them.${emailNote}` })
+        } else {
+          setMessage({ type: 'success', text: 'Profile updated successfully!' })
+          setTimeout(() => setMessage(null), 3000)
+        }
       } else {
-        setMessage({ type: 'error', text: 'Failed to update profile' })
+        setMessage({ type: 'error', text: data.error || 'Failed to update profile' })
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'An error occurred' })
     } finally {
       setSaving(false)
@@ -7390,9 +7481,9 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
         status: data.supplier_status || 'Pending Review',
         documents: [data.document, ...(current.documents || [])],
       }))
-      authStore.set('supplier_status', data.supplier_status || 'Pending Review')
+      onStatusChange?.(data.supplier_status || 'Pending Review')
       setResubmitFiles((current) => ({ ...current, [docType]: null }))
-      setMessage({ type: 'success', text: 'Document resubmitted. Your supplier status is now Pending Review.' })
+      setMessage({ type: 'success', text: `Document resubmitted. Your supplier status is now Pending Review.${data.review_email_sent ? ' A confirmation was emailed to you.' : ''}` })
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     } finally {
@@ -7525,6 +7616,12 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
         </div>
       ) : (
         <form className="profile-form" onSubmit={handleSave}>
+          {isApprovedSupplier && (
+            <p className="helper-text profile-locked-note" id="profile-locked-note">
+              Company name, TIN and business type were verified by the BAC and can no longer be changed here.
+              To update them, contact the BAC.
+            </p>
+          )}
           <div className="form-grid">
             <div className="form-group">
               <label htmlFor="company_name">Company Name</label>
@@ -7532,6 +7629,8 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                 type="text"
                 id="company_name"
                 value={formData.company_name || ''}
+                readOnly={isApprovedSupplier}
+                aria-describedby={isApprovedSupplier ? 'profile-locked-note' : undefined}
                 onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
               />
             </div>
@@ -7542,12 +7641,17 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                 type="text"
                 id="business_type"
                 value={formData.business_type || ''}
+                readOnly={isApprovedSupplier}
+                aria-describedby={isApprovedSupplier ? 'profile-locked-note' : undefined}
                 onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
               />
             </div>
 
             <div className="form-group">
               <label htmlFor="tin">TIN Number</label>
+              {isApprovedSupplier ? (
+                <input type="text" id="tin" value={formData.tin || ''} readOnly aria-describedby="profile-locked-note" />
+              ) : (
               <GroupedDigitsInput
                 id="tin"
                 inputMode="numeric"
@@ -7563,6 +7667,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
                   setFieldErrors((current) => ({ ...current, tin: '' }))
                 }}
               />
+              )}
               <FieldError id="tin-error">{fieldErrors.tin}</FieldError>
             </div>
 
@@ -7636,6 +7741,12 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
 
             <div className="form-group full-width">
               <CategorySelector categories={categories} selectedCategories={selectedCategories} onChange={setSelectedCategories} />
+              {isApprovedSupplier && (
+                <p className="helper-text">
+                  Changing your categories sends your account back to the BAC for review. Until the BAC approves
+                  the change, your status is Pending Review and you will not see opportunities.
+                </p>
+              )}
             </div>
           </div>
 
@@ -7643,10 +7754,7 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => {
-                setEditMode(false)
-                setFormData(profile)
-              }}
+              onClick={cancelEdit}
               disabled={saving}
             >
               Cancel
@@ -7656,6 +7764,17 @@ const CompanyProfile = ({ supplierId, apiBaseUrl }) => {
             </button>
           </div>
         </form>
+      )}
+      {categoryConfirm && (
+        <ConfirmDialog
+          title="Send Category Changes for BAC Review"
+          confirmLabel="Save and Send for Review"
+          consequence="Your supplier status returns to Pending Review until the BAC approves your new categories. You will not see opportunities until then."
+          onConfirm={() => { setCategoryConfirm(false); saveProfile() }}
+          onCancel={() => setCategoryConfirm(false)}
+        >
+          <p>Your categories decide which procurement opportunities you are matched to, so the BAC must review the change.</p>
+        </ConfirmDialog>
       )}
       {resubmitConfirm && (
         <ConfirmDialog
@@ -7813,11 +7932,16 @@ const AppLayout = () => {
   const showMainNavbar = !location.pathname.startsWith('/admin') && location.pathname !== '/supplier' && location.pathname !== '/enduser'
   const homeLink = user?.role === 'buyer' ? '/enduser' : '/'
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
+  const [prevPathname, setPrevPathname] = React.useState(location.pathname)
 
-  React.useEffect(() => {
+  // Re-read the stored user and close the mobile nav on navigation. Done
+  // during render (React's "adjust state when a prop changes" pattern)
+  // rather than in an effect, so it never paints a stale frame first.
+  if (prevPathname !== location.pathname) {
+    setPrevPathname(location.pathname)
     setUser(getStoredUser())
     setMobileNavOpen(false)
-  }, [location.pathname])
+  }
 
   React.useEffect(() => {
     const syncUser = () => setUser(getStoredUser())
@@ -7844,6 +7968,7 @@ const AppLayout = () => {
             </Link>
             <div className="navbar-links" id="public-nav-links">
               <Link to={homeLink} className={`nav-item ${location.pathname === homeLink ? 'active' : ''}`} aria-current={location.pathname === homeLink ? 'page' : undefined}><House size={15} aria-hidden="true" /> Home</Link>
+              <Link to="/opportunities" className={`nav-item ${location.pathname === '/opportunities' ? 'active' : ''}`} aria-current={location.pathname === '/opportunities' ? 'page' : undefined}><BriefcaseBusiness size={15} aria-hidden="true" /> Opportunities</Link>
               <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`} aria-current={location.pathname === '/faq' ? 'page' : undefined}><HelpCircle size={15} aria-hidden="true" /> Help & FAQ</Link>
             </div>
           </div>
@@ -7886,6 +8011,8 @@ const AppLayout = () => {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/process" element={<ProcessGuide />} />
+          {/* Public: Purchase Requests the BAC has posted (no sign-in). */}
+          <Route path="/opportunities" element={<Opportunities />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

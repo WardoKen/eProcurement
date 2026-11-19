@@ -113,7 +113,7 @@ describe('supplier portal lists', () => {
     { id: 2, pr_no: '2026-11-002', office_section: 'Library', entity_name: 'CTU', purpose: 'Shelves', category: 'Furniture', grand_total: null, status: 'in_review' },
   ]
 
-  it('opportunities sort by budget and show readable statuses', async () => {
+  it('opportunities sort by ABC and show readable statuses', async () => {
     signIn(supplier)
     installApi({ ...base, 'GET /api/suppliers/7/opportunities/': { json: { opportunities } } })
     const { user } = renderAt('/supplier')
@@ -122,7 +122,7 @@ describe('supplier portal lists', () => {
     const table = await screen.findByRole('table', { name: /procurement opportunities/i })
     expect(within(table).getByText('In Review')).toBeInTheDocument()
     expect(within(table).getByText('₱0.00')).toBeInTheDocument()
-    await user.click(within(within(table).getByRole('columnheader', { name: /budget/i })).getByRole('button'))
+    await user.click(within(within(table).getByRole('columnheader', { name: /^abc/i })).getByRole('button'))
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('2026-11-002')
   })
 
