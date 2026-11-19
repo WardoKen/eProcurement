@@ -12,8 +12,7 @@
 /* Wide tables scroll inside their panel, never the page. */
 .enduser-dashboard .dash-panel { overflow-x: auto; }
 @media (max-width: 720px) {
-  .enduser-dashboard .dash-panel { overflow-x: visible; }
-}
+  .enduser-dashboard .dash-panel { overflow-x: visible; }}
 
 /* ── Submit a Purchase Request ─────────────────────────────────────────── */
 
@@ -39,7 +38,6 @@
   color: var(--ink);
 }
 .dropzone:hover,
-.dropzone.drag-over,
 .dropzone:focus-visible { border-color: var(--navy); border-style: solid; background: var(--navy-tint); }
 .dropzone svg { color: var(--navy); }
 
@@ -116,8 +114,7 @@
 
 @media (max-width: 720px) {
   .buyer-status-viewer > .supplier-header { flex-direction: row; align-items: center; text-align: left; }
-  .buyer-status-viewer > .supplier-header > div { text-align: left; }
-}
+  .buyer-status-viewer > .supplier-header > div { text-align: left; }}
 
 .buyer-timeline-marker { color: var(--paper); }
 .buyer-timeline-node.is-done .buyer-timeline-marker { border-color: var(--tone-success); background: var(--tone-success); }

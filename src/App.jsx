@@ -8,7 +8,6 @@ import {
   Pencil,
   Plus,
   ClipboardList,
-  House,
   LayoutDashboard,
   LogIn,
   LogOut,
@@ -37,7 +36,6 @@ import {
   Send,
   Settings,
   Building2,
-  HelpCircle,
   Inbox,
   FilePen,
   Store,
@@ -60,7 +58,10 @@ import PhoneField from './components/ui/PhoneField'
 import GroupedDigitsInput from './components/ui/GroupedDigitsInput'
 import { DEFAULT_PHONE_COUNTRY, findPhoneCountry, formatPhoneNumber, isValidPhoneNumber, parsePhoneInput } from './lib/phone'
 import { TIN_EXAMPLE, formatTin, isValidTin, parseTin } from './lib/tin'
-import Sidebar from './components/Sidebar'
+import Sidebar, { BrandMark } from './components/Sidebar'
+import ThemeToggle from './components/ui/ThemeToggle'
+import PipelineLine, { PipelineMini } from './components/ui/PipelineLine'
+import { prPipelinePosition } from './lib/pipeline'
 import Breadcrumbs from './components/ui/Breadcrumbs'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastProvider from './components/ui/ToastProvider'
@@ -215,65 +216,65 @@ const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
   }
 }
 
+const HOME_STATION_NOTES = [
+  'An End User uploads the signed PR. The BAC checks it and assigns the PR number.',
+  'The BAC posts the PR as an opportunity for suppliers in its categories.',
+  'Each category group becomes an RFQ, sent to approved suppliers.',
+  'Suppliers fill in, sign and upload their quotations.',
+  'The BAC compares the quotations it received.',
+  'The winning supplier is issued the purchase order.',
+]
+
 const Home = () => (
-  <div className="page-content institutional-home">
-    <section className="procurement-hero">
-      <div className="procurement-hero-copy">
-        <p className="hero-kicker">eProcure / Procurement operations</p>
-        <h1>From Purchase Request to Supplier Quotation.</h1>
-        <p className="hero-lede">A document-led workspace for End Users, BAC Secretariat, and suppliers to move university procurement forward with a clear record at every stage.</p>
-        <div className="hero-actions">
-          <Link to="/login" className="btn-primary">Access eProcure</Link>
-          <Link to="/process" className="hero-text-link">View the process <ChevronRight size={16} /></Link>
+  <div className="home">
+    <section className="home-hero">
+      <h1 className="home-display">Every purchase request, from signed form to purchase order.</h1>
+      <div className="home-hero-side">
+        <p className="home-lede">eProcure is how the Bids and Awards Committee of CTU Tuburan receives Purchase Requests, posts them to suppliers and collects quotations, with a record at every step.</p>
+        <div className="home-actions">
+          <Link to="/opportunities" viewTransition className="btn-primary">Browse open opportunities</Link>
+          <Link to="/process" viewTransition className="btn-outline">View the process</Link>
         </div>
-      </div>
-
-      <div className="procurement-activity-panel" aria-label="eProcure workflow overview">
-        <div className="activity-panel-head">
-          <span className="document-tab">DOCUMENT TRAIL</span>
-          <span className="activity-panel-state">Procurement workflow</span>
-        </div>
-        <div className="activity-document">
-          <div><span className="activity-label">Purchase Request</span><strong>Original document &amp; extracted record</strong></div>
-          <FileText size={24} aria-hidden="true" />
-        </div>
-        <ol className="activity-timeline">
-          <li className="is-complete"><span>01</span><div><strong>Upload &amp; extraction</strong><small>Source document is retained with its OCR record.</small></div></li>
-          <li className="is-current"><span>02</span><div><strong>BAC review</strong><small>Validate details, signatures, and PR information.</small></div></li>
-          <li><span>03</span><div><strong>Supplier matching</strong><small>Group line items by procurement category.</small></div></li>
-          <li><span>04</span><div><strong>RFQ &amp; quotation</strong><small>Issue supplier requests and receive responses.</small></div></li>
-        </ol>
       </div>
     </section>
 
-    <section className="home-role-strip" aria-label="eProcure workspaces">
-      <article><span className="role-index">01</span><div><h2>BAC Secretariat</h2><p>Review documents, manage request queues, verify supplier compliance, and prepare RFQs.</p></div></article>
-      <article><span className="role-index">02</span><div><h2>End User</h2><p>Upload an original signed Purchase Request and follow the progress of the submitted record.</p></div></article>
-      <article><span className="role-index">03</span><div><h2>Supplier</h2><p>Maintain compliance documents, receive RFQs, and submit quotation documents.</p></div></article>
+    <section className="home-line" aria-labelledby="home-line-title">
+      <h2 id="home-line-title" className="sr-only">The procurement line</h2>
+      <PipelineLine variant="explain" notes={HOME_STATION_NOTES} label="The six stages of a procurement" animate />
     </section>
 
-    <div className="home-editorial-grid">
-      <section className="home-process home-process-editorial">
-        <p className="section-kicker">The operating record</p>
-        <h2>One request, a visible chain of work.</h2>
-        <div className="process-steps">
-          <div className="process-step"><span>01</span><div><h3>Original PR</h3><p>The source file remains connected to the structured request record.</p></div></div>
-          <div className="process-step"><span>02</span><div><h3>BAC validation</h3><p>Review extraction, signatures, and the official PR number in one workspace.</p></div></div>
-          <div className="process-step"><span>03</span><div><h3>Category groups</h3><p>A single PR can lead to multiple supplier RFQs without losing the relationship.</p></div></div>
-          <div className="process-step"><span>04</span><div><h3>Quotation record</h3><p>RFQ and quotation identifiers make supplier responses easy to trace.</p></div></div>
-        </div>
-      </section>
+    <section className="home-roles" aria-labelledby="home-roles-title">
+      <h2 id="home-roles-title">Who works on the line</h2>
+      <div className="home-role-grid">
+        <article>
+          <h3>End users</h3>
+          <p>Upload the original signed Purchase Request and follow it through every stage.</p>
+          <Link to="/login" viewTransition>Sign in as an End User</Link>
+        </article>
+        <article>
+          <h3>BAC Secretariat</h3>
+          <p>Review requests, assign PR numbers, verify suppliers, post opportunities and issue RFQs.</p>
+          <Link to="/login" viewTransition>Sign in to the Admin portal</Link>
+        </article>
+        <article>
+          <h3>Suppliers</h3>
+          <p>Keep eligibility documents current, receive RFQs in your categories and submit quotations.</p>
+          <Link to="/supplier/register" viewTransition>Register as a supplier</Link>
+        </article>
+      </div>
+    </section>
 
-      <section className="home-notices official-bulletin">
-        <div className="bulletin-head"><div><p className="section-kicker">BAC bulletin</p><h2>Procurement notices</h2></div><span>OFFICIAL UPDATES</span></div>
-        <ul>
-          <li><span>Supplier registration</span><p>New supplier registration deadline for the FY 2026 procurement cycle.</p></li>
-          <li><span>Compliance reminder</span><p>Service providers must upload current BIR and PhilGEPS certificates.</p></li>
-          <li><span>BAC meeting</span><p>Upcoming BAC meeting to review campus renovation bids on July 3.</p></li>
-        </ul>
-        <Link to="/faq" className="hero-text-link">Need support? Read the FAQ <ChevronRight size={16} /></Link>
-      </section>
-    </div>
+    <section className="home-notices" aria-labelledby="home-notices-title">
+      <div className="home-notices-head">
+        <h2 id="home-notices-title">BAC notices</h2>
+        <Link to="/faq" viewTransition>Read the FAQ</Link>
+      </div>
+      <ul>
+        <li><strong>Supplier registration</strong><p>New supplier registration deadline for the FY 2026 procurement cycle.</p></li>
+        <li><strong>Compliance reminder</strong><p>Service providers must upload current BIR and PhilGEPS certificates.</p></li>
+        <li><strong>BAC meeting</strong><p>Upcoming BAC meeting to review campus renovation bids on July 3.</p></li>
+      </ul>
+    </section>
   </div>
 )
 
@@ -281,7 +282,7 @@ const Footer = () => (
   <footer className="site-footer">
     <div className="site-footer-inner">
       <div className="footer-left">
-        <span className="admin-brand-mark footer-mark" aria-label="eProcure">eP</span>
+        <BrandMark size={32} />
         <h3>Disclaimer</h3>
         <p>
           The BAC team is not responsible for any typographical errors or misinformation presented here. The system
@@ -302,14 +303,12 @@ const Footer = () => (
         <div className="footer-block">
           <h3>Office Address</h3>
           <p>Brgy 8, Poblacion, Tuburan, Cebu, Philippines</p>
-          <a href="https://maps.app.goo.gl/KGsVXS2rXJCGeSge9" className="footer-link">VIEW LOCATION</a>
+          <a href="https://maps.app.goo.gl/KGsVXS2rXJCGeSge9" className="footer-link">View location on the map</a>
         </div>
       </div>
     </div>
 
-    <div className="site-footer-bottom">
-      <div className="site-footer-bottom-inner">Copyright © 2026, 4Loops Boys at the Back.</div>
-    </div>
+    <div className="footer-bottom">Copyright © 2026, 4Loops Boys at the Back.</div>
   </footer>
 )
 
@@ -819,22 +818,18 @@ const Login = () => {
 
   return (
     <div className="login-page">
-      <div className="login-container">
-        <aside className="login-context">
-          <span className="admin-brand-mark login-context-mark" aria-label="eProcure">eP</span>
-          <p className="hero-kicker">Secure system access</p>
-          <h1>University procurement, in one operating record.</h1>
-          <p>Sign in to work within your role-specific eProcure workspace.</p>
-          <div className="login-context-list">
-            <span>End User <small>Submit and monitor Purchase Requests</small></span>
-            <span>BAC Secretariat <small>Review records and manage RFQs</small></span>
-            <span>Supplier <small>Respond to opportunities and quotations</small></span>
-          </div>
-        </aside>
+      <section className="login-context" aria-labelledby="login-context-title">
+        <h2 id="login-context-title" className="login-statement">Procurement for CTU Tuburan, from request to purchase order.</h2>
+        <PipelineLine
+          variant="explain"
+          label="Who acts at each stage"
+          notes={['End User', 'BAC Secretariat', 'BAC Secretariat', 'Supplier', 'BAC', 'BAC and supplier']}
+        />
+      </section>
+      <div className="login-panel">
         <div className="login-form-container">
-          <p className="section-kicker">eProcure access</p>
-          <h2>Sign in to your workspace</h2>
-          <p className="login-form-intro">Select your role, then enter the credentials issued for your account.</p>
+          <h1>Sign in</h1>
+          <p className="login-form-intro">Choose your role, then use the username and password issued for your account.</p>
           {resetSucceeded && (
             <div className="alert alert-success" role="status">
               Your password has been reset. Please log in with your new password.
@@ -914,12 +909,13 @@ const Login = () => {
               <FieldError id="login-password-error">{fieldErrors.password}</FieldError>
             </div>
 
-            <div className="form-actions login-actions login-main-actions">
-              <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
-              <button type="button" className="btn-outline" onClick={() => navigate('/forgot-password')}>Forgot Password</button>
-              <button type="submit" className="btn-login" disabled={submitting}>{submitting ? 'Signing in…' : 'Log In'}</button>
-            </div>
+            <button type="submit" className="btn-login login-submit" disabled={submitting}>{submitting ? 'Signing in…' : 'Log In'}</button>
+            <button type="button" className="btn-outline login-forgot" onClick={() => navigate('/forgot-password')}>Forgot Password</button>
           </form>
+          <div className="login-register">
+            <p>New supplier? Register to receive RFQs in your categories.</p>
+            <button type="button" className="btn-secondary" onClick={() => navigate('/supplier/register')}>Register as Supplier</button>
+          </div>
         </div>
       </div>
     </div>
@@ -7957,27 +7953,24 @@ const AppLayout = () => {
     <div className="app">
       <a className="skip-link" href="#main-content">Skip to main content</a>
       {showMainNavbar && (
-        <nav className={`navbar ${mobileNavOpen ? 'mobile-open' : ''}`} aria-label="Main">
-          <div className="navbar-left navbar-brand-row">
-            <Link to="/" className="navbar-logo-link">
-              <span className="admin-brand-mark" aria-label="eProcure">eP</span>
-            </Link>
-            <Link to="/" className="public-wordmark">
-              <strong>eProcure</strong>
-              <span>Procurement Operations</span>
-            </Link>
-            <div className="navbar-links" id="public-nav-links">
-              <Link to={homeLink} className={`nav-item ${location.pathname === homeLink ? 'active' : ''}`} aria-current={location.pathname === homeLink ? 'page' : undefined}><House size={15} aria-hidden="true" /> Home</Link>
-              <Link to="/opportunities" className={`nav-item ${location.pathname === '/opportunities' ? 'active' : ''}`} aria-current={location.pathname === '/opportunities' ? 'page' : undefined}><BriefcaseBusiness size={15} aria-hidden="true" /> Opportunities</Link>
-              <Link to="/faq" className={`nav-item ${location.pathname === '/faq' ? 'active' : ''}`} aria-current={location.pathname === '/faq' ? 'page' : undefined}><HelpCircle size={15} aria-hidden="true" /> Help & FAQ</Link>
-            </div>
-          </div>
-
-          <div className="navbar-right">
+        <header className="topbar topbar-public">
+          <Link to="/" className="topbar-brand" viewTransition>
+            <BrandMark />
+            <span className="topbar-name">eProcure</span>
+            <span className="topbar-portal">Bids and Awards Committee</span>
+          </Link>
+          <nav className={`public-links ${mobileNavOpen ? 'is-open' : ''}`} id="public-nav-links" aria-label="Main">
+            <Link to={homeLink} viewTransition className="index-item" aria-current={location.pathname === homeLink ? 'page' : undefined}>Home</Link>
+            <Link to="/opportunities" viewTransition className="index-item" aria-current={location.pathname === '/opportunities' ? 'page' : undefined}>Opportunities</Link>
+            <Link to="/process" viewTransition className="index-item" aria-current={location.pathname === '/process' ? 'page' : undefined}>How it works</Link>
+            <Link to="/faq" viewTransition className="index-item" aria-current={location.pathname === '/faq' ? 'page' : undefined}>Help & FAQ</Link>
+          </nav>
+          <div className="topbar-end">
+            <ThemeToggle />
             {user ? (
               <button
                 type="button"
-                className="login-link"
+                className="topbar-logout"
                 onClick={() => {
                   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
                   apiFetch(`${apiBaseUrl}/api/logout/`, { method: 'POST' }).catch(() => {})
@@ -7986,27 +7979,27 @@ const AppLayout = () => {
                   navigate('/login')
                 }}
               >
-                <LogOut size={15} />
-                Log Out
+                <LogOut size={15} aria-hidden="true" />
+                <span>Log Out</span>
               </button>
-            ) : (
-              <Link to="/login" className="login-link"><LogIn size={15} /> Log In</Link>
+            ) : location.pathname === '/login' ? null : (
+              <Link to="/login" viewTransition className="topbar-login"><LogIn size={15} aria-hidden="true" /> <span className="topbar-login-text">Log In</span></Link>
             )}
             <button
               type="button"
-              className="navbar-menu-toggle"
+              className="topbar-menu"
               onClick={() => setMobileNavOpen((open) => !open)}
               aria-expanded={mobileNavOpen}
               aria-controls="public-nav-links"
               aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
             >
-              {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+              {mobileNavOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
             </button>
           </div>
-        </nav>
+        </header>
       )}
 
-      <main id="main-content" tabIndex={-1}>
+      <main id="main-content" tabIndex={-1} className={showMainNavbar ? 'view-page' : undefined}>
         <ErrorBoundary resetKey={location.pathname} homeHref="/">
         <Routes>
           <Route path="/" element={<Home />} />

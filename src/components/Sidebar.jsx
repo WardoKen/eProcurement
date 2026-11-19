@@ -1,24 +1,31 @@
-import { useState } from 'react'
-import { Menu, PanelLeftClose, PanelLeftOpen, LogOut, X, Lock } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Menu, LogOut, X, Lock } from 'lucide-react'
+import CommandPalette, { CommandPaletteTrigger } from './ui/CommandPalette'
+import { useCommandPaletteHotkey } from '../lib/commandPalette'
+import ThemeToggle from './ui/ThemeToggle'
+import { withViewTransition } from '../lib/viewTransition'
 
-// Shared portal shell for the Admin, End User and Supplier portals: a navy
-// masthead across the top (system name, office, signed-in user, log out)
-// and a light sidebar with the portal's navigation grouped by task.
-// Each caller supplies its own nav items; this component owns the chrome.
+// Shared portal shell for the Admin, End User and Supplier portals
+// (DESIGN.md, "Shell"): a top bar (name, portal, command palette, theme,
+// signed-in user, log out) and a horizontal index of the portal's pages,
+// grouped by task. Below 960px the index becomes a drawer.
 //
-// On phones the sidebar becomes a drawer opened from the masthead menu
-// button; `mobileOpen` is local because it only matters at that width.
-//
-// `groups` shape: [{ section: 'Procurement' | undefined, items: [{ id, label, icon, count?, locked?, lockedReason? }] }]
+// `groups` shape: [{ section, items: [{ id, label, icon, count?, locked?, lockedReason? }] }]
 // `count` shows how many records in that section are waiting on the user.
 // `locked` items stay visible and selectable (they open an explanation of
 // why access is pending) but are marked so users know before choosing them.
+// `commands` adds records (PRs, suppliers, RFQs) to the command palette;
+// every page in `groups` is always in it.
+//
+// The component keeps its old name so every portal imports it unchanged.
 
-export const BrandMark = ({ size = 28 }) => (
+export const BrandMark = ({ size = 30 }) => (
   <svg className="brand-mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <rect width="32" height="32" rx="3" fill="currentColor" />
-    <path d="M7 11.5a1.5 1.5 0 0 1 1.5-1.5h5l2 2h8a1.5 1.5 0 0 1 1.5 1.5V22.5A1.5 1.5 0 0 1 23.5 24h-15A1.5 1.5 0 0 1 7 22.5z" fill="#D9B872" />
-    <path d="M11 17h10M11 20h7" stroke="#1B3A5C" strokeWidth="1.6" strokeLinecap="round" />
+    <rect width="32" height="32" rx="8" fill="var(--jade)" />
+    <path d="M6 20h20" stroke="var(--on-jade)" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="10" cy="20" r="3.4" fill="var(--jade)" stroke="var(--on-jade)" strokeWidth="2.4" />
+    <circle cx="22" cy="20" r="3.4" fill="var(--marigold)" stroke="var(--marigold)" strokeWidth="2.4" />
+    <path d="M10 11.5h12" stroke="var(--on-jade)" strokeOpacity="0.55" strokeWidth="2.4" strokeLinecap="round" />
   </svg>
 )
 
@@ -27,109 +34,114 @@ const Sidebar = ({
   groups,
   activeId,
   onSelect,
-  navCollapsed,
-  onToggleNav,
   userPrimary,
   userSecondary,
   onLogout,
+  commands = [],
 }) => {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useCommandPaletteHotkey(setPaletteOpen)
+
+  const go = (id) => {
+    setMobileOpen(false)
+    withViewTransition(() => onSelect(id))
+  }
+
+  const paletteItems = useMemo(() => [
+    ...groups.flatMap((group) => group.items.map((item) => ({
+      id: `page-${item.id}`,
+      group: 'Pages',
+      kind: 'page',
+      label: item.label,
+      detail: group.section,
+      meta: item.count > 0 ? `${item.count} waiting` : item.locked ? 'Locked' : '',
+      onSelect: () => withViewTransition(() => onSelect(item.id)),
+    }))),
+    ...commands,
+  ], [groups, commands, onSelect])
 
   return (
     <>
-      <header className="portal-masthead">
-        <div className="portal-masthead-brand">
+      <header className="topbar">
+        <div className="topbar-brand">
           <BrandMark />
-          <span className="portal-masthead-name">eProcure</span>
-          <span className="portal-masthead-office">Bids and Awards Committee</span>
-          <span className="portal-masthead-portal">{portalLabel}</span>
+          <span className="topbar-name">eProcure</span>
+          <span className="topbar-portal">{portalLabel}</span>
         </div>
-        <div className="portal-masthead-user">
-          <span className="sr-only">Signed in as </span>
-          <span className="portal-user-name">{userPrimary}</span>
-          {userSecondary && <span className="portal-user-detail">{userSecondary}</span>}
+        <div className="topbar-search">
+          <CommandPaletteTrigger onOpen={() => setPaletteOpen(true)} label="Jump to a page or record" />
         </div>
-        <button type="button" className="portal-logout" onClick={onLogout}>
-          <LogOut size={15} aria-hidden="true" />
-          <span>Log Out</span>
-        </button>
-        <button
-          type="button"
-          className="admin-mobile-toggle"
-          onClick={() => setMobileOpen((open) => !open)}
-          aria-expanded={mobileOpen}
-          aria-controls="admin-mobile-panel"
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-        >
-          {mobileOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
-        </button>
-      </header>
-
-      <nav className={`admin-navbar ${mobileOpen ? 'mobile-open' : ''}`} aria-label={`${portalLabel} navigation`}>
-        <div className="admin-mobile-panel" id="admin-mobile-panel">
-          <div className="admin-nav-scroll">
-            {groups.map((group, groupIndex) => {
-              const headingId = group.section ? `nav-section-${portalLabel}-${groupIndex}`.replace(/\s+/g, '-') : undefined
-              return (
-                <div
-                  className="admin-nav-items"
-                  key={group.section || groupIndex}
-                  role={group.section ? 'group' : undefined}
-                  aria-labelledby={headingId}
-                >
-                  {group.section && (
-                    <span className="admin-nav-section-label" id={headingId}>{group.section}</span>
-                  )}
-                  {group.items.map((item) => {
-                    const IconComponent = item.icon
-                    const isActive = activeId === item.id
-                    return (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className={`admin-nav-item ${isActive ? 'active' : ''}`}
-                        aria-current={isActive ? 'page' : undefined}
-                        onClick={() => {
-                          onSelect(item.id)
-                          setMobileOpen(false)
-                        }}
-                        title={item.locked ? `${item.label} (${item.lockedReason || 'locked'})` : item.label}
-                      >
-                        <IconComponent size={16} aria-hidden="true" />
-                        <span className="admin-nav-label">{item.label}</span>
-                        {item.count > 0 && (
-                          <span className="nav-count">
-                            {item.count}
-                            <span className="sr-only"> waiting</span>
-                          </span>
-                        )}
-                        {item.locked && (
-                          <>
-                            <Lock size={12} className="nav-lock" aria-hidden="true" />
-                            <span className="sr-only">{` (${item.lockedReason || 'locked'})`}</span>
-                          </>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })}
+        <div className="topbar-end">
+          <ThemeToggle />
+          <div className="topbar-user">
+            <span className="sr-only">Signed in as </span>
+            <span className="topbar-user-name">{userPrimary}</span>
+            {userSecondary && <span className="topbar-user-detail">{userSecondary}</span>}
           </div>
-
+          <button type="button" className="topbar-logout" onClick={onLogout}>
+            <LogOut size={15} aria-hidden="true" />
+            <span>Log Out</span>
+          </button>
           <button
             type="button"
-            className="admin-nav-toggle"
-            onClick={onToggleNav}
-            aria-expanded={!navCollapsed}
-            aria-label={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
-            title={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            className="topbar-menu"
+            onClick={() => setMobileOpen((open) => !open)}
+            aria-expanded={mobileOpen}
+            aria-controls="admin-mobile-panel"
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
           >
-            {navCollapsed ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}
-            <span className="admin-nav-label">Collapse menu</span>
+            {mobileOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
           </button>
         </div>
+      </header>
+
+      <nav className={`index-nav ${mobileOpen ? 'is-open' : ''}`} aria-label={`${portalLabel} navigation`}>
+        <div className="index-nav-inner" id="admin-mobile-panel">
+          {groups.map((group, groupIndex) => {
+            const headingId = group.section ? `nav-section-${portalLabel}-${groupIndex}`.replace(/\s+/g, '-') : undefined
+            return (
+              <div
+                className="index-group"
+                key={group.section || groupIndex}
+                role={group.section ? 'group' : undefined}
+                aria-labelledby={headingId}
+              >
+                {group.section && <span className="index-group-label" id={headingId}>{group.section}</span>}
+                {group.items.map((item) => {
+                  const isActive = activeId === item.id
+                  return (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={`index-item ${isActive ? 'is-active' : ''} ${item.locked ? 'is-locked' : ''}`}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={() => go(item.id)}
+                      title={item.locked ? `${item.label} (${item.lockedReason || 'locked'})` : undefined}
+                    >
+                      <span className="index-label">{item.label}</span>
+                      {item.count > 0 && (
+                        <span className="nav-count">
+                          {item.count}
+                          <span className="sr-only"> waiting</span>
+                        </span>
+                      )}
+                      {item.locked && (
+                        <>
+                          <Lock size={12} className="nav-lock" aria-hidden="true" />
+                          <span className="sr-only">{` (${item.lockedReason || 'locked'})`}</span>
+                        </>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
       </nav>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
     </>
   )
 }

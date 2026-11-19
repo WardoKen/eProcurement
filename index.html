@@ -4,12 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1B3A5C" />
+    <meta name="theme-color" content="#006D4F" />
     <meta name="description" content="eProcure, the procurement portal of the Bids and Awards Committee." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,600;7..72,700&family=Public+Sans:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" />
     <title>eProcure | Bids and Awards Committee</title>
+    <script>
+      // Apply a stored light/dark choice before first paint (see src/lib/viewTransition.js).
+      try { var t = localStorage.getItem('eprocure-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

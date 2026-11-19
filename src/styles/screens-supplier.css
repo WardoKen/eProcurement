@@ -178,5 +178,4 @@
   .rfq-supplier-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "body" "actions"; }
   .rfq-supplier-card .form-actions { justify-content: flex-start; }
   .profile-row, .detail-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .cell-purpose { min-width: 0; }
-}
+  .cell-purpose { min-width: 0; }}

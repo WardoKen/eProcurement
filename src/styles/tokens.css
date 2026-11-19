@@ -1,137 +1,245 @@
 /* ==========================================================================
-   eProcure design tokens. See DESIGN.md for the rationale and contrast table.
+   eProcure tokens: the Line identity. See DESIGN.md for the rationale and
+   the contrast table. Every color is OKLCH.
 
-   index.css and design-system.css are loaded inside `@layer legacy`, so any
-   unlayered rule in src/styles/ wins over them regardless of specificity.
-   The "legacy aliases" block at the bottom points the old variable names at
-   the new palette, which restyles screens that have not been rewritten yet.
+   Theme: light by default, dark from the system setting, and either one
+   forced by <html data-theme="light|dark"> (the top bar toggle).
    ========================================================================== */
 
 :root {
-  /* Color */
-  --navy: #1B3A5C;
-  --navy-hover: #142C47;
-  --navy-tint: #E4EAF1;
-  --manila: #D9B872;
-  --manila-deep: #8A6722;
-  --manila-tint: #F6EEDC;
-  --workspace: #E9E7E1;
-  --sidebar: #F5F4F0;
-  --paper: #FFFFFF;
-  --paper-sunken: #F2F0EB;
-  --ink: #1C2430;
-  --ink-2: #4D5664;
-  --ink-3: #5C6470;
-  --rule: #D3CFC6;
-  --rule-strong: #B9B4A8;
-  --input-border: #7D8590;
+  color-scheme: light;
 
-  --tone-neutral: #4F5866;   --tone-neutral-fill: #E9ECF0;
-  --tone-review: #7A4F00;    --tone-review-fill: #FAEBCB;
-  --tone-progress: #1A5296;  --tone-progress-fill: #E2ECF8;
-  --tone-success: #1D6136;   --tone-success-fill: #DCEFE1;
-  --tone-danger: #9B2318;    --tone-danger-fill: #F9E1DD;
+  /* Ground and text */
+  --paper: oklch(0.985 0.004 165);
+  --surface: oklch(1 0 0);
+  --sunk: oklch(0.955 0.009 165);
+  --rule: oklch(0.885 0.012 165);
+  --input-line: oklch(0.62 0.02 170);
+  --ink: oklch(0.23 0.02 170);
+  --ink-2: oklch(0.44 0.02 170);
+  --ink-3: oklch(0.53 0.018 170);
 
-  /* Type */
-  --font-serif: 'Literata', 'Iowan Old Style', Georgia, serif;
-  --font-sans: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
-  --text-xs: 12px;
-  --text-sm: 12.5px;
-  --text-table: 13.5px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 26px;
-  --leading-tight: 1.25;
-  --leading-body: 1.5;
-  --measure: 72ch;
+  /* Primary: jade. The institution and every primary action. */
+  --jade: oklch(0.47 0.105 168);
+  --jade-deep: oklch(0.36 0.085 168);
+  --jade-wash: oklch(0.945 0.03 168);
+  --on-jade: oklch(1 0 0);
 
-  /* Space */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 48px;
+  /* Accent: marigold. Now, waiting on you, focus. */
+  --marigold: oklch(0.83 0.155 82);
+  --marigold-ink: oklch(0.47 0.1 70);
+  --marigold-wash: oklch(0.95 0.05 90);
+  --marigold-halo: oklch(0.83 0.155 82 / 0.32);
 
-  /* Size and shape */
-  --control-h: 36px;
+  /* Status */
+  --danger: oklch(0.52 0.19 27);
+  --danger-wash: oklch(0.95 0.03 27);
+  --info: oklch(0.48 0.09 235);
+  --info-wash: oklch(0.95 0.02 235);
+
+  /* Overlay */
+  --scrim: oklch(0.2 0.02 170 / 0.45);
+  --shadow-float: 0 1px 2px oklch(0.2 0.02 170 / 0.08), 0 16px 40px -8px oklch(0.2 0.02 170 / 0.22);
+
+  /* Type: one variable family, Archivo (wdth 62..125, wght 100..900) */
+  --font: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --wdth-display: 112;
+  --wdth-title: 110;
+  --wdth-section: 106;
+  --wdth-data: 88;
+  --text-display: clamp(44px, 6vw, 84px);
+  --text-title: clamp(30px, 3.4vw, 44px);
+  --text-section: 22px;
+  --text-sub: 16px;
+  --text-body: 15px;
+  --text-data: 13.5px;
+  --text-small: 12.5px;
+  --measure: 68ch;
+
+  /* Space: 4px base, with a deliberate jump between items and bands */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 72px;
+  --gutter: 40px;
+
+  /* Shape and size */
+  --radius-control: 6px;
+  --radius-float: 12px;
+  --radius-pill: 999px;
+  --control-h: 38px;
   --control-h-sm: 32px;
-  --control-h-lg: 40px;
-  --row-h: 40px;
-  --radius-control: 2px;
-  --radius-panel: 4px;
-  --radius-dialog: 6px;
-  --shadow-overlay: 0 12px 32px rgba(28, 36, 48, 0.18), 0 2px 6px rgba(28, 36, 48, 0.08);
-  --masthead-h: 52px;
-  --sidebar-w: 240px;
-  --sidebar-w-collapsed: 64px;
-  --content-max: 1320px;
+  --row-h: 36px;
+  --topbar-h: 56px;
+  --content-max: 1440px;
 
-  /* Focus and motion */
-  --focus: 2px solid var(--navy);
-  --focus-on-dark: 2px solid var(--manila);
-  --focus-offset: 2px;
+  /* Motion */
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --duration: 160ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 120ms;
+  --t: 200ms;
+  --t-slow: 420ms;
 
-  /* Legacy aliases: old names used throughout index.css. */
-  --primary: var(--navy);
-  --primary-soft: var(--navy-hover);
-  --teal: var(--navy);
-  --teal-soft: var(--navy-hover);
-  --teal-tint: var(--navy-tint);
-  --gold: var(--manila-deep);
-  --gold-hover: var(--manila-deep);
-  --gold-tint: var(--manila-tint);
-  --on-gold: #FFFFFF;
+  /* Legacy names still used by screens outside the redesign scope. They
+     resolve to the Line palette so those screens stay consistent. */
+  --navy: var(--jade);
+  --navy-hover: var(--jade-deep);
+  --navy-tint: var(--jade-wash);
+  --manila: var(--marigold);
+  --manila-deep: var(--marigold-ink);
+  --manila-tint: var(--marigold-wash);
+  --workspace: var(--paper);
+  --sidebar: var(--paper);
+  --paper-sunken: var(--sunk);
+  --rule-strong: var(--input-line);
+  --input-border: var(--input-line);
+  --tone-neutral: var(--ink-2);
+  --tone-neutral-fill: var(--sunk);
+  --tone-review: var(--marigold-ink);
+  --tone-review-fill: var(--marigold-wash);
+  --tone-progress: var(--info);
+  --tone-progress-fill: var(--info-wash);
+  --tone-success: var(--jade);
+  --tone-success-fill: var(--jade-wash);
+  --tone-danger: var(--danger);
+  --tone-danger-fill: var(--danger-wash);
+  --font-serif: var(--font);
+  --font-sans: var(--font);
+  --primary: var(--jade);
+  --primary-soft: var(--jade-deep);
+  --teal: var(--jade);
+  --teal-soft: var(--jade-deep);
+  --teal-tint: var(--jade-wash);
+  --gold: var(--marigold-ink);
+  --gold-hover: var(--marigold-ink);
+  --gold-tint: var(--marigold-wash);
+  --on-gold: var(--ink);
   --navy-ink: var(--ink);
-  --navy-soft: var(--navy-hover);
-  --ink-legacy: var(--ink);
-  --paper-legacy: var(--workspace);
+  --navy-soft: var(--jade-deep);
   --line: var(--rule);
-  --bg: var(--workspace);
-  --card: var(--paper);
-  --surface: var(--paper);
+  --bg: var(--paper);
+  --card: var(--surface);
   --border: var(--rule);
-  --border-strong: var(--rule-strong);
-  --border-input: var(--input-border);
+  --border-strong: var(--input-line);
+  --border-input: var(--input-line);
   --text: var(--ink);
   --text-secondary: var(--ink-2);
   --text-muted: var(--ink-3);
   --muted: var(--ink-2);
-  --ring: rgba(27, 58, 92, 0.25);
-  --success: var(--tone-success);
-  --success-tint: var(--tone-success-fill);
-  --warning: var(--tone-review);
-  --warning-tint: var(--tone-review-fill);
-  --danger: var(--tone-danger);
-  --danger-tint: var(--tone-danger-fill);
-  --info: var(--tone-progress);
-  --info-tint: var(--tone-progress-fill);
-  --neutral: var(--tone-neutral);
-  --neutral-tint: var(--tone-neutral-fill);
+  --ring: var(--marigold-halo);
+  --success: var(--jade);
+  --success-tint: var(--jade-wash);
+  --warning: var(--marigold-ink);
+  --warning-tint: var(--marigold-wash);
+  --info-tint: var(--info-wash);
+  --danger-tint: var(--danger-wash);
+  --neutral: var(--ink-2);
+  --neutral-tint: var(--sunk);
   --radius-sm: var(--radius-control);
-  --radius-md: var(--radius-panel);
-  --radius-lg: var(--radius-panel);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-control);
+  --radius-panel: 0;
+  --radius-dialog: var(--radius-float);
   --shadow-sm: none;
   --shadow-md: none;
-  --shadow-lg: var(--shadow-overlay);
-  --focus-ring: var(--navy);
-  --focus-ring-on-dark: var(--manila);
-  --focus-ring-width: 2px;
-  --focus-ring-offset: 2px;
-  --font-size-xs: var(--text-xs);
-  --font-size-sm: var(--text-sm);
-  --font-size-md: var(--text-md);
-  --font-size-lg: var(--text-lg);
-  --font-size-xl: var(--text-xl);
-  --font-size-2xl: var(--text-2xl);
-  --line-height-tight: var(--leading-tight);
-  --line-height-body: var(--leading-body);
-  --duration-fast: 120ms;
-  --duration-base: var(--duration);
+  --shadow-lg: var(--shadow-float);
+  --shadow-overlay: var(--shadow-float);
+  --focus-ring: var(--marigold);
+  --focus-ring-on-dark: var(--marigold);
+  --text-xs: var(--text-small);
+  --text-sm: var(--text-small);
+  --text-table: var(--text-data);
+  --text-md: 14px;
+  --text-lg: var(--text-sub);
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --font-size-xs: var(--text-small);
+  --font-size-sm: var(--text-small);
+  --font-size-md: 14px;
+  --font-size-lg: var(--text-sub);
+  --font-size-xl: 20px;
+  --font-size-2xl: 26px;
+  --leading-tight: 1.2;
+  --leading-body: 1.5;
+  --line-height-tight: 1.2;
+  --line-height-body: 1.5;
+  --space-1: var(--s-1);
+  --space-2: var(--s-2);
+  --space-3: var(--s-3);
+  --space-4: var(--s-4);
+  --space-5: 20px;
+  --space-6: var(--s-5);
+  --space-7: var(--s-6);
+  --space-8: var(--s-7);
+  --duration: var(--t);
+  --duration-fast: var(--t-fast);
+  --duration-base: var(--t);
   --ease-standard: var(--ease);
+  --focus: 2px solid var(--marigold);
+  --focus-offset: 2px;
+  --masthead-h: var(--topbar-h);
+}
+
+/* Dark: a deep green black, so jade reads as light and marigold keeps its
+   meaning. Applied from the system setting unless light is forced, or
+   forced with data-theme="dark". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: oklch(0.195 0.012 170);
+    --surface: oklch(0.225 0.013 170);
+    --sunk: oklch(0.235 0.014 170);
+    --rule: oklch(0.34 0.015 170);
+    --input-line: oklch(0.55 0.015 170);
+    --ink: oklch(0.94 0.008 165);
+    --ink-2: oklch(0.76 0.015 165);
+    --ink-3: oklch(0.66 0.015 165);
+    --jade: oklch(0.74 0.12 168);
+    --jade-deep: oklch(0.8 0.11 168);
+    --jade-wash: oklch(0.3 0.05 168);
+    --on-jade: oklch(0.195 0.012 170);
+    --marigold-ink: oklch(0.85 0.14 82);
+    --marigold-wash: oklch(0.32 0.06 82);
+    --danger: oklch(0.72 0.15 27);
+    --danger-wash: oklch(0.3 0.06 27);
+    --info: oklch(0.76 0.09 235);
+    --info-wash: oklch(0.3 0.04 235);
+    --scrim: oklch(0.08 0.01 170 / 0.6);
+    --shadow-float: 0 1px 2px oklch(0 0 0 / 0.3), 0 20px 48px -8px oklch(0 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: oklch(0.195 0.012 170);
+  --surface: oklch(0.225 0.013 170);
+  --sunk: oklch(0.235 0.014 170);
+  --rule: oklch(0.34 0.015 170);
+  --input-line: oklch(0.55 0.015 170);
+  --ink: oklch(0.94 0.008 165);
+  --ink-2: oklch(0.76 0.015 165);
+  --ink-3: oklch(0.66 0.015 165);
+  --jade: oklch(0.74 0.12 168);
+  --jade-deep: oklch(0.8 0.11 168);
+  --jade-wash: oklch(0.3 0.05 168);
+  --on-jade: oklch(0.195 0.012 170);
+  --marigold-ink: oklch(0.85 0.14 82);
+  --marigold-wash: oklch(0.32 0.06 82);
+  --danger: oklch(0.72 0.15 27);
+  --danger-wash: oklch(0.3 0.06 27);
+  --info: oklch(0.76 0.09 235);
+  --info-wash: oklch(0.3 0.04 235);
+  --scrim: oklch(0.08 0.01 170 / 0.6);
+  --shadow-float: 0 1px 2px oklch(0 0 0 / 0.3), 0 20px 48px -8px oklch(0 0 0 / 0.55);
+}
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+    --row-h: 44px;
+  }
 }

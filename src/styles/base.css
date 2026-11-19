@@ -1,151 +1,219 @@
-/* Element defaults.
+/* Element defaults for the Line identity (see DESIGN.md).
 
-   Most of this file is in `@layer base`, below `@layer legacy`, so class
-   rules in index.css keep their layout (e.g. search inputs with icon
-   padding) while picking up the new tokens. The few rules after the layer
-   block are unlayered on purpose: page font, page background and heading
-   face must win everywhere. */
+   The element defaults sit in `@layer base`, below `@layer legacy`, so a
+   legacy class rule that still serves an out-of-scope screen can refine
+   them. The rules after the layer block are unlayered on purpose: the page
+   ground, the typeface and focus must win everywhere. */
 
 @layer base {
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
 body {
   margin: 0;
-  background: var(--workspace);
-  background-image: none;
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: var(--text-md);
-  line-height: var(--leading-body);
-  font-feature-settings: 'kern';
+  font-size: var(--text-body);
+  line-height: 1.5;
+  font-kerning: normal;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-button, input, select, textarea { font-family: inherit; }
+*, *::before, *::after { box-sizing: border-box; }
 
-/* Headings inherit their color, so text on navy panels stays light. */
+button, input, select, textarea { font: inherit; color: inherit; }
+
 h1, h2, h3, h4, h5, h6 {
-  letter-spacing: normal;
+  margin: 0;
+  color: inherit;
   text-transform: none;
+  text-wrap: balance;
 }
 
-h1, h2 {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-optical-sizing: auto;
+h1 {
+  font-size: var(--text-title);
+  line-height: 1;
+  font-weight: 780;
+  font-variation-settings: 'wdth' var(--wdth-title);
+  letter-spacing: -0.025em;
 }
 
-h1 { font-size: var(--text-2xl); line-height: 1.23; letter-spacing: -0.01em; }
-h2 { font-size: var(--text-xl); line-height: 1.3; }
-h3, h4, h5, h6 { font-family: var(--font-sans); font-weight: 650; }
-h3 { font-size: var(--text-lg); line-height: 1.375; }
-h4 { font-size: var(--text-md); line-height: 1.4; }
+h2 {
+  font-size: var(--text-section);
+  line-height: 1.15;
+  font-weight: 720;
+  font-variation-settings: 'wdth' var(--wdth-section);
+  letter-spacing: -0.015em;
+}
 
-p { max-width: var(--measure); }
+h3 { font-size: var(--text-sub); line-height: 1.3; font-weight: 650; }
+h4, h5, h6 { font-size: 14px; line-height: 1.4; font-weight: 650; }
+
+p { margin: 0; max-width: var(--measure); text-wrap: pretty; }
 td p, th p, li p, label p, dd p, .modal-body p { max-width: none; }
 
-a { color: var(--navy); text-underline-offset: 2px; }
-a:hover { color: var(--navy-hover); }
+a { color: var(--jade-deep); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
 
 strong, b { font-weight: 650; }
+small { font-size: var(--text-small); }
 
-code, kbd, samp { font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+code, kbd, samp { font-family: var(--font); font-variant-numeric: tabular-nums; }
 
-::selection { background: var(--navy-tint); color: var(--ink); }
+img, svg, video { max-width: 100%; }
 
-/* Focus: one visible style for every interactive element. */
-:where(button, a, input, select, textarea, summary, [tabindex], [role="button"]):focus-visible {
-  outline: var(--focus);
-  outline-offset: var(--focus-offset);
-  box-shadow: none;
-}
+::selection { background: var(--marigold); color: oklch(0.23 0.02 170); }
 
-:where(.portal-masthead, .navbar) :where(button, a, [tabindex]):focus-visible {
-  outline: var(--focus-on-dark);
-}
+hr { border: 0; border-top: 1px solid var(--rule); margin: var(--s-5) 0; }
+
+table { font-variant-numeric: tabular-nums; border-collapse: collapse; }
 
 /* Form controls */
 :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea) {
   min-height: var(--control-h);
-  padding: 7px 10px;
-  border: 1px solid var(--input-border);
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--input-line);
   border-radius: var(--radius-control);
-  background-color: var(--paper);
+  background-color: var(--surface);
   color: var(--ink);
-  font-size: var(--text-md);
+  font-size: 14px;
+  font-variation-settings: 'wdth' 96;
   line-height: 1.4;
   box-shadow: none;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
 
-textarea { min-height: 88px; resize: vertical; }
+textarea { min-height: 92px; resize: vertical; }
 
 :where(input, select, textarea)::placeholder { color: var(--ink-3); opacity: 1; }
 
 :where(input, select, textarea):hover:not(:disabled):not([readonly]) { border-color: var(--ink-2); }
 
-:where(input, select, textarea):focus { border-color: var(--navy); box-shadow: none; }
+:where(input, select, textarea):focus { border-color: var(--jade); }
 
 :where(input, select, textarea):disabled {
-  background-color: var(--paper-sunken);
+  background-color: var(--sunk);
   color: var(--ink-3);
   cursor: not-allowed;
 }
 
 input[readonly], textarea[readonly] {
-  background-color: var(--paper-sunken);
-  border-style: solid;
+  background-color: var(--sunk);
   color: var(--ink-2);
 }
 
-[aria-invalid="true"] { border-color: var(--tone-danger); }
+[aria-invalid="true"] { border-color: var(--danger); }
 
 input[type="checkbox"], input[type="radio"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--navy);
+  margin: 0;
+  accent-color: var(--jade);
 }
 
 label { color: var(--ink); }
 
-hr { border: 0; border-top: 1px solid var(--rule); }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { padding: 0; }
 
-table { font-variant-numeric: tabular-nums; }
-
+summary { cursor: pointer; }
 } /* end @layer base */
 
-/* Unlayered: these must win over legacy. */
+/* ---- Unlayered: must win over legacy ----------------------------------- */
+
+html, body, #root { min-height: 100%; }
+
 body {
-  background: var(--workspace);
-  background-image: none;
+  margin: 0;
+  background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-sans);
+  font-family: var(--font);
+  font-optical-sizing: auto;
 }
 
-h1, h2 { font-family: var(--font-serif); font-weight: 600; letter-spacing: normal; text-transform: none; }
-
-/* Focus: unlayered so no legacy rule (some used a 25% alpha ring, which
-   fails the 3:1 non-text contrast minimum) can weaken it. */
-:where(button, a, input, select, textarea, summary, [tabindex], [role="button"], [role="tab"]):focus-visible {
-  outline: 2px solid var(--navy);
+/* Focus: an ink line (16:1 on paper) with a marigold band between it and
+   the control, so focus is both unmistakable and on-brand, on paper, jade
+   and dark grounds alike. */
+:where(button, a, input, select, textarea, summary, [tabindex], [role="button"], [role="tab"], [role="option"]):focus-visible {
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--marigold);
 }
 
-:where(.portal-masthead, .login-context, .registration-hero, .procurement-activity-panel) :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline-color: var(--manila);
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px var(--jade);
+  outline: 2px solid var(--marigold);
 }
 
-/* No pill-shaped fields anywhere: legacy rules used 999px radii on search
-   boxes. Only the radius is forced; padding stays with the legacy rule so
-   icon offsets survive. */
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
   border-radius: var(--radius-control);
 }
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-4);
+  top: -60px;
+  z-index: 1000;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: var(--radius-control);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.skip-link:focus { top: var(--s-2); }
+
+main:focus { outline: none; }
+
+/* ---- Motion --------------------------------------------------------------
+   Page changes cross-fade and rise (View Transitions API, see
+   src/lib/viewTransition.js). Only the content area takes part; the top
+   bar and index are named separately so they hold still. */
+@keyframes vt-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(8px); } }
+
+::view-transition-old(page) { animation: 140ms var(--ease) both vt-out; }
+::view-transition-new(page) { animation: 240ms var(--ease-out) both vt-in; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+
+.view-page { view-transition-name: page; }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes sheen {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  ::view-transition-old(page), ::view-transition-new(page) { animation: none; }
 }

@@ -1,46 +1,181 @@
 /* ==========================================================================
-   Public pages: home, login, FAQ, supplier registration. Unlayered.
+   Public pages: home, sign-in and password pages, and the light touches on
+   FAQ and supplier registration. Unlayered. See DESIGN.md.
    ========================================================================== */
 
-/* Login: the navy panel keeps light text. */
-.login-context { background: var(--navy); color: #E7EDF3; }
-.login-context h1 { color: #FFFFFF; }
-.login-context .hero-kicker,
-.login-context .section-kicker { color: var(--manila); }
-.login-context > p:not(.hero-kicker) { color: #C9D3DE; }
-.login-context .admin-brand-mark { width: 44px; height: 44px; }
-.login-context-list strong { color: #FFFFFF; }
-.login-context-list span, .login-context-list small { color: #C9D3DE; }
+/* ── Home ──────────────────────────────────────────────────────────────── */
 
-.login-container { box-shadow: none; border: 1px solid var(--rule); border-radius: var(--radius-panel); overflow: hidden; }
-.login-container::after, .login-container::before { content: none; display: none; }
+.home {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
 
-/* Home: the three roles are not a sequence, so they lose their numbers. */
-.role-index { display: none; }
-/* With the index hidden, the text must not fall into the 34px index column. */
-.home-role-strip article { grid-template-columns: 1fr; }
+/* Hero: the headline owns the left; the lede and actions sit low on the
+   right, aligned to the headline's last line. */
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+  gap: var(--s-6) var(--s-7);
+  align-items: end;
+  padding: clamp(48px, 9vh, 104px) 0 var(--s-7);
+}
 
-.procurement-activity-panel { box-shadow: none; }
-.procurement-activity-panel::after, .procurement-activity-panel::before { content: none; display: none; }
+.home-display {
+  max-width: 17ch;
+  font-size: var(--text-display);
+  font-weight: 820;
+  font-variation-settings: 'wdth' var(--wdth-display);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  animation: rise-in 520ms var(--ease-out) both;
+}
 
-/* Supplier registration: a plain navy title band, no gradient. */
+.home-hero-side { display: grid; gap: var(--s-5); padding-bottom: 6px; }
+.home-lede { color: var(--ink-2); font-size: 17px; line-height: 1.55; }
+.home-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.home-actions .btn-primary { min-height: 44px; padding: 0 20px; font-size: 15px; }
+
+/* The line, full bleed on a sunk band: the signature moment of the page. */
+.home-line {
+  margin: 0 calc(var(--gutter) * -1);
+  padding: var(--s-7) var(--gutter) var(--s-7);
+  border-top: 2px solid var(--ink);
+  background: var(--sunk);
+}
+
+/* Roles: three columns on a rule, not cards. */
+.home-roles { padding: var(--s-8) 0 var(--s-7); }
+.home-roles > h2, .home-notices h2 { font-size: 32px; font-variation-settings: 'wdth' 110; font-weight: 780; letter-spacing: -0.025em; }
+.home-role-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+.home-role-grid article { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-5) var(--s-6) 0 0; }
+.home-role-grid article + article { padding-left: var(--s-6); border-left: 1px solid var(--rule); }
+.home-role-grid h3 { font-size: 24px; font-weight: 750; font-variation-settings: 'wdth' 108; letter-spacing: -0.02em; }
+.home-role-grid p { color: var(--ink-2); }
+.home-role-grid a { margin-top: auto; padding-top: var(--s-2); font-weight: 650; }
+
+/* Notices: a 4/8 split, heading left, ruled list right. */
+.home-notices {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: var(--s-6);
+  padding: var(--s-7) 0 0;
+  border-top: 2px solid var(--ink);
+}
+.home-notices-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); }
+.home-notices-head a { font-weight: 650; }
+.home-notices ul { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
+.home-notices li { display: grid; grid-template-columns: minmax(150px, 2fr) minmax(0, 5fr); gap: var(--s-4); padding: var(--s-4) 0; border-bottom: 1px solid var(--rule); }
+.home-notices li p { color: var(--ink-2); }
+
+@media (max-width: 960px) {
+  .home-hero, .home-notices { grid-template-columns: 1fr; }
+  .home-hero { padding-top: var(--s-7); }
+  .home-role-grid { grid-template-columns: 1fr; }
+  .home-role-grid article, .home-role-grid article + article { padding: var(--s-4) 0; border-left: 0; border-bottom: 1px solid var(--rule); }
+}
+
+@media (max-width: 560px) {
+  .home-notices li { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* ── Sign in: a split page, never a centred card ─────────────────────────
+   Left: what eProcure is, with the line run vertically and who acts at
+   each stage. Right: the form on a sunk band that runs to the edges. */
+
+.login-page {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(380px, 5fr);
+  min-height: calc(100vh - var(--topbar-h));
+}
+
+.login-context {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--s-7);
+  padding: clamp(40px, 8vh, 96px) var(--s-7) var(--s-7) var(--gutter);
+}
+
+.login-statement {
+  max-width: 13ch;
+  font-size: clamp(40px, 5vw, 72px);
+  font-weight: 820;
+  font-variation-settings: 'wdth' var(--wdth-display);
+  line-height: 0.94;
+  letter-spacing: -0.035em;
+}
+
+/* Who acts at each stage: the line, compact */
+.login-context .pipeline-line { --dot: 20px; --track: 6px; }
+.login-context .pipeline-line .pl-name { font-size: 13.5px; }
+.login-context .pipeline-line .pl-note { font-size: 12.5px; }
+
+.login-panel {
+  display: flex;
+  align-items: center;
+  padding: var(--s-7) var(--gutter);
+  border-left: 1px solid var(--rule);
+  background: var(--sunk);
+}
+
+.login-form-container { width: 100%; max-width: 420px; }
+.login-form-container h1 { font-size: 44px; }
+.login-form-container h2 { font-size: 32px; font-weight: 780; font-variation-settings: 'wdth' 110; letter-spacing: -0.025em; }
+.login-form-intro { margin: var(--s-3) 0 var(--s-5); color: var(--ink-2); }
+
+.login-form { display: grid; gap: var(--s-4); }
+.login-form :is(input, select) { min-height: 44px; background-color: var(--surface); }
+.login-submit { width: 100%; min-height: 46px; margin-top: var(--s-1); font-size: 15px; }
+.login-forgot { justify-self: start; min-height: 32px; padding: 0 4px; margin-left: -4px; }
+
+.login-register {
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+  margin-top: var(--s-6);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+.login-register p { color: var(--ink-2); font-size: 14px; }
+
+/* Password pages reuse the panel without the context column. */
+.login-page:has(> .login-container) { grid-template-columns: minmax(0, 7fr) minmax(380px, 5fr); }
+.login-page > .login-container {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  padding: var(--s-7) var(--gutter);
+  border-left: 1px solid var(--rule);
+  background: var(--sunk);
+}
+.login-page > .login-container .form-actions { justify-content: flex-start; margin-top: var(--s-2); }
+
+@media (max-width: 960px) {
+  .login-page, .login-page:has(> .login-container) { grid-template-columns: 1fr; }
+  .login-panel, .login-page > .login-container { grid-column: auto; order: -1; border-left: 0; border-bottom: 1px solid var(--rule); padding: var(--s-6) var(--gutter); }
+  .login-context { padding: var(--s-6) var(--gutter); }
+  .login-statement { font-size: 40px; }
+}
+
+/* ── FAQ and supplier registration: inherit the identity ─────────────── */
+
 .registration-hero {
   border: 0;
-  border-radius: var(--radius-panel);
-  background: var(--navy);
-  background-image: none;
+  border-radius: 0;
+  background: none;
   box-shadow: none;
+  color: var(--ink);
 }
 .registration-hero::before, .registration-hero::after { content: none; display: none; }
-.registration-hero h1 { font-family: var(--font-serif); color: #FFFFFF; }
-.registration-hero .hero-kicker,
-.registration-hero .section-kicker { color: var(--manila); }
+.registration-hero h1 { color: var(--ink); }
 
-/* The step bar already says which step this is. */
-.supplier-registration .section-badge,
-.registration-wizard .section-badge { display: none; }
-
-/* FAQ: a ruled list of questions, not floating cards. */
 .faq-item {
   margin: 0;
   border: 0;

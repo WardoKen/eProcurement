@@ -178,8 +178,7 @@
 
 /* 4 tiles (Admin) or 5 (Supplier) on one row wherever they fit. */
 @media (min-width: 721px) {
-  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
-}
+  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }}
 
 /* A word value (e.g. "Approved") is set smaller than a figure so it never
    breaks mid-word in a narrow tile. */
@@ -187,8 +186,7 @@
 .kpi-value { overflow-wrap: normal; word-break: normal; }
 
 @media (max-width: 1100px) {
-  .kpi-tile { padding: var(--space-3) var(--space-4); }
-}
+  .kpi-tile { padding: var(--space-3) var(--space-4); }}
 
 .kpi-tile {
   display: flex;
@@ -329,8 +327,7 @@
 .dash-figure:has(.trend-chart) { padding-bottom: 36px; }
 
 @media (max-width: 1100px) {
-  .dash-top, .dash-records { grid-template-columns: minmax(0, 1fr); }
-}
+  .dash-top, .dash-records { grid-template-columns: minmax(0, 1fr); }}
 
 @media (max-width: 720px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -343,5 +340,4 @@
   .action-row .btn-sm { grid-column: 2; justify-self: start; }
   .pipeline-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--space-4); }
   .dash-table.responsive-table tr { margin: 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; }
-  .dash-table.responsive-table td { padding-left: var(--space-4) !important; height: auto; }
-}
+  .dash-table.responsive-table td { padding-left: var(--space-4) !important; height: auto; }}
