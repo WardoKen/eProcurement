@@ -4039,7 +4039,7 @@ const Admin = () => {
                 <h2 id="dash-queue-title">Waiting on the BAC</h2>
                 <ul className="action-queue">
                   {queueRows.map((row) => (
-                    <li key={row.key} className={`action-row ${row.count > 0 ? 'needs-action' : 'is-clear'}`}>
+                    <li key={row.key} className={`action-row ${row.count > 0 ? 'needs-action' : 'is-clear'}${row === lead ? ' is-lead' : ''}`}>
                       <span className="action-count" aria-hidden="true">{row.count}</span>
                       <span className="action-text">
                         <strong>{row.count > 0 ? `${row.count} ${row.count === 1 ? row.one : row.many}` : row.clear}</strong>
@@ -8032,6 +8032,12 @@ const AppLayout = () => {
     setUser(getStoredUser())
     setMobileNavOpen(false)
   }
+
+  // A new route starts at the top; client-side navigation would otherwise
+  // keep the previous page's scroll position (e.g. login to a portal).
+  React.useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
 
   React.useEffect(() => {
     const syncUser = () => setUser(getStoredUser())

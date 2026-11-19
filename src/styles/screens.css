@@ -67,7 +67,7 @@
   font-variant-numeric: tabular-nums;
 }
 .action-row.needs-action .action-count { color: var(--jade); font-weight: 650; }
-.action-row.needs-action:first-child .action-count { color: var(--ink); }
+.action-row.is-lead .action-count { color: var(--ink); }
 .action-row.is-clear .action-count { color: var(--ink-3); }
 
 .action-text { display: grid; gap: 1px; min-width: 0; }
@@ -76,8 +76,8 @@
 .action-text small { color: var(--ink-2); font-size: 12.5px; }
 
 /* The first waiting item gets the marigold marker: it is the headline. */
-.action-row.needs-action:first-of-type { position: relative; }
-.action-queue .action-row.needs-action:first-child::before {
+.action-row { position: relative; }
+.action-queue .action-row.is-lead::before {
   content: '';
   position: absolute;
   left: -14px;
@@ -87,7 +87,6 @@
   border-radius: 2px;
   background: var(--marigold);
 }
-.action-queue .action-row:first-child { position: relative; }
 
 /* The line band */
 .dash-line {
@@ -225,7 +224,7 @@
   .action-row { grid-template-columns: 48px minmax(0, 1fr); }
   .action-row .btn-sm { grid-column: 2; justify-self: start; }
   .action-count { font-size: 36px; }
-  .action-queue .action-row.needs-action:first-child::before { left: -10px; }
+  .action-queue .action-row.is-lead::before { left: -10px; }
   .dash-side .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dash-table .cell-purpose { max-width: none; white-space: normal; }
 }
@@ -274,3 +273,7 @@
 @media (max-width: 720px) {
   .portal-head { grid-template-columns: 1fr; }
 }
+
+/* Single-column grids must not grow to fit long unbreakable text (emails,
+   supplier names): an implicit auto track sizes to min-content. */
+:is(.dash, .dash-side, .dash-network, .enduser-dashboard, .pr-upload-page, .process-guide, .buyer-status-record-body) { grid-template-columns: minmax(0, 1fr); }
