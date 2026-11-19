@@ -101,8 +101,8 @@ is never a filled pastel pill.
 | Tone | Statuses |
 |---|---|
 | neutral (`ink-2`) | Submitted, Draft, Not posted |
-| info (`info`) | In review, Sent, Pending review |
-| success (`jade`) | Matched, Posted, Quotation received, Approved |
+| info (`info`) | In review, Matched, Sent, Pending review |
+| success (`jade`) | Posted, Quotation received, Approved, Completed |
 | warning (`marigold-ink`) | For compliance, Awaiting quotation |
 | danger (`danger`) | Rejected |
 

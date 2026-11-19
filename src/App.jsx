@@ -61,7 +61,8 @@ import { TIN_EXAMPLE, formatTin, isValidTin, parseTin } from './lib/tin'
 import Sidebar, { BrandMark } from './components/Sidebar'
 import ThemeToggle from './components/ui/ThemeToggle'
 import PipelineLine, { PipelineMini } from './components/ui/PipelineLine'
-import { prPipelinePosition } from './lib/pipeline'
+import { PIPELINE_STAGES, prPipelinePosition } from './lib/pipeline'
+import { withViewTransition } from './lib/viewTransition'
 import Breadcrumbs from './components/ui/Breadcrumbs'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastProvider from './components/ui/ToastProvider'
@@ -120,6 +121,8 @@ const authStore = {
 }
 
 // "1 PR", "0 PRs", "3 suppliers" for KPI units.
+const PIPELINE_STATION_KEYS = PIPELINE_STAGES.map((stage) => stage.key)
+
 const pluralUnit = (count, singular) => (Number(count || 0) === 1 ? singular : `${singular}s`)
 
 const formatPostingDate = (value) => new Date(value).toLocaleString('en-PH', {
@@ -3898,6 +3901,53 @@ const Admin = () => {
     toast.info(`Selected ${name} for ${card.prNo}.`)
   }
 
+  // Command palette (Ctrl/Cmd K): every PR and supplier the BAC can open.
+  const paletteCommands = [
+    ...prRecords.map((pr) => ({
+      id: `pr-${pr.id}`,
+      group: 'Purchase requests',
+      kind: 'pr',
+      label: pr.pr_no || `Unnumbered #${pr.id}`,
+      detail: [pr.office_section, pr.purpose].filter(Boolean).join(', '),
+      meta: getPrStatusMeta(pr.status).label,
+      keywords: `${pr.entity_name || ''} ${pr.category || ''}`,
+      onSelect: () => handleViewPr(pr),
+    })),
+    ...supplierRegistrations.map((supplier) => ({
+      id: `supplier-${supplier.id}`,
+      group: 'Suppliers',
+      kind: 'supplier',
+      label: supplier.company_name || 'Unnamed supplier',
+      detail: supplier.email || '',
+      meta: supplier.status || '',
+      keywords: (supplier.categories || []).join(' '),
+      onSelect: () => withViewTransition(() => { setCurrentTab('suppliers'); handleSelectSupplier(supplier) }),
+    })),
+  ]
+
+  // Dashboard: where every PR is on the line, and what waits on the BAC.
+  const positions = prRecords.map((pr) => ({ pr, position: prPipelinePosition(pr) }))
+  const stationCounts = PIPELINE_STATION_KEYS.map((_, index) => positions.filter((entry) => entry.position.index === index && !entry.position.stopped).length)
+  const completedCount = positions.filter((entry) => entry.position.index >= PIPELINE_STATION_KEYS.length).length
+  const rejectedCount = positions.filter((entry) => entry.position.stopped).length
+  const readyToPost = stationCounts[1]
+  const busiest = stationCounts.slice(0, 5).reduce((best, count, index) => (count > stationCounts[best] ? index : best), 0)
+  const stationStates = stationCounts.map((count, index) => {
+    if (index === busiest && count > 0) return 'now'
+    return count > 0 ? 'done' : 'later'
+  })
+  const queueRows = [
+    { key: 'pr', count: unnumberedPrRecords.length, one: 'Purchase Request needs a PR number', many: 'Purchase Requests need a PR number', hint: 'Review each request and assign its number.', clear: 'Every Purchase Request has a PR number.', action: 'Review PRs', tab: 'pr-monitoring' },
+    { key: 'post', count: readyToPost, one: 'matched request is ready to post', many: 'matched requests are ready to post', hint: 'Suppliers see a PR only once it is posted.', clear: 'No matched request is waiting to be posted.', action: 'Post PRs', tab: 'pr-monitoring' },
+    { key: 'supplier', count: dashboardBreakdowns.suppliersAwaitingReview, one: 'supplier registration is waiting for evaluation', many: 'supplier registrations are waiting for evaluation', hint: 'Pending Review or For Compliance.', clear: 'No supplier registrations are waiting.', action: 'Evaluate suppliers', tab: 'suppliers' },
+    { key: 'rfq', count: dashboardBreakdowns.rfqAwaiting, one: 'RFQ is still awaiting a quotation', many: 'RFQs are still awaiting a quotation', hint: 'Sent to suppliers, no quotation uploaded yet.', clear: 'Every RFQ sent has a quotation.', action: 'Open RFQs', tab: 'rfq-responses' },
+  ]
+  const lead = queueRows.find((row) => row.count > 0)
+  let headline = 'Nothing is waiting on the BAC.'
+  if (lead) headline = `${lead.count} ${lead.count === 1 ? lead.one : lead.many}.`
+  else if (prRecords.length === 0) headline = 'No Purchase Requests yet.'
+  const goTo = (tab) => withViewTransition(() => setCurrentTab(tab))
+
   return (
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
       {/* Admin Navbar */}
@@ -3910,6 +3960,7 @@ const Admin = () => {
         userPrimary={getStoredUser()?.name || getStoredUser()?.username || 'BAC Secretariat'}
         userSecondary="BAC Secretariat"
         onLogout={handleLogout}
+        commands={paletteCommands}
         groups={[
           { section: 'Overview', items: [
             { id: 'dashboard', label: ADMIN_TAB_LABELS.dashboard, icon: LayoutDashboard },
@@ -3945,40 +3996,26 @@ const Admin = () => {
         )}
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
-          <div className="supplier-section admin-dashboard">
-            <div className="supplier-header dashboard-header-row">
-              <div>
-                <h1>Dashboard</h1>
-                <p>{new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <div className="supplier-section admin-dashboard dash">
+            <header className="dash-head">
+              <div className="dash-head-text">
+                <p className="dash-date">{new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <h1 className="dash-headline"><span className="sr-only">Dashboard. </span>{headline}</h1>
+                <div className="dashboard-refresh">
+                  <span className="field-hint" aria-live="polite">
+                    {dashboardUpdatedAt ? `Updated ${dashboardUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, refreshes every 30 seconds` : ''}
+                  </span>
+                  <button type="button" className="btn-sm btn-secondary" onClick={loadDashboardStats} disabled={dashboardLoading}>
+                    <RefreshCw size={14} className={dashboardLoading ? 'spin' : ''} aria-hidden="true" />
+                    {dashboardLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                </div>
               </div>
-              <div className="dashboard-refresh">
-                <span className="field-hint" aria-live="polite">
-                  {dashboardUpdatedAt ? `Updated ${dashboardUpdatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, refreshes every 30 seconds` : ''}
-                </span>
-                <button type="button" className="btn-sm btn-secondary" onClick={loadDashboardStats} disabled={dashboardLoading}>
-                  <RefreshCw size={14} className={dashboardLoading ? 'spin' : ''} aria-hidden="true" />
-                  {dashboardLoading ? 'Refreshing...' : 'Refresh'}
-                </button>
-              </div>
-            </div>
-            {dashboardError && (
-              <div className="alert alert-error" role="alert">
-                {dashboardError}. The figures below may be out of date.{' '}
-                <button type="button" className="link-like" onClick={loadDashboardStats}>Try again</button>
-              </div>
-            )}
 
-            <div className="dash-top">
-              <section className="dash-panel dash-queue" aria-labelledby="dash-queue-title">
-                <header className="dash-panel-header">
-                  <h2 id="dash-queue-title">Waiting on the BAC</h2>
-                </header>
+              <section className="dash-queue" aria-labelledby="dash-queue-title">
+                <h2 id="dash-queue-title">Waiting on the BAC</h2>
                 <ul className="action-queue">
-                  {[
-                    { key: 'pr', count: unnumberedPrRecords.length, one: 'Purchase Request needs a PR number', many: 'Purchase Requests need a PR number', hint: 'Review each request and assign its number.', clear: 'Every Purchase Request has a PR number.', action: 'Review PRs', tab: 'pr-monitoring' },
-                    { key: 'supplier', count: dashboardBreakdowns.suppliersAwaitingReview, one: 'supplier registration is waiting for evaluation', many: 'supplier registrations are waiting for evaluation', hint: 'Pending Review or For Compliance.', clear: 'No supplier registrations are waiting.', action: 'Evaluate suppliers', tab: 'suppliers' },
-                    { key: 'rfq', count: dashboardBreakdowns.rfqAwaiting, one: 'RFQ is still awaiting a quotation', many: 'RFQs are still awaiting a quotation', hint: 'Sent to suppliers, no quotation uploaded yet.', clear: 'Every RFQ sent has a quotation.', action: 'Open RFQs', tab: 'rfq-responses' },
-                  ].map((row) => (
+                  {queueRows.map((row) => (
                     <li key={row.key} className={`action-row ${row.count > 0 ? 'needs-action' : 'is-clear'}`}>
                       <span className="action-count" aria-hidden="true">{row.count}</span>
                       <span className="action-text">
@@ -3986,143 +4023,155 @@ const Admin = () => {
                         {row.count > 0 && <small>{row.hint}</small>}
                       </span>
                       {row.count > 0 && (
-                        <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab(row.tab)}>{row.action}</button>
+                        <button type="button" className="btn-sm btn-secondary" onClick={() => goTo(row.tab)}>{row.action}</button>
                       )}
                     </li>
                   ))}
                 </ul>
               </section>
+            </header>
 
-              <section className="dash-panel dash-pipeline" aria-labelledby="dash-pipeline-title">
-                <header className="dash-panel-header">
-                  <h2 id="dash-pipeline-title">Purchase Request pipeline</h2>
-                  <span className="dash-panel-meta">{dashboardStats?.total_purchase_requests ?? 0} on record</span>
-                </header>
-                <ol className="pipeline-strip">
-                  {[
-                    ['uploaded', 'Submitted'],
-                    ['in_review', 'In Review'],
-                    ['matched', 'Matched'],
-                    ['approved', 'Completed'],
-                  ].map(([key, label]) => (
-                    <li key={key} className={`pipeline-stage stage-${key}`}>
-                      <span className="pipeline-count">{dashboardBreakdowns.prStatusCounts[key] || 0}</span>
-                      <span className="pipeline-label">{label}</span>
-                    </li>
-                  ))}
-                </ol>
-                <p className="pipeline-note">
-                  {dashboardBreakdowns.prStatusCounts.rejected === 1 ? '1 request was rejected.' : `${dashboardBreakdowns.prStatusCounts.rejected || 0} requests were rejected.`}
-                </p>
-              </section>
-            </div>
-
-            {dashboardLoading && !dashboardStats ? (
-              <ul className="kpi-grid" aria-busy="true" aria-label="Key figures loading">
-                {Array.from({ length: 4 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
-              </ul>
-            ) : (
-              <ul className="kpi-grid" aria-label="Key figures">
-                <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit={pluralUnit(dashboardStats?.total_purchase_requests, 'PR')} zeroHint="No Purchase Requests submitted yet." hint={`${unnumberedPrRecords.length} awaiting a PR number`} />
-                <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit={pluralUnit(dashboardStats?.total_suppliers, 'supplier')} zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
-                <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit={pluralUnit(dashboardBreakdowns.rfq.total_sent, 'RFQ')} zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
-                <KpiTile icon={TrendingUp} label="RFQ response rate" value={`${dashboardBreakdowns.responseRate}`} unit="%" zeroHint={dashboardBreakdowns.rfq.total_sent ? 'No quotations received yet.' : 'Available once RFQs are sent.'} hint={`${dashboardBreakdowns.rfq.with_response} of ${dashboardBreakdowns.rfq.total_sent} RFQs answered`} />
-              </ul>
+            {dashboardError && (
+              <div className="alert alert-error" role="alert">
+                {dashboardError}. The figures below may be out of date.{' '}
+                <button type="button" className="link-like" onClick={loadDashboardStats}>Try again</button>
+              </div>
             )}
 
-            <div className="dash-records">
-              <section className="dash-panel" aria-labelledby="dash-recent-pr-title">
-                <header className="dash-panel-header">
+            <section className="dash-line" aria-labelledby="dash-line-title">
+              <div className="dash-line-head">
+                <h2 id="dash-line-title">Where every request is</h2>
+                <span className="dash-line-meta">
+                  {prRecords.length} on record{completedCount > 0 ? `, ${completedCount} completed` : ''}{rejectedCount > 0 ? `, ${rejectedCount} rejected` : ''}
+                </span>
+              </div>
+              {prLoading && prRecords.length === 0 ? <SkeletonRows count={3} /> : (
+                <PipelineLine
+                  variant="overview"
+                  animate
+                  label="Purchase Requests at each stage"
+                  states={stationStates}
+                  counts={stationCounts}
+                  notes={[
+                    unnumberedPrRecords.length ? `${unnumberedPrRecords.length} need a PR number` : 'Submitted or in review',
+                    'Matched, not posted',
+                    'Posted, no RFQ sent',
+                    dashboardBreakdowns.rfqAwaiting ? `${dashboardBreakdowns.rfqAwaiting} RFQs awaiting a quotation` : 'RFQs out to suppliers',
+                    'All quotations in',
+                    'Not recorded in eProcure yet',
+                  ]}
+                  onSelectStage={() => goTo('pr-monitoring')}
+                />
+              )}
+            </section>
+
+            <div className="dash-split">
+              <section className="dash-work" aria-labelledby="dash-recent-pr-title">
+                <div className="dash-section-head">
                   <h2 id="dash-recent-pr-title">Recent Purchase Requests</h2>
-                  <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('pr-monitoring')}>View all</button>
-                </header>
-                {prLoading && prRecords.length === 0 ? <div className="dash-panel-body"><SkeletonRows count={4} /></div> : prRecords.length === 0 ? (
+                  <button type="button" className="btn-sm btn-secondary" onClick={() => goTo('pr-monitoring')}>View all</button>
+                </div>
+                {prLoading && prRecords.length === 0 ? <SkeletonRows count={6} /> : prRecords.length === 0 ? (
                   <div className="dashboard-empty-state"><ClipboardList size={18} aria-hidden="true" /><span>No Purchase Requests found. They appear here once End Users submit them.</span></div>
                 ) : (
-                  <table className="data-table dash-table responsive-table">
-                    <thead>
-                      <tr><th scope="col">PR No.</th><th scope="col">Entity and office</th><th scope="col">Status</th><th scope="col" className="num">Total</th></tr>
-                    </thead>
-                    <tbody>
-                      {prRecords.slice(0, 5).map((pr) => {
-                        const statusMeta = getPrStatusMeta(pr.status)
-                        return (
-                          <tr key={pr.id}>
-                            <td data-label="PR No.">
-                              <button type="button" className="record-link" onClick={() => handleViewPr(pr)}>{pr.pr_no || `Unnumbered #${pr.id}`}</button>
-                            </td>
-                            <td data-label="Entity and office">
-                              <span className="cell-primary">{pr.entity_name || 'Unnamed entity'}</span>
-                              <span className="cell-secondary">{pr.office_section || 'Office not specified'}</span>
-                            </td>
-                            <td data-label="Status"><span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span></td>
-                            <td data-label="Total" className="num">{formatPeso(pr.grand_total)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <div className="table-scroll">
+                    <table className="data-table dash-table responsive-table">
+                      <thead>
+                        <tr><th scope="col">PR No.</th><th scope="col">Office</th><th scope="col">Purpose</th><th scope="col">Stage</th><th scope="col" className="num">ABC</th></tr>
+                      </thead>
+                      <tbody>
+                        {positions.slice(0, 8).map(({ pr, position }) => {
+                          const statusMeta = getPrStatusMeta(pr.status)
+                          return (
+                            <tr key={pr.id}>
+                              <td data-label="PR No.">
+                                <button type="button" className="record-link" onClick={() => handleViewPr(pr)}>{pr.pr_no || `Unnumbered #${pr.id}`}</button>
+                              </td>
+                              <td data-label="Office">
+                                <span className="cell-primary">{pr.office_section || 'Office not specified'}</span>
+                                <span className="cell-secondary">{pr.entity_name || 'Unnamed entity'}</span>
+                              </td>
+                              <td data-label="Purpose" className="cell-purpose">{pr.purpose || 'No purpose given'}</td>
+                              <td data-label="Stage">
+                                <span className="pl-mini-wrap">
+                                  <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                                  <PipelineMini position={position} />
+                                </span>
+                              </td>
+                              <td data-label="ABC" className="num">{formatPeso(pr.grand_total)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {!(dashboardLoading && !dashboardStats) && (
+                  <section className="dash-trend" aria-labelledby="dash-trend-title">
+                    <h2 id="dash-trend-title">Purchase Requests, last 6 months</h2>
+                    <MonthlyTrendChart data={dashboardBreakdowns.monthlyVolume} />
+                  </section>
                 )}
               </section>
 
-              <section className="dash-panel" aria-labelledby="dash-recent-sup-title">
-                <header className="dash-panel-header">
-                  <h2 id="dash-recent-sup-title">Recent supplier registrations</h2>
-                  <button type="button" className="btn-sm btn-secondary" onClick={() => setCurrentTab('suppliers')}>Manage</button>
-                </header>
-                {supplierLoading && supplierRegistrations.length === 0 ? <div className="dash-panel-body"><SkeletonRows count={4} /></div> : supplierRegistrations.length === 0 ? (
-                  <div className="dashboard-empty-state"><Users size={18} aria-hidden="true" /><span>No supplier registrations found.</span></div>
+              <aside className="dash-side" aria-label="Suppliers and key figures">
+                {dashboardLoading && !dashboardStats ? (
+                  <ul className="kpi-grid" aria-busy="true" aria-label="Key figures loading">
+                    {Array.from({ length: 4 }, (_, index) => <li key={index} className="kpi-tile"><SkeletonRows count={2} /></li>)}
+                  </ul>
                 ) : (
-                  <table className="data-table dash-table responsive-table">
-                    <thead>
-                      <tr><th scope="col">Supplier</th><th scope="col">Status</th></tr>
-                    </thead>
-                    <tbody>
+                  <ul className="kpi-grid" aria-label="Key figures">
+                    <KpiTile icon={ClipboardList} label="Purchase Requests" value={dashboardStats?.total_purchase_requests} unit={pluralUnit(dashboardStats?.total_purchase_requests, 'PR')} zeroHint="No Purchase Requests submitted yet." hint={`${unnumberedPrRecords.length} awaiting a PR number`} />
+                    <KpiTile icon={Store} label="Registered suppliers" value={dashboardStats?.total_suppliers} unit={pluralUnit(dashboardStats?.total_suppliers, 'supplier')} zeroHint="No supplier registrations yet." hint={`${dashboardBreakdowns.approvedSuppliers} approved`} />
+                    <KpiTile icon={Send} label="RFQs sent" value={dashboardBreakdowns.rfq.total_sent} unit={pluralUnit(dashboardBreakdowns.rfq.total_sent, 'RFQ')} zeroHint="No RFQs issued yet." hint={`${dashboardBreakdowns.rfq.with_response} with a quotation`} />
+                    <KpiTile icon={TrendingUp} label="RFQ response rate" value={`${dashboardBreakdowns.responseRate}`} unit="%" zeroHint={dashboardBreakdowns.rfq.total_sent ? 'No quotations received yet.' : 'Available once RFQs are sent.'} hint={`${dashboardBreakdowns.rfq.with_response} of ${dashboardBreakdowns.rfq.total_sent} RFQs answered`} />
+                  </ul>
+                )}
+
+                <section className="dash-side-block" aria-labelledby="dash-recent-sup-title">
+                  <div className="dash-section-head">
+                    <h2 id="dash-recent-sup-title">Recent supplier registrations</h2>
+                    <button type="button" className="btn-sm btn-outline" onClick={() => goTo('suppliers')}>Manage</button>
+                  </div>
+                  {supplierLoading && supplierRegistrations.length === 0 ? <SkeletonRows count={4} /> : supplierRegistrations.length === 0 ? (
+                    <div className="dashboard-empty-state"><Users size={18} aria-hidden="true" /><span>No supplier registrations found.</span></div>
+                  ) : (
+                    <ul className="dash-supplier-list">
                       {supplierRegistrations.slice(0, 5).map((supplier) => {
                         const statusMeta = getSupplierStatusMeta(supplier.status)
                         return (
-                          <tr key={supplier.id}>
-                            <td data-label="Supplier">
+                          <li key={supplier.id}>
+                            <span>
                               <button type="button" className="record-link" onClick={() => { setCurrentTab('suppliers'); handleSelectSupplier(supplier) }}>{supplier.company_name || 'Unnamed supplier'}</button>
                               <span className="cell-secondary">{supplier.email || 'Email not specified'}</span>
-                            </td>
-                            <td data-label="Status"><span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span></td>
-                          </tr>
+                            </span>
+                            <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                          </li>
                         )
                       })}
-                    </tbody>
-                  </table>
-                )}
-              </section>
-            </div>
+                    </ul>
+                  )}
+                </section>
 
-            {dashboardLoading && !dashboardStats ? (
-              <section className="dash-panel dash-network"><div className="dash-panel-body"><SkeletonRows count={5} /></div></section>
-            ) : (
-              <section className="dash-panel dash-network" aria-labelledby="dash-network-title">
-                <header className="dash-panel-header">
-                  <h2 id="dash-network-title">Supplier network and PR volume</h2>
-                </header>
-                <div className="dash-network-grid">
-                  <div className="dash-figure">
-                    <h3>Suppliers by status <span className="dash-figure-total">{dashboardStats?.total_suppliers ?? 0} total</span></h3>
-                    <BreakdownBarList items={dashboardBreakdowns.supplierStatus} emptyLabel="No suppliers registered yet." />
-                  </div>
-                  <div className="dash-figure">
-                    <h3>Eligibility documents <span className="dash-figure-total">{dashboardBreakdowns.documentStatus.reduce((sum, item) => sum + item.count, 0)} on file</span></h3>
-                    <BreakdownBarList items={dashboardBreakdowns.documentStatus} emptyLabel="No documents uploaded yet." />
-                  </div>
-                  <div className="dash-figure">
-                    <h3>Verified suppliers by category <span className="dash-figure-total">{dashboardBreakdowns.categoryWithSuppliers} of {dashboardBreakdowns.categoryTotal} categories covered</span></h3>
-                    <BreakdownBarList items={dashboardBreakdowns.categoryItems} emptyLabel="No approved suppliers are assigned to a category yet." />
-                  </div>
-                  <div className="dash-figure">
-                    <h3>Purchase Requests, last 6 months</h3>
-                    <MonthlyTrendChart data={dashboardBreakdowns.monthlyVolume} />
-                  </div>
-                </div>
-              </section>
-            )}
+                {dashboardLoading && !dashboardStats ? <SkeletonRows count={5} /> : (
+                  <section className="dash-side-block dash-network" aria-labelledby="dash-network-title">
+                    <h2 id="dash-network-title">Supplier network</h2>
+                    <div className="dash-figure">
+                      <h3>Suppliers by status <span className="dash-figure-total">{dashboardStats?.total_suppliers ?? 0} total</span></h3>
+                      <BreakdownBarList items={dashboardBreakdowns.supplierStatus} emptyLabel="No suppliers registered yet." />
+                    </div>
+                    <div className="dash-figure">
+                      <h3>Eligibility documents <span className="dash-figure-total">{dashboardBreakdowns.documentStatus.reduce((sum, item) => sum + item.count, 0)} on file</span></h3>
+                      <BreakdownBarList items={dashboardBreakdowns.documentStatus} emptyLabel="No documents uploaded yet." />
+                    </div>
+                    <div className="dash-figure">
+                      <h3>Verified suppliers by category <span className="dash-figure-total">{dashboardBreakdowns.categoryWithSuppliers} of {dashboardBreakdowns.categoryTotal} categories covered</span></h3>
+                      <BreakdownBarList items={dashboardBreakdowns.categoryItems} emptyLabel="No approved suppliers are assigned to a category yet." />
+                    </div>
+                  </section>
+                )}
+              </aside>
+            </div>
           </div>
         )}
 

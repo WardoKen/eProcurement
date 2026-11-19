@@ -145,18 +145,6 @@
 
 .record-status strong { color: var(--text); }
 
-/* ── Dashboard header ───────────────────────────────────────────────────── */
-
-.dashboard-header-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.dashboard-refresh { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-
 /* ── PR monitor grid: row cards on small screens ────────────────────────── */
 
 @media (max-width: 720px) {

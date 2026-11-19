@@ -1127,7 +1127,7 @@ tr.row-detail:hover > td { background: var(--sunk); }
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
-.kpi-unit { margin-left: 6px; color: var(--ink-2); font-size: 14px; font-weight: 500; font-variation-settings: 'wdth' 100; letter-spacing: 0; }
+.kpi-unit { margin-left: 4px; color: var(--ink-2); font-size: 14px; font-weight: 500; font-variation-settings: 'wdth' 100; letter-spacing: 0; }
 .kpi-hint { margin: 4px 0 0; color: var(--ink-2); font-size: 12.5px; }
 .kpi-tile.tone-success .kpi-value { color: var(--jade); font-weight: 600; }
 .kpi-tile.tone-warning .kpi-value { color: var(--marigold-ink); font-weight: 600; }
