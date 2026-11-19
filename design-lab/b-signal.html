@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B · Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@100..900&family=Atkinson+Hyperlegible+Next:wght@200..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --garnet: oklch(0.38 0.13 18);
+  --garnet-deep: oklch(0.28 0.09 18);
+  --signal: oklch(0.88 0.17 95);
+  --bone: oklch(0.97 0.006 60);
+  --ink: oklch(0.2 0.015 20);
+  --ink-2: oklch(0.46 0.015 20);
+  --rule: oklch(0.87 0.01 30);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bone);color:var(--ink);font-family:"Atkinson Hyperlegible Next",sans-serif;font-size:14px;display:grid;grid-template-columns:420px 1fr;min-height:100vh}
+.slab{background:var(--garnet);color:var(--bone);padding:28px 32px;display:flex;flex-direction:column;gap:28px}
+.brand{font-family:"Big Shoulders Display";font-weight:800;font-size:30px;letter-spacing:.01em}
+.brand small{display:block;font-family:"Atkinson Hyperlegible Next";font-weight:400;font-size:13px;opacity:.8}
+.slab nav{display:grid;gap:2px}
+.slab nav a{color:var(--bone);text-decoration:none;padding:8px 10px;opacity:.85;font-weight:500}
+.slab nav a.on{background:var(--signal);color:var(--garnet-deep);opacity:1;font-weight:700}
+.big{margin-top:auto}
+.big b{display:block;font-family:"Big Shoulders Display";font-size:200px;line-height:.78;font-weight:900;color:var(--signal)}
+.big p{font-size:22px;font-weight:600;margin:12px 0 0;max-width:16ch;line-height:1.2}
+.big a{display:inline-block;margin-top:16px;background:var(--bone);color:var(--garnet-deep);padding:10px 16px;font-weight:700;text-decoration:none}
+main{padding:28px 44px}
+.bar{display:flex;align-items:center;gap:16px}
+.bar h1{font-family:"Big Shoulders Display";font-weight:800;font-size:64px;line-height:.9;margin:0;letter-spacing:-.005em}
+.search{margin-left:auto;border:2px solid var(--ink);padding:8px 12px;min-width:320px;color:var(--ink-2);display:flex}
+.search kbd{margin-left:auto;font:inherit;font-weight:700;color:var(--ink)}
+.board{margin-top:28px;border-top:6px solid var(--ink)}
+.row{display:grid;grid-template-columns:60px 220px 1fr 120px;align-items:center;border-bottom:1px solid var(--rule);padding:10px 0}
+.row .i{font-family:"Big Shoulders Display";font-weight:700;font-size:22px;color:var(--ink-2)}
+.row .l{font-family:"Big Shoulders Display";font-weight:700;font-size:30px;text-transform:none}
+.row .t{height:22px;background:repeating-linear-gradient(90deg,var(--garnet) 0 6px,transparent 6px 9px)}
+.row .c{font-family:"Big Shoulders Display";font-weight:800;font-size:44px;text-align:right}
+.row.now{background:var(--signal)}
+.row.off .l,.row.off .c{color:var(--rule)}
+.cols{display:grid;grid-template-columns:2fr 1fr;gap:36px;margin-top:36px}
+h2{font-family:"Big Shoulders Display";font-weight:800;font-size:32px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;padding:7px 8px;background:var(--ink);color:var(--bone);font-weight:600}
+td{padding:8px;border-bottom:1px solid var(--rule)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.tag{background:var(--garnet);color:var(--bone);padding:2px 6px;font-weight:700;font-size:12px}
+.tag.y{background:var(--signal);color:var(--ink)}
+.facts div{display:flex;justify-content:space-between;border-bottom:1px solid var(--rule);padding:10px 0;font-size:15px}
+.facts b{font-family:"Big Shoulders Display";font-size:30px}
+</style>
+</head>
+<body>
+<aside class="slab">
+  <div class="brand">eProcure<small>Bids and Awards Committee, CTU Tuburan</small></div>
+  <nav><a class="on" href="#">Overview</a><a href="#">Purchase requests</a><a href="#">Postings</a><a href="#">RFQs and quotations</a><a href="#">Suppliers</a><a href="#">Reports</a><a href="#">Settings</a></nav>
+  <div class="big"><b>13</b><p>requests are matched and waiting to be posted.</p><a href="#">Post opportunities</a></div>
+</aside>
+<main>
+  <div class="bar"><h1>Procurement board</h1><span class="search">Find a PR, RFQ or supplier <kbd>Ctrl K</kbd></span></div>
+  <div class="board" aria-label="Pipeline">
+    <div class="row"><span class="i">1</span><span class="l">Purchase request</span><span class="t" style="width:2%"></span><span class="c">0</span></div>
+    <div class="row now"><span class="i">2</span><span class="l">Posting</span><span class="t" style="width:100%"></span><span class="c">13</span></div>
+    <div class="row"><span class="i">3</span><span class="l">RFQ</span><span class="t" style="width:54%"></span><span class="c">7</span></div>
+    <div class="row"><span class="i">4</span><span class="l">Quotation</span><span class="t" style="width:54%"></span><span class="c">7</span></div>
+    <div class="row off"><span class="i">5</span><span class="l">Evaluation</span><span></span><span class="c">0</span></div>
+    <div class="row off"><span class="i">6</span><span class="l">Purchase order</span><span></span><span class="c">0</span></div>
+  </div>
+  <div class="cols">
+    <section><h2>Latest requests</h2>
+      <table><thead><tr><th>PR No.</th><th>Office</th><th>Stage</th><th class="num">ABC (₱)</th></tr></thead><tbody>
+        <tr><td><b>2026-11-013</b></td><td>MIS, Tuburan</td><td><span class="tag">Matched</span></td><td class="num">14,050.00</td></tr>
+        <tr><td><b>2026-11-012</b></td><td>SAO, Balamban</td><td><span class="tag">Matched</span></td><td class="num">14,050.00</td></tr>
+        <tr><td><b>2026-11-011</b></td><td>MIS, Tuburan</td><td><span class="tag y">Quoted</span></td><td class="num">14,050.00</td></tr>
+        <tr><td><b>2026-10-004</b></td><td>ICT, Tuburan</td><td><span class="tag y">Quoted</span></td><td class="num">48,320.00</td></tr>
+      </tbody></table>
+    </section>
+    <section class="facts"><h2>Supplier network</h2>
+      <div><span>Approved suppliers</span><b>327</b></div>
+      <div><span>Awaiting evaluation</span><b>0</b></div>
+      <div><span>RFQs without a quotation</span><b>5</b></div>
+      <div><span>Response rate</span><b>58%</b></div>
+    </section>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg: oklch(0.21 0.02 45);
+  --bg-2: oklch(0.26 0.022 45);
+  --slip: oklch(0.95 0.012 75);
+  --text: oklch(0.93 0.01 70);
+  --text-2: oklch(0.72 0.02 60);
+  --line: oklch(0.36 0.02 45);
+  --sea: oklch(0.78 0.11 205);
+  --sea-ink: oklch(0.4 0.08 210);
+  --amber: oklch(0.8 0.14 70);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Bricolage Grotesque",sans-serif;font-variation-settings:"opsz" 14;font-size:14px}
+header{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:18px 32px;border-bottom:1px solid var(--line)}
+.brand{font-weight:800;font-size:22px;font-variation-settings:"opsz" 48}
+.tabs{display:flex;gap:18px;color:var(--text-2)}
+.tabs .on{color:var(--text);box-shadow:inset 0 -2px var(--sea);padding-bottom:4px}
+.k{border:1px solid var(--line);padding:8px 14px;color:var(--text-2);border-radius:10px;min-width:280px}
+.intro{display:grid;grid-template-columns:1.2fr 1fr;gap:48px;padding:40px 32px 28px}
+.intro h1{margin:0;font-size:76px;line-height:.92;font-weight:700;font-variation-settings:"opsz" 96,"wdth" 78;letter-spacing:-.03em}
+.intro p{font-size:17px;color:var(--text-2);max-width:46ch;margin:0;align-self:end}
+.intro p strong{color:var(--text)}
+.board{display:grid;grid-template-columns:repeat(6,minmax(180px,1fr));gap:1px;background:var(--line);border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow-x:auto}
+.col{background:var(--bg);padding:16px 14px 24px;min-height:420px}
+.col h2{margin:0;font-size:15px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
+.col h2 b{font-size:34px;font-weight:300;font-variation-settings:"opsz" 96,"wdth" 75;color:var(--sea)}
+.col.idle h2 b{color:var(--line)}
+.col .sub{color:var(--text-2);font-size:12.5px;margin:2px 0 14px}
+.slip{background:var(--slip);color:oklch(0.25 0.02 45);padding:10px 12px;margin-bottom:8px;border-radius:3px;border-left:5px solid var(--sea-ink)}
+.slip b{display:block;font-variation-settings:"opsz" 18;font-size:14px}
+.slip span{display:block;font-size:12.5px;color:oklch(0.45 0.02 45)}
+.slip em{font-style:normal;font-weight:700;float:right;font-variant-numeric:tabular-nums}
+.slip.warn{border-left-color:var(--amber)}
+.more{color:var(--sea);font-weight:600}
+.lower{display:grid;grid-template-columns:1fr 1fr 1fr;padding:28px 32px;gap:32px}
+.lower h3{margin:0 0 8px;font-size:22px;font-weight:700;font-variation-settings:"opsz" 48,"wdth" 85}
+.lower p{color:var(--text-2);margin:0}
+.lower .n{font-size:64px;font-weight:200;font-variation-settings:"opsz" 96,"wdth" 75;line-height:1;color:var(--sea)}
+</style>
+</head>
+<body>
+<header><span class="brand">eProcure</span><nav class="tabs"><span class="on">Board</span><span>Requests</span><span>RFQs</span><span>Suppliers</span><span>Reports</span></nav><span class="k">Search or jump to… Ctrl K</span></header>
+<section class="intro">
+  <h1>Twenty requests on the board, thirteen waiting for you.</h1>
+  <p><strong>Posting is the bottleneck.</strong> Thirteen matched requests have not been posted, so suppliers cannot see them yet. Five RFQs have gone six days without a quotation.</p>
+</section>
+<div class="board">
+  <div class="col"><h2>Purchase request <b>0</b></h2><p class="sub">Uploaded or in review</p><p class="sub">Nothing to review.</p></div>
+  <div class="col"><h2>Posting <b>13</b></h2><p class="sub">Matched, not posted</p>
+    <div class="slip warn"><b>2026-11-013 <em>₱14,050</em></b><span>MIS, Tuburan</span></div>
+    <div class="slip warn"><b>2026-11-012 <em>₱14,050</em></b><span>SAO, Balamban</span></div>
+    <div class="slip warn"><b>2026-11-010 <em>₱14,050</em></b><span>MIS, Tuburan</span></div>
+    <span class="more">10 more</span></div>
+  <div class="col"><h2>RFQ <b>7</b></h2><p class="sub">2 drafts, 5 sent</p>
+    <div class="slip"><b>RFQ-2026-10-004:02</b><span>Janitorial, sent 6 days ago</span></div>
+    <div class="slip"><b>RFQ-2026-09-003:01</b><span>IT parts, sent 4 days ago</span></div></div>
+  <div class="col"><h2>Quotation <b>7</b></h2><p class="sub">Received</p>
+    <div class="slip"><b>RFQ-2026-11-011:01</b><span>Advertising, 1 quotation</span></div></div>
+  <div class="col idle"><h2>Evaluation <b>0</b></h2><p class="sub">Not started</p></div>
+  <div class="col idle"><h2>Purchase order <b>0</b></h2><p class="sub">Not started</p></div>
+</div>
+<section class="lower">
+  <div><div class="n">327</div><h3>approved suppliers</h3><p>Across 41 categories. None awaiting evaluation.</p></div>
+  <div><div class="n">58%</div><h3>RFQ response rate</h3><p>7 of 12 sent RFQs have a quotation.</p></div>
+  <div><div class="n">₱312k</div><h3>in matched requests</h3><p>Combined ABC of PRs waiting to be posted.</p></div>
+</section>
+</body>
+</html>
