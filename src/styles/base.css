@@ -192,7 +192,10 @@ main:focus { outline: none; }
 ::view-transition-new(page) { animation: 240ms var(--ease-out) both vt-in; }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 
-.view-page { view-transition-name: page; }
+.vt-active .view-page { view-transition-name: page; }
+/* Router-driven transitions (public links) do not add .vt-active. */
+:root:active-view-transition .view-page { view-transition-name: page; }
+:root:active-view-transition .topbar { view-transition-name: topbar; }
 
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(10px); }

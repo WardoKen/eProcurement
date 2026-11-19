@@ -14,35 +14,119 @@
 @media (max-width: 720px) {
   .enduser-dashboard .dash-panel { overflow-x: visible; }}
 
-/* ── Submit a Purchase Request ─────────────────────────────────────────── */
+/* ── Submit a Purchase Request (DragDropUpload) ─────────────────────────
+   One generous drop target, then the document beside the extracted record,
+   the same two-pane review the BAC uses. */
 
 /* The page header already explains the upload, so the workspace's own
    intro heading is hidden here (it still shows in other contexts). */
 .buyer-pr-upload-section .pr-upload-intro > div:first-child { display: none; }
+.buyer-pr-upload-section > .alert { margin-bottom: var(--s-4); }
 
-.buyer-pr-upload-section > .alert { margin-bottom: var(--space-4); }
+.pr-upload-page { display: grid; gap: var(--s-6); }
 
-.pr-upload-intro {
-  margin: 0 0 var(--space-5);
-  padding: var(--space-5);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-panel);
-  background: var(--paper);
-}
+.pr-upload-intro { display: grid; gap: var(--s-3); margin: 0; padding: 0; border: 0; background: none; }
+.pr-upload-intro h2 { display: flex; align-items: center; gap: var(--s-2); }
+.pr-upload-intro p { color: var(--ink-2); }
 
 .dropzone {
-  border: 1px dashed var(--input-border);
-  border-radius: var(--radius-panel);
-  background: var(--paper-sunken);
-  box-shadow: none;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  padding: var(--s-6) var(--s-5);
+  border: 2px dashed var(--input-line);
+  border-radius: var(--radius-control);
+  background: var(--sunk);
   color: var(--ink);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
-.dropzone:hover,
-.dropzone:focus-visible { border-color: var(--navy); border-style: solid; background: var(--navy-tint); }
-.dropzone svg { color: var(--navy); }
+.dropzone:hover { border-color: var(--jade); }
+.dropzone[data-drag="true"] { border-style: solid; border-color: var(--jade); background: var(--jade-wash); }
+.dropzone:has(.dropzone-file-row) { min-height: 0; padding: var(--s-4) var(--s-5); border-style: solid; border-color: var(--jade); background: var(--jade-wash); cursor: default; }
 
-.pr-upload-page .form-panel > p,
-.pr-upload-page .form-panel > .helper-text { margin: var(--space-3) var(--space-4) 0; }
+.dropzone-inner { display: grid; justify-items: center; gap: 6px; }
+.dropzone-inner svg { margin-bottom: var(--s-2); color: var(--jade); }
+.dropzone-inner strong {
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 800;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.025em;
+}
+.dropzone-inner span { color: var(--ink-2); }
+.dropzone-accepted { font-size: 12.5px; }
+
+.dropzone-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  text-align: left;
+}
+.file-meta { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.file-meta > div { display: grid; min-width: 0; }
+.file-meta strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta span { color: var(--ink-2); font-size: 12.5px; }
+.file-meta-ok { flex: none; color: var(--jade); }
+.file-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+/* The two panes on the page: the document stays in view while the record
+   scrolls. */
+.pr-upload-page > .pr-review-split {
+  align-items: start;
+  height: auto;
+  border-top: 2px solid var(--ink);
+}
+.pr-upload-page .pr-review-preview-pane {
+  position: sticky;
+  top: calc(var(--sticky-top, var(--topbar-h)) + var(--s-3));
+  height: calc(100vh - var(--sticky-top, var(--topbar-h)) - var(--s-6));
+}
+.pr-upload-page .pr-upload-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-6); min-width: 0; padding: var(--s-5) 0 var(--s-5) var(--s-6); }
+.pr-upload-page .form-panel { display: grid; grid-template-columns: minmax(0, 1fr); padding: 0; border: 0; background: none; }
+.pr-upload-page .form-panel > .panel-header { margin: 0 0 var(--s-4); padding: 0 0 var(--s-2); border-bottom: 1px solid var(--rule); }
+.pr-upload-page .form-panel > .panel-header h3 { display: flex; align-items: center; gap: var(--s-2); font-size: 20px; font-weight: 750; font-variation-settings: 'wdth' 108; }
+.pr-upload-page .form-panel > :is(p, .helper-text) { margin: 0 0 var(--s-4); }
+
+.pr-numbering-section .number-preview, .pr-numbering-section .custom-number-field { display: grid; gap: 4px; margin-top: var(--s-3); }
+.helper-pill { padding: 0 8px; border-radius: var(--radius-pill); background: var(--marigold-wash); color: var(--marigold-ink); font-size: 12px; font-weight: 650; }
+.items-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.item-row-removing { opacity: 0.4; }
+
+/* Before submitting: checks and the declaration */
+.submission-check-panel, .submission-declaration {
+  padding: var(--s-4) var(--s-5);
+  border: 0;
+  border-left: 4px solid var(--jade);
+  background: var(--sunk);
+}
+.submission-declaration { border-left-color: var(--marigold); }
+.submission-check-list, .submission-declaration-points { display: grid; gap: 6px; margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+.submission-check-ok { color: var(--jade); }
+.submission-check-fail { color: var(--danger); }
+.submission-check-note, .submission-declaration-lead { margin-top: var(--s-2); color: var(--ink-2); }
+.submission-declaration-ack { display: flex; align-items: flex-start; gap: var(--s-2); margin-top: var(--s-3); font-weight: 600; }
+.sig-confirm { display: flex; align-items: flex-start; gap: var(--s-2); margin-top: 4px; font-size: 13px; }
+.signature-validation-summary { margin-top: var(--s-3); display: grid; gap: 4px; font-size: 13px; }
+.sig-missing { color: var(--danger); }
+.sig-uncertain { color: var(--marigold-ink); }
+.sig-confirmed-note { color: var(--jade); }
+.sig-uncertain-reason { display: block; color: var(--ink-2); font-size: 12px; }
+
+.upload-success-modal-body { display: grid; justify-items: start; gap: var(--s-2); }
+.upload-success-modal-body > svg { color: var(--jade); }
+.save-success-facts { display: grid; gap: 6px; width: 100%; margin: var(--s-2) 0 0; padding: var(--s-3) 0 0; border-top: 1px solid var(--rule); }
+.save-success-facts > div { display: grid; grid-template-columns: 140px 1fr; gap: var(--s-3); }
+.save-success-facts dt { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.save-success-facts dd { margin: 0; font-weight: 650; }
+
+@media (max-width: 1100px) {
+  .pr-upload-page .pr-review-preview-pane { position: static; height: 50vh; }
+  .pr-upload-page .pr-upload-grid { padding-left: 0; }
+}
 
 /* ── Live Status ──────────────────────────────────────────────────────── */
 

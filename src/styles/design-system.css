@@ -145,37 +145,6 @@
 
 .record-status strong { color: var(--text); }
 
-/* ── PR monitor grid: row cards on small screens ────────────────────────── */
-
-@media (max-width: 720px) {
-  .pr-monitor-table-wrapper { overflow-x: visible; }
-  .pr-monitor-table-head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-  .pr-monitor-table-head,
-  .pr-monitor-table-row { min-width: 0 !important; }
-  .pr-monitor-table-row {
-    grid-template-columns: 1fr !important;
-    gap: var(--space-1);
-    margin: 0 0 var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-  }
-  .pr-monitor-table-row > [role="cell"][data-label] {
-    display: grid;
-    grid-template-columns: minmax(96px, 38%) 1fr;
-    gap: var(--space-2);
-    align-items: center;
-  }
-  .pr-monitor-table-row > [role="cell"][data-label]::before {
-    content: attr(data-label);
-    color: var(--text-secondary);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-semibold);
-    text-transform: none;
-    letter-spacing: 0.04em;
-  }
-  .pr-row-actions { justify-content: flex-start; }}
-
 /* ── Contrast fixes found by the axe walkthrough (legacy colors < 4.5:1) ── */
 
 .workflow-step.step-done .step-label,

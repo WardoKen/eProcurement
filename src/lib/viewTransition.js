@@ -10,9 +10,15 @@ export function withViewTransition(update) {
     update()
     return
   }
-  document.startViewTransition(() => {
+  // The names that pair old and new views (base.css, shell.css) are only
+  // set while a transition runs: a view-transition-name makes a stacking
+  // context, which would otherwise trap dialogs under the sticky top bar.
+  const root = document.documentElement
+  root.classList.add('vt-active')
+  const transition = document.startViewTransition(() => {
     flushSync(update)
   })
+  transition.finished.finally(() => root.classList.remove('vt-active'))
 }
 
 // Theme: 'light' | 'dark' | null (follow the system). Stored per browser.

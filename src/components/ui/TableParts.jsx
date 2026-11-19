@@ -19,7 +19,19 @@ export function SortableHeader({ table, sortKey, children, className, style }) {
 }
 
 // Search box + optional extra controls + a live result count.
-export function TableToolbar({ table, searchLabel, searchPlaceholder, children, noun = 'record' }) {
+// Comfortable / Compact switch. The table's wrapper carries
+// data-density={density}; src/lib/density.js remembers the choice.
+export function DensityToggle({ density, onChange }) {
+  return (
+    <div className="density-toggle" role="group" aria-label="Row density">
+      {[['comfortable', 'Comfortable'], ['compact', 'Compact']].map(([value, label]) => (
+        <button key={value} type="button" aria-pressed={density === value} onClick={() => onChange(value)}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
+export function TableToolbar({ table, searchLabel, searchPlaceholder, children, noun = 'record', density, onDensityChange }) {
   const searchId = useId()
   const plural = (count) => {
     if (count === 1) return `${count} ${noun}`
@@ -47,6 +59,7 @@ export function TableToolbar({ table, searchLabel, searchPlaceholder, children, 
           ? plural(table.total)
           : `${plural(table.total)} of ${table.unfilteredTotal}`}
       </p>
+      {density && onDensityChange && <DensityToggle density={density} onChange={onDensityChange} />}
     </div>
   )
 }

@@ -24,7 +24,6 @@
   backdrop-filter: saturate(1.4) blur(10px);
   -webkit-backdrop-filter: saturate(1.4) blur(10px);
   color: var(--ink);
-  view-transition-name: topbar;
 }
 
 .topbar-brand {
@@ -125,8 +124,10 @@
   z-index: 45;
   border-bottom: 1px solid var(--rule);
   background: var(--paper);
-  view-transition-name: index-nav;
 }
+
+.vt-active .topbar { view-transition-name: topbar; }
+.vt-active .index-nav { view-transition-name: index-nav; }
 
 .index-nav-inner {
   display: flex;
@@ -204,8 +205,9 @@
   min-width: 0;
   margin: 0 auto;
   padding: var(--s-6) var(--gutter) var(--s-8);
-  view-transition-name: page;
 }
+
+.vt-active .admin-content { view-transition-name: page; }
 
 .admin-content :is(.supplier-section, .supplier-content-inner, .page-content) {
   max-width: none;

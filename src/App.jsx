@@ -40,9 +40,6 @@ import {
   FilePen,
   Store,
   UserCog,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
 } from 'lucide-react'
 import DragDropUpload, {
   SignatureValidationPanel,
@@ -63,6 +60,7 @@ import ThemeToggle from './components/ui/ThemeToggle'
 import PipelineLine, { PipelineMini } from './components/ui/PipelineLine'
 import { PIPELINE_STAGES, prPipelinePosition } from './lib/pipeline'
 import { withViewTransition } from './lib/viewTransition'
+import { useDensity } from './lib/density'
 import Breadcrumbs from './components/ui/Breadcrumbs'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import ToastProvider from './components/ui/ToastProvider'
@@ -2951,6 +2949,8 @@ const Admin = () => {
   const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
   const [viewingPr, setViewingPr] = React.useState(null)
   const [prStatusFilter, setPrStatusFilter] = React.useState('all')
+  const [expandedPrId, setExpandedPrId] = React.useState(null)
+  const [density, setDensity] = useDensity()
   const [editingPr, setEditingPr] = React.useState(null)
   // A post / take-down from the PR details: reflect it in the open PR and the list.
   const handlePostingChange = React.useCallback((prId, posting) => {
@@ -3900,6 +3900,9 @@ const Admin = () => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
     toast.info(`Selected ${name} for ${card.prNo}.`)
   }
+
+  // Where the PR open in the review sheet is on the line.
+  const editingPosition = editingPr ? prPipelinePosition(editingPr) : null
 
   // Command palette (Ctrl/Cmd K): every PR and supplier the BAC can open.
   const paletteCommands = [
@@ -4868,48 +4871,49 @@ const Admin = () => {
               <div className="alert alert-error" style={{ marginBottom: '16px' }}>{exportError}</div>
             )}
 
-            <div className="admin-checklist pr-review-queue" style={{ marginBottom: '16px' }}>
-              <div className="pr-review-queue-header">
-                <div>
-                  <h3>Purchase Requests Awaiting PR Number</h3>
-                  <p>Review and complete these saved requests before they enter PR monitoring.</p>
-                </div>
+            <section className="pr-intake" aria-labelledby="pr-intake-title">
+              <div className="pr-intake-head">
+                <h2 id="pr-intake-title">Awaiting PR number</h2>
+                <p>Requests submitted by End Users. Review each one against the signed form, then assign its PR number.</p>
               </div>
               {unnumberedPrRecords.length === 0 ? (
-                <div className="dashboard-empty-state"><CheckCircle size={20} /><span>No Purchase Requests are awaiting a PR number.</span></div>
+                <div className="dashboard-empty-state"><CheckCircle size={20} aria-hidden="true" /><span>No Purchase Requests are awaiting a PR number.</span></div>
               ) : (
-                <div className="pr-review-queue-list">
+                <ul className="pr-intake-list">
                   {unnumberedPrRecords.map((pr) => (
-                    <div className="pr-review-queue-row" key={pr.id}>
-                      <div><strong>#{pr.id}</strong><span>{pr.entity_name || 'Unnamed entity'}</span><small>{pr.office_section || 'Office not specified'}</small></div>
+                    <li className="pr-intake-row" key={pr.id}>
+                      <span className="pr-intake-id">#{pr.id}</span>
+                      <span className="pr-intake-main">
+                        <strong>{pr.office_section || 'Office not specified'}</strong>
+                        <span>{pr.entity_name || 'Unnamed entity'}{pr.purpose ? `, ${pr.purpose}` : ''}</span>
+                      </span>
+                      <span className="pr-intake-total">{formatPeso(pr.grand_total ?? 0)}</span>
                       <span className={`status-badge ${getPrStatusMeta(pr.status).className}`}>{getPrStatusMeta(pr.status).label}</span>
-                      <button
-                        type="button"
-                        className="btn-sm pr-review-action-btn pr-review-btn"
-                        onClick={() => handleEditPr(pr)}
-                      >
-                        <Pencil size={14} />
-                        Review PR
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-sm btn-danger pr-queue-delete-btn"
-                        title="Delete Purchase Request"
-                        onClick={() => requestPrDelete(pr.id)}
-                        disabled={prDeletingId === pr.id}
-                      >
-                        <Trash2 size={14} />
-                        {prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
+                      <span className="pr-intake-actions">
+                        <button type="button" className="btn-sm btn-primary pr-review-btn" onClick={() => handleEditPr(pr)}>
+                          <Pencil size={14} aria-hidden="true" />
+                          Review PR
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-sm btn-danger pr-queue-delete-btn"
+                          title="Delete Purchase Request"
+                          onClick={() => requestPrDelete(pr.id)}
+                          disabled={prDeletingId === pr.id}
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                          {prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
-            </div>
+            </section>
 
             <section className="pr-monitor-section" aria-labelledby="pr-monitor-heading">
-            <h3 id="pr-monitor-heading" className="sr-only">Numbered Purchase Requests</h3>
-            <TableToolbar table={prMonitorTable} searchLabel="Search numbered PRs" searchPlaceholder="PR number, entity, office or category" noun="Purchase Request">
+            <h2 id="pr-monitor-heading" className="pr-monitor-title">Numbered Purchase Requests</h2>
+            <TableToolbar table={prMonitorTable} searchLabel="Search numbered PRs" searchPlaceholder="PR number, entity, office or category" noun="Purchase Request" density={density} onDensityChange={setDensity}>
               <div className="data-toolbar-field">
                 <label htmlFor="pr-status-filter">Status</label>
                 <select id="pr-status-filter" value={prStatusFilter} onChange={(event) => { setPrStatusFilter(event.target.value); prMonitorTable.resetPage() }}>
@@ -4918,183 +4922,168 @@ const Admin = () => {
                 </select>
               </div>
             </TableToolbar>
-            <div className="pr-monitor-table-shell">
-              <div className="pr-monitor-table-wrapper" role="table" aria-labelledby="pr-monitor-heading" aria-rowcount={prMonitorTable.total + 1}>
-                <div className="pr-monitor-table-head" role="row">
-                  {[
-                    ['id', 'ID'],
-                    ['pr_no', 'PR Number'],
-                    ['entity', 'Entity'],
-                    ['office', 'Office'],
-                    ['items', 'Items'],
-                    ['total', 'Grand Total'],
-                    ['status', 'Status'],
-                    ['created', 'Created'],
-                  ].map(([key, label]) => (
-                    <span key={key} role="columnheader" aria-sort={prMonitorTable.ariaSort(key)}>
-                      <button type="button" className="sort-button" onClick={() => prMonitorTable.toggleSort(key)}>
-                        {label}
-                        {prMonitorTable.ariaSort(key) === 'ascending' ? <ArrowUp size={12} aria-hidden="true" /> : prMonitorTable.ariaSort(key) === 'descending' ? <ArrowDown size={12} aria-hidden="true" /> : <ArrowUpDown size={12} aria-hidden="true" />}
-                      </button>
-                    </span>
-                  ))}
-                  <span role="columnheader">Next Step</span>
-                  <span role="columnheader">Actions</span>
-                </div>
+            <div className="table-scroll" data-density={density}>
+              <table className="data-table pr-table responsive-table" aria-labelledby="pr-monitor-heading">
+                <thead>
+                  <tr>
+                    <th scope="col" className="col-toggle"><span className="sr-only">Expand</span></th>
+                    <SortableHeader table={prMonitorTable} sortKey="pr_no">PR Number</SortableHeader>
+                    <SortableHeader table={prMonitorTable} sortKey="office">Office and entity</SortableHeader>
+                    <SortableHeader table={prMonitorTable} sortKey="items" className="num">Items</SortableHeader>
+                    <SortableHeader table={prMonitorTable} sortKey="total" className="num">Grand Total</SortableHeader>
+                    <SortableHeader table={prMonitorTable} sortKey="status">Stage</SortableHeader>
+                    <SortableHeader table={prMonitorTable} sortKey="created">Created</SortableHeader>
+                    <th scope="col">Next step</th>
+                    <th scope="col"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prLoading && prRecords.length === 0 && (
+                    <tr aria-busy="true"><td colSpan={9}><SkeletonRows count={6} /></td></tr>
+                  )}
 
-                {prLoading && prRecords.length === 0 && (
-                  <div className="pr-monitor-table-row" role="row" aria-busy="true">
-                    <span role="cell" style={{ gridColumn: '1 / -1' }}><SkeletonRows count={4} /></span>
-                  </div>
-                )}
-
-                {!prLoading && prMonitorTable.total === 0 && (
-                  <div className="pr-monitor-table-row pr-monitor-empty" role="row">
-                    <span role="cell" className="admin-entry-name" style={{ gridColumn: '1 / -1' }}>
-                      {numberedPrRecords.length === 0
-                        ? 'No numbered Purchase Requests yet. Requests appear here once you assign their PR number above.'
-                        : 'No Purchase Requests match your search or status filter.'}
-                      {numberedPrRecords.length > 0 && (
-                        <>
-                          {' '}
-                          <button type="button" className="link-like" onClick={() => { prMonitorTable.setQuery(''); setPrStatusFilter('all') }}>Clear filters</button>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                )}
-
-                {prMonitorTable.rows.map((pr) => {
-                  const isEditing = Boolean(editingStatusById[pr.id])
-                  const statusMeta = getPrStatusMeta(pr.status)
-                  const prLabel = pr.pr_no || `PR #${pr.id}`
-                  const rowBusy = prSavingId === pr.id || prDeletingId === pr.id
-                  return (
-                    <div key={pr.id} className="pr-monitor-table-row" role="row">
-                      <span role="cell" data-label="ID" className="admin-entry-id">{pr.id}</span>
-                      <span role="cell" data-label="PR Number">
-                        <button
-                          type="button"
-                          className="pr-number-link"
-                          title="View Purchase Request"
-                          onClick={() => handleViewPr(pr)}
-                        >
-                          {pr.pr_no || 'N/A'}
-                        </button>
-                      </span>
-                      <span role="cell" data-label="Entity" className="admin-entry-name">{pr.entity_name || 'N/A'}</span>
-                      <span role="cell" data-label="Office">{pr.office_section || 'N/A'}</span>
-                      <span role="cell" data-label="Items">{pr.items_count ?? 0}</span>
-                      <span role="cell" data-label="Grand Total" className="pr-currency">{formatPeso(pr.grand_total ?? 0)}</span>
-                      <span role="cell" data-label="Status">
-                        {!isEditing ? (
+                  {!prLoading && prMonitorTable.total === 0 && (
+                    <tr className="table-empty-row">
+                      <td colSpan={9}>
+                        {numberedPrRecords.length === 0
+                          ? 'No numbered Purchase Requests yet. Requests appear here once you assign their PR number above.'
+                          : 'No Purchase Requests match your search or status filter.'}
+                        {numberedPrRecords.length > 0 && (
                           <>
-                            <span className={`status-badge ${statusMeta.className}`}>
-                              {statusMeta.label}
-                            </span>
-                            {pr.is_posted && <span className="status-badge tone-success pr-posted-badge" title={`Posted ${formatPostingRecord(pr)}`}>Posted</span>}
-                          </>
-                        ) : (
-                          <select
-                            value={pendingStatusById[pr.id] || pr.status || 'uploaded'}
-                            disabled={rowBusy}
-                            onChange={(e) => setPendingStatusById((prev) => ({ ...prev, [pr.id]: e.target.value }))}
-                            className="pr-status-select"
-                            aria-label={`Status for ${prLabel}`}
-                          >
-                            {prStatusOptions.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                        )}
-                      </span>
-                      <span role="cell" data-label="Created" title={pr.created_at ? new Date(pr.created_at).toLocaleString() : undefined}>{pr.created_at ? new Date(pr.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not recorded'}</span>
-                      <span role="cell" data-label="Next Step" className="pr-matching-action">
-                        {pr.status !== 'uploaded' && !pr.has_quotation && (
-                          <button
-                            type="button"
-                            className="btn-sm btn-secondary"
-                            onClick={() => {
-                              setWorkflowPrId(pr.id)
-                              setCurrentTab(pr.category?.trim() ? 'supplier-matching' : 'assign-categories')
-                            }}
-                          >
-                            {pr.category?.trim() ? 'Continue matching' : 'Select categories'}
-                          </button>
-                        )}
-                      </span>
-                      <span role="cell" data-label="Actions" className="pr-row-actions">
-                        <button
-                          type="button"
-                          className="icon-action-btn"
-                          title="View"
-                          aria-label={`View ${prLabel}`}
-                          onClick={() => handleViewPr(pr)}
-                        >
-                          <Eye size={14} aria-hidden="true" />
-                        </button>
-                        {!isEditing ? (
-                          <button
-                            type="button"
-                            className="icon-action-btn"
-                            title="Open details and change history (locked)"
-                            aria-label={`Open details for ${prLabel}`}
-                            disabled={rowBusy}
-                            onClick={() => handleEditPr(pr)}
-                          >
-                            <FileText size={14} aria-hidden="true" />
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="icon-action-btn"
-                              title="Save status"
-                              aria-label={`Save status for ${prLabel}`}
-                              disabled={rowBusy}
-                              onClick={() => handleSaveStatusEdit(pr)}
-                            >
-                              <Check size={14} aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-action-btn"
-                              title="Cancel status change"
-                              aria-label={`Cancel status change for ${prLabel}`}
-                              disabled={rowBusy}
-                              onClick={() => handleCancelStatusEdit(pr.id)}
-                            >
-                              <X size={14} aria-hidden="true" />
-                            </button>
+                            {' '}
+                            <button type="button" className="link-like" onClick={() => { prMonitorTable.setQuery(''); setPrStatusFilter('all') }}>Clear filters</button>
                           </>
                         )}
-                        {!isEditing && (
-                          <button
-                            type="button"
-                            className="icon-action-btn"
-                            title="Edit Status"
-                            aria-label={`Edit status of ${prLabel}`}
-                            disabled={rowBusy}
-                            onClick={() => handleStartStatusEdit(pr)}
-                          >
-                            <Settings size={14} aria-hidden="true" />
-                          </button>
+                      </td>
+                    </tr>
+                  )}
+
+                  {prMonitorTable.rows.map((pr) => {
+                    const isEditing = Boolean(editingStatusById[pr.id])
+                    const statusMeta = getPrStatusMeta(pr.status)
+                    const prLabel = pr.pr_no || `PR #${pr.id}`
+                    const rowBusy = prSavingId === pr.id || prDeletingId === pr.id
+                    const position = prPipelinePosition(pr)
+                    const expanded = expandedPrId === pr.id
+                    const detailId = `pr-detail-${pr.id}`
+                    return (
+                      <React.Fragment key={pr.id}>
+                        <tr className={expanded ? 'is-expanded' : undefined}>
+                          <td className="col-toggle">
+                            <button
+                              type="button"
+                              className="row-toggle"
+                              aria-expanded={expanded}
+                              aria-controls={expanded ? detailId : undefined}
+                              aria-label={`${expanded ? 'Hide' : 'Show'} progress of ${prLabel}`}
+                              onClick={() => setExpandedPrId(expanded ? null : pr.id)}
+                            >
+                              <ChevronRight size={16} aria-hidden="true" />
+                            </button>
+                          </td>
+                          <td data-label="PR Number">
+                            <button type="button" className="record-link" title="View Purchase Request" onClick={() => handleViewPr(pr)}>
+                              {pr.pr_no || 'N/A'}
+                            </button>
+                          </td>
+                          <td data-label="Office and entity">
+                            <span className="cell-primary">{pr.office_section || 'Office not specified'}</span>
+                            <span className="cell-secondary">{pr.entity_name || 'N/A'}</span>
+                          </td>
+                          <td data-label="Items" className="num">{pr.items_count ?? 0}</td>
+                          <td data-label="Grand Total" className="num">{formatPeso(pr.grand_total ?? 0)}</td>
+                          <td data-label="Stage">
+                            {!isEditing ? (
+                              <span className="pl-mini-wrap">
+                                <span className="stage-badges">
+                                  <span className={`status-badge ${statusMeta.className}`}>{statusMeta.label}</span>
+                                  {pr.is_posted && <span className="status-badge tone-success pr-posted-badge" title={`Posted ${formatPostingRecord(pr)}`}>Posted</span>}
+                                </span>
+                                <PipelineMini position={position} />
+                              </span>
+                            ) : (
+                              <select
+                                value={pendingStatusById[pr.id] || pr.status || 'uploaded'}
+                                disabled={rowBusy}
+                                onChange={(e) => setPendingStatusById((prev) => ({ ...prev, [pr.id]: e.target.value }))}
+                                className="pr-status-select"
+                                aria-label={`Status for ${prLabel}`}
+                              >
+                                {prStatusOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td data-label="Created" title={pr.created_at ? new Date(pr.created_at).toLocaleString() : undefined}>{pr.created_at ? new Date(pr.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Not recorded'}</td>
+                          <td data-label="Next step">
+                            {pr.status !== 'uploaded' && !pr.has_quotation && (
+                              <button
+                                type="button"
+                                className="btn-sm btn-secondary"
+                                onClick={() => {
+                                  setWorkflowPrId(pr.id)
+                                  setCurrentTab(pr.category?.trim() ? 'supplier-matching' : 'assign-categories')
+                                }}
+                              >
+                                {pr.category?.trim() ? 'Continue matching' : 'Select categories'}
+                              </button>
+                            )}
+                          </td>
+                          <td data-label="Actions" className="pr-row-actions">
+                            <button type="button" className="icon-action-btn" title="View" aria-label={`View ${prLabel}`} onClick={() => handleViewPr(pr)}>
+                              <Eye size={15} aria-hidden="true" />
+                            </button>
+                            {!isEditing ? (
+                              <button type="button" className="icon-action-btn" title="Open details and change history (locked)" aria-label={`Open details for ${prLabel}`} disabled={rowBusy} onClick={() => handleEditPr(pr)}>
+                                <FileText size={15} aria-hidden="true" />
+                              </button>
+                            ) : (
+                              <>
+                                <button type="button" className="icon-action-btn" title="Save status" aria-label={`Save status for ${prLabel}`} disabled={rowBusy} onClick={() => handleSaveStatusEdit(pr)}>
+                                  <Check size={15} aria-hidden="true" />
+                                </button>
+                                <button type="button" className="icon-action-btn" title="Cancel status change" aria-label={`Cancel status change for ${prLabel}`} disabled={rowBusy} onClick={() => handleCancelStatusEdit(pr.id)}>
+                                  <X size={15} aria-hidden="true" />
+                                </button>
+                              </>
+                            )}
+                            {!isEditing && (
+                              <button type="button" className="icon-action-btn" title="Edit Status" aria-label={`Edit status of ${prLabel}`} disabled={rowBusy} onClick={() => handleStartStatusEdit(pr)}>
+                                <Settings size={15} aria-hidden="true" />
+                              </button>
+                            )}
+                            <button type="button" className="icon-action-btn delete" title={prDeletingId === pr.id ? 'Deleting...' : 'Delete'} aria-label={`Delete ${prLabel}`} disabled={rowBusy} onClick={() => requestPrDelete(pr.id)}>
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="row-detail" id={detailId}>
+                            <td colSpan={9}>
+                              <div className="row-detail-grid">
+                                <PipelineLine variant="record" current={position.index} stopped={position.stopped} currentText={position.label} label={`Progress of ${prLabel}`} />
+                                <div className="row-detail-facts">
+                                  <dl>
+                                    <div><dt>Purpose</dt><dd>{pr.purpose || 'No purpose given'}</dd></div>
+                                    <div><dt>Category</dt><dd>{pr.category || 'Not categorized yet'}</dd></div>
+                                    <div><dt>Public posting</dt><dd>{formatPostingRecord(pr)}</dd></div>
+                                    <div><dt>RFQs</dt><dd>{pr.rfq_sent_count ? `${pr.rfq_sent_count} sent, ${pr.rfq_response_count || 0} with a quotation` : 'None sent yet'}</dd></div>
+                                  </dl>
+                                  <div className="row-detail-actions">
+                                    <button type="button" className="btn-sm btn-primary" onClick={() => handleEditPr(pr)}>Open record</button>
+                                    <button type="button" className="btn-sm btn-secondary" onClick={() => handleViewPr(pr)}>Quick view</button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                        <button
-                          type="button"
-                          className="icon-action-btn delete"
-                          title={prDeletingId === pr.id ? 'Deleting...' : 'Delete'}
-                          aria-label={`Delete ${prLabel}`}
-                          disabled={rowBusy}
-                          onClick={() => requestPrDelete(pr.id)}
-                        >
-                          <Trash2 size={14} aria-hidden="true" />
-                        </button>
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+                      </React.Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
             <Pagination table={prMonitorTable} label="Numbered Purchase Requests pages" />
             </section>
@@ -5108,8 +5097,11 @@ const Admin = () => {
                           ? `Purchase Request ${editPrForm?.pr_no || editingPr.pr_no}`
                           : `Review Purchase Request ${editingPr.pr_no || `#${editingPr.id}`}`}
                       </h2>
-                      {editPrLocked && <p className="pr-sheet-meta">Locked · read-only</p>}
+                      {editPrLocked && <p className="pr-sheet-meta">Locked, read-only</p>}
                       <EditedBySummary editors={editPrChanges.data.editors} className="pr-sheet-meta pr-edited-by" />
+                      <div className="pr-sheet-line">
+                        <PipelineLine variant="record" current={editingPosition.index} stopped={editingPosition.stopped} currentText={editingPosition.label} label={`Progress of ${editingPr.pr_no || `PR #${editingPr.id}`}`} />
+                      </div>
                       <PRPosting apiBase={apiBaseUrl} prId={editingPr.id} onChange={(posting) => handlePostingChange(editingPr.id, posting)} />
                     </div>
                     <div className="pr-sheet-actions">
