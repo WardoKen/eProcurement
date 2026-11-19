@@ -177,6 +177,7 @@ by 8 to 16px. That jump is the point.
 | Buttons, inputs, selects | 6px |
 | Index tabs, segmented controls, density toggle | 999px (pill) |
 | Dialogs, menus, command palette | 12px, with the only shadow in the system |
+| Scrollbar thumb | 999px (pill), `--input-line` at rest, `--jade` on hover |
 
 ## The line (signature component)
 
