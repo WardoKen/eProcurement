@@ -13,53 +13,6 @@
    still contain literal values; they are migrated as screens are touched.
    ========================================================================== */
 
-:root {
-  /* Type */
-
-  --font-mono: var(--font-sans);
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-md: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 20px;
-  --font-size-2xl: 26px;
-  --line-height-tight: 1.25;
-  --line-height-body: 1.5;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-
-  /* Contrast fixes (WCAG 2.2 AA). The previous values measured:
-     --text-muted #8a97a1: 2.99:1 on white, 2.72:1 on --bg (needs 4.5:1);
-     --warning #a16207 on --warning-tint: 4.42:1 (badge text needs 4.5:1). */
-  --text-muted: #5f6b75;   /* 5.46:1 on white, 4.96:1 on --bg */
-  --warning: #8f5a06;      /* 5.19:1 on --warning-tint */
-  /* Input borders must reach 3:1 against their surroundings (1.4.11). */
-  --border-input: #858f88; /* 3.34:1 on white, 3.04:1 on --bg */
-
-  /* Focus. The old --ring (teal at 25% alpha) was about 1.4:1, below the
-     3:1 non-text minimum. Focus indicators now use solid colors. */
-  --focus-ring: #0f766e;         /* 5.47:1 on white */
-  --focus-ring-on-dark: #d9a521; /* 6.20:1 on --navy */
-  --focus-ring-width: 3px;
-  --focus-ring-offset: 2px;
-
-  /* Motion */
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-
-  /* Layers */
-  --z-sticky: 20;
-  --z-overlay: 1000;
-  --z-toast: 1100;
-
-  /* Sizing. WCAG 2.2 2.5.8 needs 24px targets; 40px is the comfortable size. */
-  --target-min: 24px;
-  --target-comfortable: 40px;
-  --content-max: 1280px;
-}
-
 /* ── Base accessibility ─────────────────────────────────────────────────── */
 
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
@@ -97,7 +50,7 @@
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--navy);
-  color: #fff;
+  color: var(--surface);
   font-weight: var(--font-weight-semibold);
   text-decoration: none;
   transform: translateY(-200%);

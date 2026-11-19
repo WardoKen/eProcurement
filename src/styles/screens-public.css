@@ -185,3 +185,140 @@
   box-shadow: none;
 }
 .faq-section > .faq-item:first-of-type { border-top: 1px solid var(--rule); }
+
+/* ── Other public pages: Opportunities, FAQ, the process guide ───────────
+   They keep their structure and take the identity: page titles as in the
+   portals, no accent bars or tinted hero bands. */
+
+main > .page-content:not(.home) {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--s-7) var(--gutter) var(--s-7);
+}
+
+.page-content h1 {
+  font-size: var(--text-title);
+  font-weight: 780;
+  font-variation-settings: "wdth" var(--wdth-title);
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+.page-content h1::after { content: none; }
+
+.table-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+}
+.table-header p { margin-top: var(--s-3); color: var(--ink-2); }
+.table-summary { display: grid; gap: 4px; color: var(--ink-2); font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.table-summary strong, .table-summary span:first-child { color: var(--ink); }
+
+.faq-container { max-width: 880px; margin: 0; }
+.faq-intro { margin: var(--s-3) 0 var(--s-6); color: var(--ink-2); font-size: 17px; }
+.faq-grid { display: grid; gap: var(--s-7); }
+.faq-section { display: grid; gap: 0; }
+.faq-section > h2 { margin-bottom: var(--s-3); padding-bottom: var(--s-2); border-bottom: 2px solid var(--ink); color: var(--ink); }
+
+@media (max-width: 720px) {
+  .table-summary { text-align: left; }
+}
+
+/* ── Process guide (/process) ────────────────────────────────────────────
+   A hero with the stage index drawn as a vertical line, the roles on a
+   rule, then each stage as a numbered row (the stages are a sequence). */
+
+.process-guide { display: grid; gap: var(--s-8); }
+
+.procurement-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(280px, 5fr);
+  gap: var(--s-7);
+  align-items: start;
+}
+.procurement-hero-copy { display: grid; gap: var(--s-4); align-content: start; }
+.procurement-hero-copy h1 { max-width: 14ch; font-size: clamp(40px, 5vw, 72px); font-weight: 820; font-variation-settings: "wdth" var(--wdth-display); line-height: 0.94; letter-spacing: -0.035em; }
+.hero-lede { color: var(--ink-2); font-size: 17px; line-height: 1.55; }
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.hero-text-link { display: inline-flex; align-items: center; gap: 4px; color: var(--jade-deep); font-weight: 650; }
+
+.procurement-activity-panel { padding: var(--s-5); border-left: 4px solid var(--marigold); background: var(--sunk); }
+.activity-panel-head { margin-bottom: var(--s-4); color: var(--ink-2); font-size: 13px; font-weight: 650; }
+.activity-timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.activity-timeline li { position: relative; display: grid; grid-template-columns: 28px 1fr; gap: var(--s-3); padding-bottom: var(--s-4); }
+.activity-timeline li::before { content: ""; position: absolute; left: 12px; top: 26px; bottom: 0; width: 4px; border-radius: 2px; background: var(--jade); }
+.activity-timeline li:last-child::before { content: none; }
+.activity-timeline li > span { display: grid; place-items: center; width: 28px; height: 28px; border: 4px solid var(--jade); border-radius: 50%; background: var(--paper); color: var(--ink); font-size: 11px; font-weight: 750; }
+.activity-timeline li > div { display: grid; gap: 1px; padding-top: 3px; }
+.process-index .activity-timeline a { color: var(--ink); font-size: 14px; font-weight: 700; text-decoration: none; }
+.process-index .activity-timeline a:hover { color: var(--jade-deep); text-decoration: underline; }
+.activity-timeline small { color: var(--ink-2); font-size: 12.5px; }
+
+.home-role-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid var(--ink); }
+.home-role-strip article { padding: var(--s-4) var(--s-5) 0 0; }
+.home-role-strip article + article { padding-left: var(--s-5); border-left: 1px solid var(--rule); }
+.home-role-strip .role-index { display: none; }
+.home-role-strip h2 { font-size: 22px; }
+.home-role-strip p { margin-top: 4px; color: var(--ink-2); }
+
+.process-section-head { margin-bottom: var(--s-5); }
+.process-section-head h2 { font-size: 32px; font-weight: 780; font-variation-settings: "wdth" 110; letter-spacing: -0.025em; }
+
+.process-stage-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 2px solid var(--ink); }
+.process-stage {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 7fr) minmax(240px, 4fr);
+  gap: var(--s-5);
+  padding: var(--s-5) 0;
+  border-bottom: 1px solid var(--rule);
+  scroll-margin-top: calc(var(--topbar-h) + var(--s-4));
+}
+.process-stage-marker { color: var(--jade); font-size: 44px; font-weight: 800; font-variation-settings: "wdth" 118; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.process-stage-body { display: grid; gap: var(--s-2); align-content: start; }
+.process-stage-role { color: var(--ink-2); font-size: 13px; font-weight: 650; }
+.process-stage-body h3 { font-size: 22px; font-weight: 750; font-variation-settings: "wdth" 106; letter-spacing: -0.015em; }
+.process-stage-summary { color: var(--ink-2); }
+.process-stage-steps { display: grid; gap: 4px; margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+.process-stage-record { display: grid; gap: var(--s-2); align-content: start; padding: var(--s-4); background: var(--sunk); font-size: 13.5px; }
+.process-record-row { display: grid; gap: 2px; }
+.activity-label { color: var(--ink-2); font-size: 12px; font-weight: 650; }
+.process-record-arrow { color: var(--jade); }
+.process-record-statuses ul { display: grid; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; }
+.process-status-scope { color: var(--ink-2); font-weight: 600; }
+
+.home-editorial-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--s-6); align-items: start; }
+.official-bulletin { border-top: 2px solid var(--ink); }
+.bulletin-head { padding: var(--s-4) 0 var(--s-2); }
+.bulletin-head h2 { font-size: 24px; }
+.process-guide .process-bulletin-intro { padding: 0; color: var(--ink-2); }
+.official-bulletin ul { display: grid; gap: 0; margin: var(--s-3) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
+.process-requirement { display: flex; align-items: flex-start; gap: var(--s-2); padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.process-requirement svg { flex: none; margin-top: 3px; color: var(--jade); }
+.process-guide .process-requirement p { color: var(--ink); font-size: 14px; font-weight: 550; }
+
+.process-cta { display: grid; gap: var(--s-3); padding: var(--s-6); border: 0; border-radius: 0; background: var(--jade); color: var(--on-jade); }
+.process-guide .process-cta h2 { color: var(--on-jade); font-size: 30px; font-weight: 800; font-variation-settings: "wdth" 110; letter-spacing: -0.025em; }
+.process-cta p { color: var(--on-jade); }
+.process-cta .btn-primary { border-color: var(--on-jade); background: var(--on-jade); color: var(--jade-deep); }
+.process-cta .btn-primary:hover:not(:disabled) { border-color: var(--on-jade); background: var(--on-jade); color: var(--ink); }
+.process-cta .process-cta-link, .process-cta .process-cta-link:hover { color: var(--on-jade); text-decoration: underline; }
+
+@media (max-width: 960px) {
+  .procurement-hero, .home-editorial-grid { grid-template-columns: 1fr; }
+  .home-role-strip { grid-template-columns: 1fr; }
+  .home-role-strip article, .home-role-strip article + article { padding: var(--s-3) 0; border-left: 0; border-bottom: 1px solid var(--rule); }
+  .process-stage { grid-template-columns: 52px minmax(0, 1fr); }
+  .process-stage-record { grid-column: 2; }
+  .process-stage-marker { font-size: 32px; }
+}
+
+/* Supplier registration: the hero is ink on the page, no dark band */
+.registration-hero, .registration-hero h1 { color: var(--ink); }
+.registration-hero p { color: var(--ink-2); }

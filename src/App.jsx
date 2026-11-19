@@ -3918,6 +3918,9 @@ const Admin = () => {
     toast.info(`Selected ${name} for ${card.prNo}.`)
   }
 
+  // Where the PR in the quick view is on the line.
+  const viewingPosition = viewingPr ? prPipelinePosition(viewingPr) : null
+
   // Where the PR open in the review sheet is on the line.
   const editingPosition = editingPr ? prPipelinePosition(editingPr) : null
 
@@ -5531,6 +5534,9 @@ const Admin = () => {
               <p className="record-status">
                 Current status <span className={`status-badge ${getPrStatusMeta(viewingPr.status).className}`}>{getPrStatusMeta(viewingPr.status).label}</span>
               </p>
+              <div className="pr-sheet-line pr-quick-line">
+                <PipelineLine variant="record" current={viewingPosition.index} stopped={viewingPosition.stopped} currentText={viewingPosition.label} label={`Progress of ${viewingPr.pr_no || `PR #${viewingPr.id}`}`} />
+              </div>
               <dl className="buyer-status-facts">
                 <div><dt>Entity</dt><dd>{viewingPr.entity_name || 'N/A'}</dd></div>
                 <div><dt>Office</dt><dd>{viewingPr.office_section || 'N/A'}</dd></div>

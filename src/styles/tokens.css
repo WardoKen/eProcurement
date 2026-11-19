@@ -150,6 +150,12 @@
   --shadow-overlay: var(--shadow-float);
   --focus-ring: var(--marigold);
   --focus-ring-on-dark: var(--marigold);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --font-weight-semibold: 650;
+  --z-toast: 1200;
+  --target-min: 36px;
+  --target-comfortable: 40px;
   --text-xs: var(--text-small);
   --text-sm: var(--text-small);
   --text-table: var(--text-data);

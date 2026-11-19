@@ -769,3 +769,22 @@ select.dropdown-control { cursor: pointer; }
 .response-meter i { display: block; width: 14px; height: 4px; border-radius: 2px; background: var(--rule); }
 .response-meter i.is-done { background: var(--jade); }
 @media (max-width: 960px) { .rfq-mgmt-group-state { justify-items: start; } }
+
+/* Supplier registrations panel: a band on the heavy rule, not a card */
+.supplier-verification-shell { display: grid; gap: var(--s-5); }
+.supplier-verification-list-card { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.supplier-verification-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-3); }
+.supplier-verification-toolbar h3 { font-size: 22px; font-weight: 720; font-variation-settings: "wdth" 106; letter-spacing: -0.015em; }
+.supplier-verification-toolbar p { margin-top: 4px; color: var(--ink-2); font-size: 13.5px; }
+
+/* PR numbering preview (settings and the review sheet) */
+.number-preview { display: grid; gap: 4px; margin-top: var(--s-3); }
+.number-preview strong { font-size: 28px; font-weight: 800; font-variation-settings: "wdth" 112; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.number-preview small { color: var(--ink-2); font-size: 12.5px; }
+
+/* The line inside the PR quick view: compact, current station in words */
+.pr-quick-line { margin: var(--s-2) 0 var(--s-4); }
+.pr-quick-line .pl-name { font-size: 11.5px; }
+
+/* Long values (emails, addresses) wrap instead of running into the next column */
+.supplier-review-modal :is(p, span, dd, strong) { overflow-wrap: anywhere; }

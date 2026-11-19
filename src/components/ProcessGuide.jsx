@@ -100,7 +100,6 @@ export default function ProcessGuide() {
     <div className="page-content institutional-home process-guide">
       <section className="procurement-hero process-hero">
         <div className="procurement-hero-copy">
-          <p className="hero-kicker">eProcure / The procurement process</p>
           <h1>How a request becomes a quotation.</h1>
           <p className="hero-lede">
             Every Purchase Request follows the same path through eProcure, from the End User's signed document
@@ -114,8 +113,7 @@ export default function ProcessGuide() {
 
         <nav className="procurement-activity-panel process-index" aria-label="Process stages">
           <div className="activity-panel-head">
-            <span className="document-tab">Stage index</span>
-            <span className="activity-panel-state">{STAGES.length} stages</span>
+            <span className="document-tab">{STAGES.length} stages</span>
           </div>
           <ol className="activity-timeline">
             {STAGES.map((stage, index) => (
@@ -150,7 +148,6 @@ export default function ProcessGuide() {
 
       <section className="process-stages" aria-labelledby="process-stages-title">
         <div className="process-section-head">
-          <p className="section-kicker">Stage by stage</p>
           <h2 id="process-stages-title">One request, one record at every step.</h2>
         </div>
 
@@ -206,7 +203,6 @@ export default function ProcessGuide() {
               <p className="section-kicker">Before stage 05</p>
               <h2 id="process-supplier-title">Supplier registration</h2>
             </div>
-            <span>COMPLIANCE</span>
           </div>
           <p className="process-bulletin-intro">
             Suppliers are matched to RFQs only after the BAC approves their registration. Verification usually takes
@@ -221,7 +217,6 @@ export default function ProcessGuide() {
         </section>
 
         <section className="process-cta" aria-labelledby="process-cta-title">
-          <p className="hero-kicker">Ready to begin</p>
           <h2 id="process-cta-title">Start from the right workspace.</h2>
           <p>
             End Users upload Purchase Requests, the BAC Secretariat reviews them and issues RFQs, and suppliers respond
