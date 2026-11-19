@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viewport check</title>
+<style>
+  body { margin: 0; padding: 16px; background: #2b3330; font: 13px system-ui, sans-serif; color: #e6edea; }
+  .row { display: flex; gap: 24px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { margin-bottom: 6px; }
+  iframe { display: block; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+<!-- Dev tool: shows one page at tablet and phone widths side by side.
+     /design-lab/viewports.html?src=/design-lab/preview.html%3Fas%3Dadmin -->
+<div class="row">
+  <figure><figcaption>Tablet 820</figcaption><iframe id="tablet" width="820" height="980"></iframe></figure>
+  <figure><figcaption>Phone 390</figcaption><iframe id="phone" width="390" height="844"></iframe></figure>
+</div>
+<script>
+  const src = new URLSearchParams(location.search).get('src') || '/'
+  document.getElementById('tablet').src = src
+  document.getElementById('phone').src = src
+  // Overflow report for the checker: page width vs. viewport per frame.
+  window.overflowReport = () => ['tablet', 'phone'].map((id) => {
+    const doc = document.getElementById(id).contentDocument
+    return `${id}: viewport ${doc.documentElement.clientWidth}, content ${doc.documentElement.scrollWidth}`
+  })
+</script>
+</body>
+</html>

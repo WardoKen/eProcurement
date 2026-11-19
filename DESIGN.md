@@ -271,3 +271,32 @@ These made the earlier designs read as a template. They do not come back.
 | `src/styles/components.css` | Buttons, forms, status, tables, dialogs, alerts, palette, the line |
 | `src/styles/shell.css` | Top bar, index navigation, public navigation, footer |
 | `src/styles/screens-*.css` | Screen-specific layout: public, admin, supplier, enduser |
+
+## Implementation notes
+
+- **Sticky headers** stick to the page only inside `.table-scroll` on wide
+  screens. A table inside any other scrolling frame keeps its header at the
+  top of that frame, because a sticky element cannot see past a scrolling
+  ancestor.
+- **View transitions** pair the content area across page changes. The
+  `view-transition-name`s are set only while a transition runs
+  (`.vt-active`, `:active-view-transition`), because a named element is a
+  stacking context and would otherwise trap dialogs under the top bar.
+- **Legacy CSS.** `src/index.css` and `design-system.css` still hold rules
+  for screens outside the redesign (registration, profile, settings forms),
+  inside `@layer legacy`. Their colours, shadows and radii are mapped to
+  the tokens, so they follow the theme. Delete a rule there once its
+  screen is rebuilt here. A layered `!important` beats an unlayered one,
+  so a legacy `!important` must be deleted, not overridden.
+
+## Verification and tools (`design-lab/`)
+
+| Tool | Use |
+|---|---|
+| `preview.html?as=admin\|enduser\|supplier` | The real app with sample data, for screenshots of signed-in screens |
+| `viewports.html?src=<url>` | One page at 820px and 390px side by side; `overflowReport()` in the console |
+| `contrast-audit.js` | `await import('/design-lab/contrast-audit.js'); auditContrast(document)` lists text below AA |
+
+Checked at 1536, 820 and 390px in light and dark: no horizontal overflow
+on the redesigned screens, no AA contrast failures, a visible focus ring
+on every control reached by Tab, and no console errors.

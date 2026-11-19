@@ -8,7 +8,8 @@
 .enduser-dashboard { display: grid; gap: var(--s-6); }
 .enduser-dashboard > .alert { margin: 0; }
 .enduser-dashboard .kpi-grid { margin: 0; }
-.enduser-dashboard .dash-panel { min-width: 0; }
+.enduser-dashboard .dash-panel { min-width: 0; overflow-x: auto; }
+@media (max-width: 720px) { .enduser-dashboard .dash-panel { overflow-x: visible; } }
 .enduser-dashboard .dash-panel-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-3); }
 .enduser-dashboard .dash-panel-header h2 { font-size: 22px; }
 .enduser-dashboard .dash-table .cell-purpose { max-width: 40ch; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }

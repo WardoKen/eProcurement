@@ -594,6 +594,7 @@ tr.row-detail:hover > td { background: var(--sunk); }
     font-size: 12.5px;
     font-weight: 600;
   }
+  .responsive-table td[data-label] > * { grid-column: 2; }
   .responsive-table td.num { text-align: left; }
   .responsive-table tbody tr:hover > td { background: transparent; }
   .data-toolbar-count { margin-left: 0; }
@@ -1088,7 +1089,7 @@ tr.row-detail:hover > td { background: var(--sunk); }
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   margin: 0 0 var(--s-7);
   padding: 0;
   list-style: none;
