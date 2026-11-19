@@ -177,7 +177,6 @@ by 8 to 16px. That jump is the point.
 | Buttons, inputs, selects | 6px |
 | Index tabs, segmented controls, density toggle | 999px (pill) |
 | Dialogs, menus, command palette | 12px, with the only shadow in the system |
-| Scrollbar thumb | 999px (pill), `--input-line` at rest, `--jade` on hover |
 
 ## The line (signature component)
 
@@ -254,6 +253,9 @@ These made the earlier designs read as a template. They do not come back.
 - The navy masthead with a light sidebar.
 
 ## Accessibility
+
+- Scrollbars are hidden across the app; areas still scroll by wheel,
+  touch, trackpad and keyboard.
 
 - WCAG 2.1 AA contrast for all text and controls (table above).
 - Focus is a 2px marigold outline with a 2px offset plus an ink inner
