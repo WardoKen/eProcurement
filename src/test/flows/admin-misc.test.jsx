@@ -181,7 +181,8 @@ describe('end user dashboard', () => {
     installApi({ 'GET /api/pr/list/': { json: myPrs } })
     renderAt('/enduser')
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Welcome back, Ana Cruz' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '1 of your requests is out for quotation.' })).toBeInTheDocument()
+    expect(screen.getByText('Ana Cruz', { selector: '.portal-head-name' })).toBeInTheDocument()
     const kpis = await screen.findByRole('list', { name: 'Key figures' })
     const tile = (label) => within(kpis).getByText(label).closest('li')
     expect(tile('Submitted')).toHaveTextContent('3PRs')
@@ -206,7 +207,7 @@ describe('end user dashboard', () => {
     renderAt('/buyer')
 
     await waitFor(() => expect(window.location.pathname).toBe('/enduser'))
-    expect(await screen.findByRole('heading', { level: 1, name: /welcome back/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: /no purchase requests yet/i })).toBeInTheDocument()
   })
 
   it('groups navigation into Overview and Purchase Requests', async () => {

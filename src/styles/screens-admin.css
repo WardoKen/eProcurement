@@ -549,7 +549,7 @@
 .cat-assign-table { width: 100%; min-width: 780px; border-collapse: separate; border-spacing: 0; font-size: var(--text-data); font-variation-settings: "wdth" var(--wdth-data); }
 .cat-assign-head th {
   position: sticky;
-  top: var(--sticky-top, 0);
+  top: 0;
   z-index: 2;
   padding: 9px 12px;
   border-bottom: 2px solid var(--ink);

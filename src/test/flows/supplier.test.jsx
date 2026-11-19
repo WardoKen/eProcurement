@@ -22,7 +22,7 @@ describe('supplier portal', () => {
     const api = installApi(portalRoutes())
     renderAt('/supplier')
 
-    await screen.findByText(/welcome back, acme supplies/i)
+    await screen.findByText(/acme supplies/i, { selector: '.portal-head-name' })
     const gets = api.calls.filter((call) => call.method === 'GET').map((call) => call.path)
     expect(gets).toEqual(expect.arrayContaining([
       '/api/suppliers/7/dashboard/',

@@ -178,3 +178,20 @@ export const manualRfqs = {
     { id: 61, manual_supplier_name: 'Bantayan Printing Press', status_label: 'Awaiting completed RFQ', has_response: false, purchase_request: { id: 18, pr_no: '2026-11-013' }, quotation_no: 'Q-2026-11-013-M1', rfq_no: 'RFQ-2026-11-013:04', created_by: 'admintest', sent_at: iso(1), created_at: iso(1) },
   ],
 }
+
+export const supplierProfile = {
+  id: 327, company_name: 'Island Signage Co.', status: 'Approved', email: 'quotes@islandsignage.ph',
+  contact_person: 'Ramil Ouano', business_type: 'Corporation', categories: ['Advertising Agency Services'], documents: [],
+}
+
+export const supplierDashboard = {
+  company_name: 'Island Signage Co.', open_opportunities: 2, submitted_quotations: 5,
+  pending_quotations: 1, rejected_quotations: 1, verification_status: 'Approved',
+}
+
+export const supplierOpportunities = {
+  opportunities: [
+    { id: 13, pr_no: '2026-11-008', office_section: 'MIS', purpose: 'Advertising materials, tarpaulin banners and standees', category: 'Advertising Agency Services', grand_total: 14050, status: 'matched', posted_at: iso(2) },
+    { id: 12, pr_no: '2026-11-007', office_section: 'MIS', purpose: 'Advertising materials for the enrolment campaign', category: 'Advertising Agency Services', grand_total: 14050, status: 'matched', posted_at: iso(3) },
+  ],
+}

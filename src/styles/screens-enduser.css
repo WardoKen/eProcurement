@@ -1,18 +1,17 @@
 /* ==========================================================================
-   End User portal screens. Unlayered. See DESIGN.md.
+   End User portal screens: the dashboard, Submit a PR and Live Status.
+   Unlayered. See DESIGN.md.
    ========================================================================== */
 
 /* ── Dashboard ─────────────────────────────────────────────────────────── */
 
-.enduser-dashboard { display: flex; flex-direction: column; gap: var(--space-5); }
-.enduser-dashboard > .supplier-header { margin-bottom: 0; }
+.enduser-dashboard { display: grid; gap: var(--s-6); }
 .enduser-dashboard > .alert { margin: 0; }
-.enduser-dashboard .dashboard-header-row > .btn-primary { flex: none; }
-
-/* Wide tables scroll inside their panel, never the page. */
-.enduser-dashboard .dash-panel { overflow-x: auto; }
-@media (max-width: 720px) {
-  .enduser-dashboard .dash-panel { overflow-x: visible; }}
+.enduser-dashboard .kpi-grid { margin: 0; }
+.enduser-dashboard .dash-panel { min-width: 0; }
+.enduser-dashboard .dash-panel-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-3); }
+.enduser-dashboard .dash-panel-header h2 { font-size: 22px; }
+.enduser-dashboard .dash-table .cell-purpose { max-width: 40ch; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Submit a Purchase Request (DragDropUpload) ─────────────────────────
    One generous drop target, then the document beside the extracted record,
@@ -128,78 +127,114 @@
   .pr-upload-page .pr-upload-grid { padding-left: 0; }
 }
 
-/* ── Live Status ──────────────────────────────────────────────────────── */
 
-.buyer-status-viewer {
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-panel);
-  background: var(--paper);
-}
+/* ── Live Status: each PR a collapsible record, its progress drawn as the line ── */
 
-.buyer-status-viewer > .supplier-header {
+.buyer-status-viewer { margin: 0; padding: 0; border: 0; background: none; }
+.buyer-status-viewer > .supplier-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s-3); }
+.buyer-status-viewer > .supplier-header .section-kicker { display: none; }
+
+.buyer-status-list { display: grid; gap: 0; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+
+.buyer-status-record { margin: 0; padding: 0; overflow: hidden; border: 0; border-bottom: 1px solid var(--rule); background: transparent; }
+.buyer-status-record.is-open { background: var(--sunk); box-shadow: inset 4px 0 0 var(--marigold); }
+
+.buyer-status-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 12px var(--space-5);
-  border-bottom: 1px solid var(--rule);
-}
-
-.buyer-status-viewer > .supplier-header .section-kicker { display: none; }
-
-.buyer-status-viewer > .supplier-header h2 {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-lg);
-  font-weight: 650;
-}
-
-.buyer-status-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; }
-
-.buyer-status-record {
-  margin: 0;
-  border: 0;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: var(--paper);
-  box-shadow: none;
-}
-.buyer-status-record:last-child { border-bottom: 0; }
-.buyer-status-record.is-open { box-shadow: inset 3px 0 0 var(--navy); }
-
-.buyer-status-record-head {
+  gap: var(--s-4);
   width: 100%;
-  padding: 12px var(--space-5);
+  padding: 16px var(--s-4);
   border: 0;
-  border-radius: 0;
   background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
+  cursor: pointer;
 }
-.buyer-status-record-head:hover { background: var(--paper-sunken); }
+.buyer-status-toggle:hover { background: var(--jade-wash); }
+.buyer-status-toggle:focus-visible { outline-offset: -4px; }
 
-.buyer-status-record-title strong { color: var(--navy); font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
-.buyer-status-record-title span { color: var(--ink-2); font-size: var(--text-sm); }
+.buyer-status-record-title { display: grid; gap: 2px; min-width: 0; }
+.buyer-status-record-title strong { color: var(--ink); font-size: 20px; font-weight: 780; font-variation-settings: "wdth" 110; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+.buyer-status-record-title > span { color: var(--ink-2); font-size: 13.5px; }
+.buyer-status-record-meta { color: var(--ink-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.buyer-status-record-aside { display: inline-flex; flex: none; align-items: center; gap: var(--s-3); }
+.buyer-status-chevron { color: var(--ink-2); transition: transform var(--t) var(--ease); }
+.buyer-status-record.is-open .buyer-status-chevron { transform: rotate(180deg); }
 
-.buyer-status-facts dt {
-  color: var(--ink-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: normal;
-  text-transform: none;
+.buyer-status-record-body { display: grid; gap: var(--s-5); padding: var(--s-2) var(--s-4) var(--s-5) var(--s-5); animation: rise-in var(--t) var(--ease-out); }
+
+.buyer-status-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s-3) var(--s-5); margin: 0; }
+.buyer-status-facts > div { display: grid; gap: 2px; }
+.buyer-status-facts dt { color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+.buyer-status-facts dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+.buyer-pr-number { font-weight: 750; }
+.buyer-pr-pending { color: var(--marigold-ink); font-weight: 600; }
+
+.buyer-status-current { display: grid; gap: 2px; }
+.buyer-status-current-kicker { color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+.buyer-status-current-value { font-size: 26px; font-weight: 800; font-variation-settings: "wdth" 112; letter-spacing: -0.02em; }
+.buyer-status-current p { color: var(--ink-2); }
+
+.buyer-status-details { display: grid; gap: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--rule); }
+
+/* The End User's stages, drawn as the line with the date each was reached */
+.buyer-timeline {
+  --dot: 20px;
+  --track: 6px;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.buyer-status-facts dd { color: var(--ink); font-variant-numeric: tabular-nums; }
-
-.status-current-value,
-.buyer-status-record .status-current h3,
-.buyer-status-record .status-current strong { color: var(--ink); font-family: var(--font-serif); }
+.buyer-timeline-node { position: relative; display: grid; gap: var(--s-2); padding-right: var(--s-2); }
+.buyer-timeline-node::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--dot) / 2 - var(--track) / 2);
+  right: calc(100% - var(--dot) / 2);
+  width: 100%;
+  height: var(--track);
+  border-radius: var(--track);
+  background: var(--rule);
+}
+.buyer-timeline-node:first-child::before { content: none; }
+.buyer-timeline-node:is(.is-done, .is-current, .is-rejected)::before { background: var(--jade); }
+.buyer-timeline-node.is-rejected::before { background: var(--danger); }
+.buyer-timeline-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: var(--dot);
+  height: var(--dot);
+  border: 4px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper);
+  color: transparent;
+}
+.buyer-timeline-marker svg { display: none; }
+.buyer-timeline-node.is-done .buyer-timeline-marker { border-color: var(--jade); background: var(--jade); color: var(--on-jade); }
+.buyer-timeline-node.is-done .buyer-timeline-marker svg { display: block; width: 10px; height: 10px; }
+.buyer-timeline-node.is-current .buyer-timeline-marker { border-color: var(--marigold); box-shadow: 0 0 0 5px var(--marigold-halo); }
+.buyer-timeline-node.is-rejected .buyer-timeline-marker { border-color: var(--danger); background: var(--danger); color: var(--surface); }
+.buyer-timeline-node.is-rejected .buyer-timeline-marker svg { display: block; width: 10px; height: 10px; }
+.buyer-timeline-body { display: grid; gap: 1px; }
+.buyer-timeline-label { color: var(--ink-2); font-size: 13px; font-weight: 550; }
+.buyer-timeline-node:is(.is-done, .is-current) .buyer-timeline-label { color: var(--ink); font-weight: 650; }
+.buyer-timeline-node.is-rejected .buyer-timeline-label { color: var(--danger); font-weight: 700; }
+.buyer-timeline-time { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 720px) {
-  .buyer-status-viewer > .supplier-header { flex-direction: row; align-items: center; text-align: left; }
-  .buyer-status-viewer > .supplier-header > div { text-align: left; }}
-
-.buyer-timeline-marker { color: var(--paper); }
-.buyer-timeline-node.is-done .buyer-timeline-marker { border-color: var(--tone-success); background: var(--tone-success); }
-.buyer-timeline-node.is-current .buyer-timeline-marker { border-color: var(--navy); background: var(--paper); color: var(--navy); }
+  .buyer-status-toggle { flex-wrap: wrap; }
+  .buyer-status-record-aside { width: 100%; justify-content: space-between; }
+  .buyer-status-record-body { padding: var(--s-2) var(--s-3) var(--s-4) var(--s-4); }
+  .buyer-timeline { grid-auto-flow: row; row-gap: var(--s-3); }
+  .buyer-timeline-node { grid-template-columns: var(--dot) 1fr; column-gap: var(--s-3); padding: 0; }
+  .buyer-timeline-node::before { top: auto; bottom: calc(100% - var(--dot) / 2); left: calc(var(--dot) / 2 - var(--track) / 2); right: auto; width: var(--track); height: calc(100% + var(--s-3)); }
+  .enduser-dashboard .dash-table .cell-purpose { max-width: none; white-space: normal; }
+}

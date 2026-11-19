@@ -20,7 +20,7 @@ import '../src/styles/screens-supplier.css'
 import '../src/styles/screens-enduser.css'
 import '../src/styles/screens-public.css'
 import App from '../src/App.jsx'
-import { dashboardSummary, manualRfqs, prDetails, prList, rfqGroups, supplierMatch, suppliers } from './preview-data.js'
+import { dashboardSummary, manualRfqs, prDetails, prList, rfqGroups, supplierDashboard, supplierMatch, supplierOpportunities, supplierProfile, suppliers } from './preview-data.js'
 
 const params = new URLSearchParams(window.location.search)
 const role = params.get('as') || 'admin'
@@ -56,6 +56,10 @@ const routes = [
   }],
   ['GET', /\/api\/buyer-accounts\/$/, () => []],
   ['GET', /\/api\/rfqs\/responses\/$/, () => rfqGroups],
+  ['GET', /\/api\/suppliers\/\d+\/profile\/$/, () => supplierProfile],
+  ['GET', /\/api\/suppliers\/\d+\/dashboard\/$/, () => supplierDashboard],
+  ['GET', /\/api\/suppliers\/\d+\/opportunities\/$/, () => supplierOpportunities],
+  ['GET', /\/api\/suppliers\/\d+\/rfqs\/$/, () => ({ rfqs: [] })],
   ['GET', /\/api\/pr\/(\d+)\/supplier-match\/$/, () => supplierMatch],
   ['GET', /\/api\/pr\/(\d+)\/rfq\/$/, () => ({ rfqs: [] })],
   ['GET', /\/api\/manual-rfqs\/$/, () => manualRfqs],

@@ -107,7 +107,6 @@ summary:focus-visible {
 .section-block,
 .dashboard-section,
 .admin-checklist,
-.opportunity-table-wrapper,
 .form-message {
   border: 1px solid var(--border);
   background: var(--card);
@@ -228,10 +227,6 @@ summary:focus-visible {
   font-size: 14px;
   display: grid;
   gap: 6px;
-}
-
-.opportunity-table-wrapper {
-  overflow: auto;
 }
 
 .clickable-row {
@@ -717,95 +712,6 @@ summary:focus-visible {
   margin-top: 16px;
 }
 
-/* Supplier RFQ workflow (download / complete / sign / upload) */
-.rfq-supplier-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.rfq-supplier-card {
-  padding: 20px;
-}
-
-.rfq-supplier-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.rfq-supplier-card-head h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.rfq-supplier-card-body {
-  margin: 12px 0 16px;
-  display: grid;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--text, #0f172a);
-}
-
-.rfq-workflow-steps {
-  list-style: none;
-  counter-reset: none;
-  margin: 12px 0 20px;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-}
-
-.rfq-workflow-steps > li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--border, #d9e3e5);
-  border-radius: var(--radius-panel);
-  background: #f8fafc;
-}
-
-.rfq-workflow-steps > li > div {
-  display: grid;
-  gap: 2px;
-}
-
-.rfq-workflow-steps > li strong {
-  font-size: 13px;
-}
-
-.rfq-workflow-steps > li span {
-  font-size: 12px;
-  color: var(--muted, var(--ink-2));
-}
-
-.rfq-upload-area {
-  border: 1px dashed var(--border, #cbd5e1);
-  border-radius: var(--radius-panel);
-  padding: 16px;
-  background: #f8fafc;
-}
-
-.rfq-response-confirmed {
-  border: 1px solid #bbf7d0;
-  background: #f0fdf4;
-  border-radius: var(--radius-panel);
-  padding: 16px;
-}
-
-.rfq-response-confirmed-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: #15803d;
-  margin: 0 0 4px;
-}
-
 .faq-item {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -1005,10 +911,8 @@ body {
 
 .card,
 .dashboard-section,
-.supplier-status-card,
 .supplier-detail-panel,
 .supplier-document-card,
-.opportunity-table-wrapper,
 .table-shell { border-radius: 3px; box-shadow: 0 2px 8px rgba(16,47,67,.06); }
 .card,
 .supplier-detail-panel { border-color: var(--line); }
@@ -1025,22 +929,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   max-width: 1200px;
 }
 
-.supplier-status-card {
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #d9e3e5;
-  border-top: 4px solid #e7b65a;
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-sm);
-  margin-bottom: 32px;
-}
-
 .supplier-section > h3 {
   color: #173042;
-}
-
-.supplier-status-card {
-  margin-bottom: 24px;
 }
 
 .opportunities-table-container,
@@ -1073,34 +963,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   display: grid;
   gap: 20px;
   padding: 24px 0;
-}
-
-.supplier-status-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-panel);
-  padding: 24px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
-}
-
-.supplier-status-card h2 {
-  margin: 0 0 8px;
-  font-size: 1.35rem;
-  color: #111827;
-}
-
-.supplier-status-card p {
-  margin: 0 0 12px;
-  color: #4b5563;
-  line-height: 1.6;
-}
-
-.supplier-status-card ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #374151;
-  display: grid;
-  gap: 8px;
 }
 
 .action-link {
@@ -1158,31 +1020,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   margin: 0 0 16px;
   font-size: 16px;
   font-weight: 600;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f4ff;
-  font-size: 14px;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-row label {
-  font-weight: 500;
-  color: var(--text);
-  min-width: 140px;
-}
-
-.detail-row span {
-  color: #334155;
-  text-align: right;
-  flex: 1;
 }
 
 .items-table-container {
@@ -1298,14 +1135,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
   padding: 20px 0;
 }
 
-.profile-card {
-  padding: 20px;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-}
-
 .profile-edit-btn {
   display: inline-flex;
   align-items: center;
@@ -1325,108 +1154,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .profile-action-row .profile-edit-btn { margin-top: 0; }
 
-.profile-resubmit-card {
-  margin: 0;
-  width: min(760px, 100%);
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  box-sizing: border-box;
-}
-
-.profile-resubmit-card h3 { margin-bottom: 8px; }
-.profile-resubmit-card > p { color: var(--muted); margin-bottom: 16px; }
-.profile-resubmit-list { display: grid; gap: 10px; }
-.profile-resubmit-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: #f8fbfc;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.profile-resubmit-row > * { min-width: 0; }
-.profile-resubmit-row input[type="file"] { width: 100%; box-sizing: border-box; }
-.profile-document-verified { color: #217a4b; font-size: 13px; font-weight: 600; }
-.profile-resubmit-row strong,
-.profile-resubmit-row small { display: block; }
-.profile-resubmit-row small { margin-top: 3px; color: var(--muted); }
-.profile-resubmit-row .profile-resubmit-status {
-  display: inline-flex;
-  width: 164px;
-  min-width: 164px;
-  margin-top: 5px;
-  box-sizing: border-box;
-  color: inherit;
-}
-
-@media (max-width: 700px) {
-  .profile-resubmit-row { grid-template-columns: 1fr; }}
-
 .profile-category-selector > label {
   display: block;
   margin-bottom: 6px;
   font-weight: 600;
   color: var(--text);
-}
-
-.profile-category-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: #f8fbfc;
-}
-
-.profile-category-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 10px;
-  border: 1px solid #d9e3e5;
-  border-radius: var(--radius-control);
-  background: #ffffff;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.profile-card h3 {
-  margin: 0 0 20px;
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.profile-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f4ff;
-  font-size: 14px;
-  align-items: center;
-}
-
-.profile-row:last-of-type {
-  border-bottom: none;
-}
-
-.profile-row label {
-  font-weight: 500;
-  color: var(--text);
-  min-width: 160px;
-}
-
-.profile-row span {
-  color: #334155;
-  flex: 1;
 }
 
 .profile-form {
@@ -1438,62 +1170,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shado
 
 .profile-form .form-group {
   margin-bottom: 16px;
-}
-
-/* Notifications List */
-.notifications-list {
-  display: grid;
-  gap: 12px;
-}
-
-.notification-item {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.notification-item:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--primary-soft);
-}
-
-.notification-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-panel);
-  flex-shrink: 0;
-  color: var(--primary);
-  background: #eef2ff;
-}
-
-.notification-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.notification-content h4 {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.notification-content p {
-  margin: 0 0 6px;
-  font-size: 13px;
-  color: #334155;
-}
-
-.notification-time {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .registration-page {
@@ -1848,9 +1524,7 @@ textarea {
 .section-block,
 .dashboard-section,
 .admin-checklist,
-.opportunity-table-wrapper,
 .form-message,
-.supplier-status-card,
 .supplier-detail-panel,
 .supplier-document-card {
   border-color: #d9e3e5;
@@ -2018,219 +1692,6 @@ textarea:focus {
   font-size: 14px;
 }
 
-.buyer-status-viewer {
-  margin-top: 20px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: #ffffff;
-  box-shadow: var(--shadow-sm);
-}
-
-.buyer-status-record-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.buyer-status-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.buyer-status-record {
-  padding: 16px;
-  border: 1px solid #d9e3e5;
-  border-radius: var(--radius-panel);
-  background: #fbfdfd;
-}
-
-.buyer-status-record-head > div {
-  display: grid;
-  gap: 3px;
-}
-
-.buyer-status-record-head strong {
-  color: var(--navy);
-}
-
-.buyer-status-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px 20px;
-  margin: 14px 0 0;
-  padding: 14px 0;
-  border-top: 1px solid #e5edef;
-  border-bottom: 1px solid #e5edef;
-}
-
-.buyer-status-facts div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.buyer-status-facts dt {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: normal;
-  text-transform: none;
-  color: var(--muted);
-}
-
-.buyer-status-facts dd {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text);
-  word-break: break-word;
-}
-
-.buyer-pr-number {
-  font-size: 14px;
-  letter-spacing: 0.01em;
-  color: var(--text);
-}
-
-.buyer-pr-pending {
-  color: var(--muted);
-  font-style: italic;
-}
-
-.buyer-status-current {
-  margin-top: 16px;
-}
-
-.buyer-status-current-kicker {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: normal;
-  text-transform: none;
-  color: var(--muted);
-}
-
-.buyer-status-current-value {
-  display: block;
-  margin-top: 2px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--navy);
-}
-
-.buyer-status-current p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.buyer-timeline {
-  list-style: none;
-  margin: 16px 0 0;
-  padding: 0;
-}
-
-.buyer-timeline-node {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding-bottom: 14px;
-}
-
-.buyer-timeline-node:not(:last-child)::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  top: 22px;
-  bottom: 0;
-  width: 2px;
-  background: #d9e3e5;
-}
-
-.buyer-timeline-node.is-done:not(:last-child)::before {
-  background: #7ccfc6;
-}
-
-.buyer-timeline-marker {
-  z-index: 1;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid #c7d5d8;
-  background: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--ink-3);
-  line-height: 1;
-}
-
-.buyer-timeline-node.is-done .buyer-timeline-marker {
-  border-color: var(--navy);
-  background: var(--navy);
-  color: #ffffff;
-}
-
-.buyer-timeline-node.is-current .buyer-timeline-marker {
-  border-color: var(--navy);
-  color: var(--navy);
-}
-
-.buyer-timeline-node.is-rejected .buyer-timeline-marker {
-  border-color: #b91c1c;
-  background: #b91c1c;
-  color: #ffffff;
-}
-
-.buyer-timeline-body {
-  display: grid;
-  gap: 1px;
-  padding-top: 2px;
-}
-
-.buyer-timeline-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-3);
-}
-
-.buyer-timeline-node.is-done .buyer-timeline-label,
-.buyer-timeline-node.is-current .buyer-timeline-label {
-  color: var(--text);
-}
-
-.buyer-timeline-node.is-rejected .buyer-timeline-label {
-  color: #b91c1c;
-}
-
-.buyer-timeline-time {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.buyer-status-details {
-  display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid #e5edef;
-  border-radius: var(--radius-panel);
-  background: #f8fbfb;
-}
-
-.buyer-status-details p {
-  margin: 3px 0 0;
-  font-size: 13px;
-}
-
-.supplier-status-card {
-  border-top: 4px solid #e7b65a;
-}
-
 .supplier-preview-overlay {
   background: rgba(23, 48, 66, 0.64);
   backdrop-filter: blur(3px);
@@ -2293,11 +1754,6 @@ textarea:focus {
 
   .buyer-account-record-actions {
     justify-content: flex-start;
-  }
-
-  .buyer-status-record-head {
-    align-items: flex-start;
-    flex-direction: column;
   }}
 
 .error-list {
@@ -2398,25 +1854,6 @@ textarea:focus {
   margin: 0 0 16px 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text);
-}
-
-.detail-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-  align-items: flex-start;
-}
-
-.detail-row label {
-  flex: 0 0 120px;
-  font-weight: 500;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.detail-row span {
-  flex: 1;
   color: var(--text);
 }
 
@@ -2526,7 +1963,6 @@ h4 {
 .admin-checklist,
 .card,
 .detail-card,
-.supplier-status-card,
 .supplier-detail-panel,
 .dashboard-section,
 .opportunities-table-container {
@@ -2574,14 +2010,6 @@ textarea:focus-visible {
 
   .details-grid {
     grid-template-columns: 1fr;
-  }
-
-  .detail-row {
-    flex-direction: column;
-  }
-
-  .detail-row label {
-    flex: 1;
   }}
 .page-content h1::after { position: static; }
 
@@ -2806,7 +2234,6 @@ body {
 .card,
 .admin-checklist,
 .detail-card,
-.supplier-status-card,
 .supplier-detail-panel,
 .dashboard-section,
 .rfq-review-card,
@@ -2938,17 +2365,6 @@ textarea:focus-visible,
   color: var(--on-gold);
 }
 
-/* ── Notifications: date-bucket grouping ── */
-.notifications-group + .notifications-group {
-  margin-top: var(--space-5);
-}
-
-.notifications-group-label {
-  display: block;
-  padding: 0 0 var(--space-2);
-  color: var(--text-muted);
-}
-
 .hero-lede {
   max-width: 600px;
   margin: 22px 0 0 !important;
@@ -2981,8 +2397,7 @@ textarea:focus-visible,
 .admin-nav-section-label { margin-top: 12px; padding: 8px 10px 5px; color: var(--ink-3); }
 
 /* Procurement records benefit from square, high-density boundaries. */
-.table-shell,
-.opportunity-table-wrapper { border-radius: 3px; box-shadow: none; background: var(--surface); }
+.table-shell { border-radius: 3px; box-shadow: none; background: var(--surface); }
 input[readonly],
 textarea[readonly] { background: #eef0ec; color: #53636c; }
 
@@ -3030,8 +2445,7 @@ textarea[readonly] { background: #eef0ec; color: #53636c; }
     overflow-wrap: anywhere;
   }
 
-  .table-shell,
-.opportunity-table-wrapper {
+  .table-shell {
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -3091,28 +2505,6 @@ textarea[readonly] { background: #eef0ec; color: #53636c; }
   .process-stage-marker { font-size: 30px; }
   .process-section-head > h2 { font-size: 26px; }
   .process-cta { padding: 26px 22px; box-shadow: 8px 8px 0 rgba(183, 144, 63, 0.22); }}
-
-/* ── END USER LIVE STATUS: collapsible PR records ──────────────────────────
-   The record header is the toggle; the body (facts, timeline, details) is
-   hidden while collapsed. */
-.buyer-status-record { padding: 0; overflow: hidden; }
-.buyer-status-toggle { width: 100%; padding: 14px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.buyer-status-toggle:hover { background: var(--teal-tint); }
-.buyer-status-toggle:focus-visible { outline-offset: -3px; }
-.buyer-status-record-title { display: grid; gap: 3px; min-width: 0; }
-.buyer-status-record-head .buyer-status-record-meta { color: var(--text-secondary); font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-size: 11px; }
-.buyer-status-record-aside { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.buyer-status-chevron { color: var(--navy); transition: transform var(--duration-base) var(--ease-standard); }
-.buyer-status-record.is-open .buyer-status-chevron { transform: rotate(180deg); }
-.buyer-status-record.is-open .buyer-status-toggle { border-bottom: 1px solid #e5edef; }
-.buyer-status-record-body { padding: 0 16px 16px; }
-.buyer-status-record-body > .buyer-status-facts:first-child { margin-top: 0; border-top: 0; }
-
-@media (prefers-reduced-motion: reduce) {
-  .buyer-status-chevron { transition: none; }}
-
-@media (max-width: 640px) {
-  .buyer-status-record-aside { width: 100%; justify-content: space-between; }}
 
 /* ── PHONE FIELD: country calling code + grouped national number ───────────
    The native <select> is transparent and stretched over a compact "PH +63"
@@ -3279,5 +2671,4 @@ textarea[readonly] { background: #eef0ec; color: #53636c; }
   font-size: 13px;
   line-height: 1.5;
 }
-.buyer-account-invite-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--teal); }
-.rfq-respond-steps { display: grid; gap: 6px; margin: 0; padding-left: 20px; color: var(--text); font-size: 14px; line-height: 1.5; }} /* end @layer legacy */
+.buyer-account-invite-note svg { flex: 0 0 auto; margin-top: 2px; color: var(--teal); }} /* end @layer legacy */

@@ -6030,6 +6030,17 @@ const Buyer = () => {
     return counts
   }, { withBac: 0, outForQuotation: 0, completed: 0 })
 
+  // The dashboard headline says where the End User's requests are.
+  const plural = (n, one, many) => (n === 1 ? one : many)
+  let enduserHeadline = 'You have no Purchase Requests yet.'
+  if (stageCounts.outForQuotation > 0) {
+    enduserHeadline = `${stageCounts.outForQuotation} of your requests ${plural(stageCounts.outForQuotation, 'is', 'are')} out for quotation.`
+  } else if (stageCounts.withBac > 0) {
+    enduserHeadline = `${stageCounts.withBac} of your requests ${plural(stageCounts.withBac, 'is', 'are')} with the BAC.`
+  } else if (records.length > 0) {
+    enduserHeadline = `${stageCounts.completed} of ${records.length} requests completed.`
+  }
+
   return (
     <div className={`admin-layout ${navCollapsed ? 'collapsed-nav' : ''}`}>
       <Sidebar
@@ -6059,16 +6070,19 @@ const Buyer = () => {
         <ErrorBoundary resetKey={currentTab}>
         {currentTab === 'dashboard' && (
           <div className="supplier-section enduser-dashboard">
-            <div className="supplier-header dashboard-header-row">
-              <div>
-                <h1>Welcome back, {displayName}</h1>
-                <p>Your Purchase Requests with the BAC Secretariat, from submission to supplier quotation.</p>
+            <header className="portal-head">
+              <div className="portal-head-text">
+                <p className="portal-head-name">{displayName}</p>
+                <h1 className="portal-headline">{enduserHeadline}</h1>
+                <p className="portal-head-lede">Your Purchase Requests with the BAC Secretariat, from submission to supplier quotation.</p>
               </div>
-              <button type="button" className="btn btn-primary" onClick={() => setCurrentTab('submit')}>
-                <FileUp size={16} aria-hidden="true" />
-                Submit a Purchase Request
-              </button>
-            </div>
+              <div className="portal-head-action">
+                <button type="button" className="btn btn-primary" onClick={() => setCurrentTab('submit')}>
+                  <FileUp size={16} aria-hidden="true" />
+                  Submit a Purchase Request
+                </button>
+              </div>
+            </header>
 
             {recordsError && (
               <div className="alert alert-error" role="alert">
@@ -6115,7 +6129,7 @@ const Buyer = () => {
                       <th scope="col">Purpose</th>
                       <th scope="col">Submitted</th>
                       <th scope="col" className="num">Total</th>
-                      <th scope="col">Status</th>
+                      <th scope="col">Stage</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6127,8 +6141,11 @@ const Buyer = () => {
                           <td data-label="Purpose" className="cell-purpose">{record.purpose || record.office_section || 'No purpose recorded'}</td>
                           <td data-label="Submitted" className="cell-date">{buyerLongDate(record.created_at)}</td>
                           <td data-label="Total" className="num">{buyerPeso(record.grand_total)}</td>
-                          <td data-label="Status">
-                            <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{record.display_status || BUYER_STAGE_LABELS[stage]}</span>
+                          <td data-label="Stage">
+                            <span className="pl-mini-wrap">
+                              <span className={`status-badge ${buyerStatusBadgeClass(stage)}`}>{record.display_status || BUYER_STAGE_LABELS[stage]}</span>
+                              <PipelineMini position={prPipelinePosition(record)} />
+                            </span>
                           </td>
                         </tr>
                       )
@@ -6877,6 +6894,16 @@ const SupplierNav = ({ currentPage, onPageChange, onLogout, navCollapsed, onTogg
   )
 }
 
+// The supplier dashboard headline: what the account can do right now.
+const supplierHeadline = (status, openCount) => {
+  if (status === 'For Compliance') return 'The BAC needs more documents from you.'
+  if (status === 'Rejected') return 'Your registration was not approved.'
+  if (status !== 'Approved') return 'Your registration is with the BAC for review.'
+  const open = Number(openCount || 0)
+  if (open === 0) return 'No open opportunities match your categories yet.'
+  return `${open} open ${open === 1 ? 'opportunity matches' : 'opportunities match'} your categories.`
+}
+
 const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
   const [summary, setSummary] = React.useState(null)
   const [opportunities, setOpportunities] = React.useState([])
@@ -6928,10 +6955,13 @@ const SupplierDashboard = ({ supplierId, apiBaseUrl, supplierStatus }) => {
 
   return (
     <div className="supplier-content-inner">
-      <div className="supplier-header">
-        <h1>Welcome back{summary?.company_name ? `, ${summary.company_name}` : ''}</h1>
-        <p>Your registration status, open opportunities and quotations with the BAC.</p>
-      </div>
+      <header className="portal-head">
+        <div className="portal-head-text">
+          {summary?.company_name && <p className="portal-head-name">{summary.company_name}</p>}
+          <h1 className="portal-headline">{supplierHeadline(supplierStatus, summary?.open_opportunities)}</h1>
+          <p className="portal-head-lede">Your registration status, open opportunities and quotations with the BAC.</p>
+        </div>
+      </header>
 
       {loadError && (
         <div className="alert alert-error" role="alert">

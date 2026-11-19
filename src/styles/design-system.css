@@ -123,15 +123,10 @@
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
-} /* was #94a3b8, 2.45:1 */
-.buyer-timeline-node.is-upcoming .buyer-timeline-label,
-.buyer-timeline-node.is-upcoming .buyer-timeline-time,
-.buyer-timeline-node.is-upcoming .buyer-timeline-marker { color: var(--text-muted); } /* was #94a3b8, 2.51:1 */
-.notifications-group-label { color: var(--text-secondary) !important; } /* was #8eaaac, 2.24:1 */
+} /* was #8eaaac, 2.24:1 */
 
 /* Keyboard-scrollable table regions show focus like any control. */
-.table-shell[tabindex="0"]:focus-visible,
-.opportunity-table-wrapper[tabindex="0"]:focus-visible {
+.table-shell[tabindex="0"]:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }} /* end @layer legacy */

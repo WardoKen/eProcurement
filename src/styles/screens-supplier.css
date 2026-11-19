@@ -1,67 +1,50 @@
 /* ==========================================================================
-   Supplier portal screens. Unlayered. See DESIGN.md.
+   Supplier portal screens: the dashboard, opportunities, RFQs, quotations,
+   profile and notifications. Unlayered. See DESIGN.md.
    ========================================================================== */
 
-/* Page rhythm: every supplier page stacks its blocks 20px apart. */
-.supplier-content-inner > * + * { margin-top: var(--space-5); }
-.supplier-content-inner > .supplier-header { margin-bottom: 0; }
-.supplier-content-inner > .supplier-header + * { margin-top: var(--space-6); }
+/* Page rhythm: a supplier page stacks its blocks with room between them. */
+.supplier-content-inner > * + * { margin-top: var(--s-6); }
+.supplier-content-inner > .portal-head + * { margin-top: var(--s-5); }
 
-/* Registration status: a notice, not a hero card. */
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+/* Registration status: a band with a coloured edge, beside the headline. */
 .supplier-status-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  column-gap: var(--space-3);
-  row-gap: 2px;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--rule);
-  border-left: 3px solid var(--tone-success);
-  border-radius: var(--radius-panel);
-  background: var(--paper);
+  align-items: baseline;
+  gap: 4px var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border: 0;
+  border-left: 4px solid var(--jade);
+  background: var(--jade-wash);
 }
-
-.supplier-status-card:has(.status-pill.warning) { border-left-color: var(--tone-review); }
-.supplier-status-card:has(.status-pill.danger) { border-left-color: var(--tone-danger); }
-
+.supplier-status-card:has(.status-pill.warning) { border-left-color: var(--marigold); background: var(--marigold-wash); }
+.supplier-status-card:has(.status-pill.danger) { border-left-color: var(--danger); background: var(--danger-wash); }
 .supplier-status-card .status-pill { grid-row: 1; grid-column: 1; }
+.supplier-status-card h2 { grid-row: 1; grid-column: 2; margin: 0; font-size: 18px; font-weight: 750; }
+.supplier-status-card p { grid-column: 2; margin: 0; color: var(--ink-2); }
 
-.supplier-status-card h2 {
-  grid-row: 1;
-  grid-column: 2;
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-lg);
-  font-weight: 650;
-}
+.supplier-content-inner .kpi-grid { margin-bottom: 0; }
 
-.supplier-status-card p {
-  grid-column: 2;
-  margin: 0;
-  color: var(--ink-2);
-  font-size: var(--text-md);
-}
+.supplier-recent-opps { min-width: 0; overflow-x: auto; }
+.supplier-recent-opps .dash-panel-header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-3); }
+.supplier-recent-opps .dash-panel-header h2 { font-size: 22px; }
 
-.supplier-recent-opps .cell-strong,
-.opportunity-table td:first-child,
-.opportunity-table th:first-child { white-space: nowrap; }
-
-.cell-strong { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cell-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cell-strong { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell-date { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cell-purpose { min-width: 220px; color: var(--ink); }
 
-/* Wide tables scroll inside their panel, never the page. */
-.supplier-recent-opps { overflow-x: auto; }
+/* ── Opportunities ─────────────────────────────────────────────────────── */
 
-/* Opportunities table */
 .opportunity-table-wrapper { overflow-x: auto; }
-.opportunity-table td:last-child,
-.opportunity-table th:last-child { white-space: nowrap; }
-.opportunity-table td .link-like,
-.opportunity-table td button { white-space: nowrap; }
+.opportunity-table :is(td, th):first-child, .opportunity-table :is(td, th):last-child { white-space: nowrap; }
+.opportunity-table td :is(.link-like, button) { white-space: nowrap; }
 
-/* RFQ list */
-.rfq-supplier-list { display: flex; flex-direction: column; gap: var(--space-3); }
+/* ── RFQs: a ruled list, one RFQ per row ───────────────────────────────── */
+
+.rfq-supplier-list { display: grid; gap: 0; border-top: 2px solid var(--ink); }
 
 .rfq-supplier-card {
   display: grid;
@@ -70,112 +53,97 @@
     "head head"
     "body actions";
   align-items: end;
-  gap: var(--space-3) var(--space-5);
+  gap: var(--s-2) var(--s-5);
   margin: 0;
-  padding: var(--space-4) var(--space-5);
+  padding: var(--s-4) var(--s-2);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
 }
+.rfq-supplier-card:hover { background: var(--jade-wash); }
 
-.rfq-supplier-card-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.rfq-supplier-card-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--s-2) var(--s-3); }
 .rfq-supplier-card-head > div { flex: 1 1 220px; min-width: 0; }
-.rfq-supplier-card-head h3 { margin: 0; font-size: var(--text-lg); font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rfq-supplier-card-head .supplier-subtext { margin: 2px 0 0; font-size: var(--text-sm); }
+.rfq-supplier-card-head h3 { font-size: 20px; font-weight: 780; font-variation-settings: "wdth" 110; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rfq-supplier-card-head .supplier-subtext { margin: 2px 0 0; font-size: 13px; }
 
-.rfq-supplier-card-body {
-  grid-area: body;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px var(--space-6);
-  color: var(--ink);
-  font-size: var(--text-sm);
-}
-.rfq-supplier-card-body strong { color: var(--ink-2); font-weight: 500; }
-
+.rfq-supplier-card-body { grid-area: body; display: flex; flex-wrap: wrap; gap: 4px var(--s-6); color: var(--ink); font-size: 13.5px; }
+.rfq-supplier-card-body strong { color: var(--ink-2); font-weight: 550; }
 .rfq-supplier-card .form-actions { grid-area: actions; margin: 0; }
 
-/* Profile */
-.profile-row,
-.detail-row {
+.rfq-respond-steps, .rfq-workflow-steps { display: grid; gap: var(--s-2); margin: 0; padding-left: var(--s-5); }
+.rfq-upload-area { padding: var(--s-5); border: 2px dashed var(--input-line); border-radius: var(--radius-control); background: var(--sunk); }
+.rfq-response-confirmed { padding: var(--s-4) var(--s-5); border-left: 4px solid var(--jade); background: var(--jade-wash); }
+.rfq-response-confirmed-title { font-weight: 750; }
+
+/* ── Profile ───────────────────────────────────────────────────────────── */
+
+.profile-row, .detail-row {
   display: grid;
   grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
-  gap: var(--space-3);
-  padding: 9px 0;
+  gap: var(--s-3);
+  padding: 10px 0;
   border-bottom: 1px solid var(--rule);
 }
-.profile-row:last-child, .detail-row:last-child { border-bottom: 0; }
 .profile-row > :last-child, .detail-row > :last-child { color: var(--ink); text-align: left; }
-.profile-row > :first-child,
-.detail-row > :first-child { color: var(--ink-2); font-size: var(--text-sm); font-weight: 600; }
+.profile-row > :first-child, .detail-row > :first-child { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+:is(.profile-row, .detail-row) :is(.status-pill, .status-badge) { justify-self: start; width: auto; }
 
-.profile-row .status-pill,
-.profile-row .status-badge,
-.detail-row .status-pill,
-.detail-row .status-badge { justify-self: start; width: auto; }
-
-/* Notifications: one ruled list, quiet actions. */
-.notifications-list { display: flex; flex-direction: column; gap: var(--space-5); }
-.notifications-group {
-  overflow: hidden;
+.profile-card { padding: 0; border: 0; border-top: 2px solid var(--ink); background: none; }
+.profile-category-options { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.profile-category-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px 12px;
   border: 1px solid var(--rule);
-  border-radius: var(--radius-panel);
-  background: var(--paper);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  cursor: pointer;
 }
-.notifications-group > .notifications-group-label { display: block; margin: 0; padding: 10px var(--space-5); border-bottom: 1px solid var(--rule); background: var(--paper-sunken); }
+.profile-category-option:has(input:checked) { border-color: var(--jade); background: var(--jade-wash); color: var(--jade-deep); font-weight: 650; }
+.profile-resubmit-card { padding: var(--s-4) var(--s-5); border-left: 4px solid var(--marigold); background: var(--marigold-wash); }
+.profile-resubmit-list { display: grid; gap: 0; margin: var(--s-3) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
+.profile-resubmit-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.profile-document-verified { color: var(--jade); font-weight: 650; }
+
+/* ── Notifications: one ruled list, quiet actions ──────────────────────── */
+
+.notifications-list { display: grid; gap: var(--s-6); }
+.notifications-group { overflow: hidden; border: 0; border-top: 2px solid var(--ink); background: none; }
+.notifications-group-label { display: block; margin: 0; padding: 10px 0; color: var(--ink-2) !important; font-size: 13px; font-weight: 650; }
 
 .notification-item {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--s-3);
   margin: 0;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--s-3) 0;
   border: 0;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: var(--paper);
-  box-shadow: none;
+  border-top: 1px solid var(--rule);
+  background: none;
 }
-.notification-item:last-child { border-bottom: 0; }
-
-.notification-icon {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-control);
-  background: var(--paper-sunken);
-  color: var(--ink-2);
-}
-.notification-icon svg { width: 16px; height: 16px; }
-
+.notification-icon { display: grid; place-items: center; width: 32px; height: 32px; color: var(--ink-2); }
+.notification-icon svg { width: 18px; height: 18px; }
 .notification-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: "title time" "body action";
   align-items: start;
-  gap: 2px var(--space-4);
+  gap: 2px var(--s-4);
 }
-.notification-content h4 { grid-area: title; margin: 0; font-size: var(--text-md); font-weight: 650; }
-.notification-content p { grid-area: body; margin: 0; color: var(--ink-2); font-size: var(--text-md); }
-.notification-time { grid-area: time; color: var(--ink-3); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.notification-content .btn-sm { grid-area: action; justify-self: end; align-self: end; }
-.notification-content .btn-primary { border-color: var(--input-border); background: var(--paper); color: var(--navy); }
-.notification-content .btn-primary:hover:not(:disabled) { border-color: var(--navy); background: var(--navy-tint); color: var(--navy); }
-
-/* Notifications: group labels */
-.notifications-group-label {
-  margin: 0 0 var(--space-2);
-  color: var(--ink-2) !important;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: normal;
-  text-transform: none;
-}
+.notification-content h4 { grid-area: title; font-size: 14.5px; font-weight: 700; }
+.notification-content p { grid-area: body; color: var(--ink-2); }
+.notification-time { grid-area: time; color: var(--ink-2); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.notification-content .btn-sm { grid-area: action; align-self: end; justify-self: end; }
 
 @media (max-width: 720px) {
   .supplier-recent-opps { overflow-x: visible; }
   .supplier-status-card { grid-template-columns: minmax(0, 1fr); }
   .supplier-status-card .status-pill { justify-self: start; }
-  .supplier-status-card h2, .supplier-status-card p { grid-column: 1; grid-row: auto; }
+  .supplier-status-card :is(h2, p) { grid-column: 1; grid-row: auto; }
   .rfq-supplier-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "body" "actions"; }
   .rfq-supplier-card .form-actions { justify-content: flex-start; }
   .profile-row, .detail-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .cell-purpose { min-width: 0; }}
+  .cell-purpose { min-width: 0; }
+}
