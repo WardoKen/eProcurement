@@ -1,291 +1,273 @@
-# eProcure design system
+# eProcure design system: Line
 
-This is the visual system for eProcure, the procurement portal of the Bids
-and Awards Committee (BAC) at CTU Tuburan. It covers the Admin (BAC
-Secretariat), Supplier and End User portals and the public pages. The tokens
-below are implemented in `src/styles/tokens.css`.
+eProcure is the procurement portal of the Bids and Awards Committee (BAC) at
+CTU Tuburan: the BAC Secretariat (Admin), End Users who submit Purchase
+Requests, suppliers, and the public. This document is the visual identity
+and the rules every screen follows. It replaces the earlier "docket" system.
+The direction was chosen from three mockups in [`design-lab/`](design-lab/README.md).
 
-| File | Contents |
-|---|---|
-| `src/styles/tokens.css` | Tokens, plus aliases that point legacy variable names at them |
-| `src/styles/base.css` | Element defaults (in `@layer base`), page font, focus |
-| `src/styles/components.css` | Buttons, badges, alerts, panels, tables, forms, dialogs, empty states |
-| `src/styles/shell.css` | Masthead, sidebar, content area, public navbar, breakpoints |
-| `src/styles/screens*.css` | Per-portal screens: shared and dashboard, admin, supplier, enduser, public |
-| `src/index.css`, `src/styles/design-system.css` | Legacy rules, wrapped in `@layer legacy` so everything above wins |
+## The idea
 
-New styles go in the unlayered files above. Legacy rules can be deleted
-once a screen no longer depends on them.
+Procurement is a journey with fixed stations: a Purchase Request is
+submitted, posted as an opportunity, sent out as RFQs, answered with
+quotations, evaluated, and ends in a purchase order. Staff ask one question
+of every record: *where is it on the line, and is it waiting on me?*
 
-## Direction: the docket
+So the product is built around **the line**: the six stations drawn like a
+transit line. It is the largest element on the dashboard, the header of a
+record, and a six-segment strip in a table row. Everything else stays quiet
+so the line, and the numbers on it, carry the page.
 
-A Purchase Request at a BAC is a paper file. It arrives signed, gets
-stamped and numbered, travels in a folder from desk to desk, and is checked
-line by line against the government PR form. eProcure should feel like a
-well-kept version of that file, not like a startup dashboard.
+Four rules follow from that:
 
-- **Records are paper, the app is the desk.** White surfaces carry records,
-  tables and documents. They sit on a stone-grey workspace, so the eye can
-  always tell content from chrome.
-- **Ruled, not rounded.** Structure comes from 1px rules and aligned columns,
-  as on a government form. Corners are 2 to 4px. Panels have no shadows; only
-  dialogs float.
-- **One institutional color, one accent.** Docket navy carries the identity
-  and every primary action. Manila (the folder) marks where you are and what
-  is waiting on you, and nothing else. Status colors are reserved for status.
-- **Serif for the record, sans for the tool.** Headings use Literata, a
-  serif with the authority of a printed form. Everything you read or operate
-  uses Public Sans, a typeface designed for government services, with
-  tabular figures for peso amounts and PR numbers.
-- **Plain procurement language.** Say PR, RFQ, PO and BAC, the terms staff
-  already use. Labels are sentence case and name what a button does
-  ("Assign PR number", not "Submit").
-
-**Why this suits a state university.** Staff, suppliers and auditors judge a
-government system by whether it looks accountable: legible, orderly,
-consistent, and unlikely to change from month to month. A restrained palette,
-a printed-form structure and strict status colors read as institutional and
-age well. They also meet the accessibility standard (WCAG 2.1 AA) that public
-institutions are expected to meet.
-
-**Ruled out:** purple or any gradient, glassmorphism and blur, emoji or text
-glyphs as icons, oversized rounded cards, pill-shaped inputs, all-caps eyebrow
-labels, monospace badges, decorative background patterns.
+1. **Type leads.** Hierarchy comes from size, weight and width, not from
+   boxes. Display text is wide and heavy; data is condensed and dense.
+2. **Bands, not cards.** Sections are separated by rules and by a change of
+   ground (paper to sunk), never by a grid of identical rounded boxes with
+   shadows. Only things that float (dialogs, menus, the command palette)
+   have a shadow.
+3. **Two colors with jobs.** Jade is the institution and every primary
+   action. Marigold is *now*: the current station, what is waiting on you,
+   the focus ring. Neither is decoration.
+4. **Dense where you work, open where you decide.** Tables and forms are
+   tight. The headline, the line and the queue get generous space.
 
 ## Color
 
-### Base palette
+All colors are OKLCH, defined in `src/styles/tokens.css`. Hex values are
+the sRGB equivalents, for reference.
 
-| Token | Hex | Use |
-|---|---|---|
-| `--navy` | `#1B3A5C` | Masthead, primary buttons, headings, links, focus ring |
-| `--navy-hover` | `#142C47` | Primary button hover and pressed |
-| `--navy-tint` | `#E4EAF1` | Selected rows, active nav background |
-| `--manila` | `#D9B872` | Accent on navy grounds (masthead, dark surfaces) |
-| `--manila-deep` | `#8A6722` | Accent on light grounds: active nav bar, "waiting on you" markers |
-| `--manila-tint` | `#F6EEDC` | Background behind items that need action |
-| `--workspace` | `#E9E7E1` | Page background (the desk) |
-| `--sidebar` | `#F5F4F0` | Sidebar background |
-| `--paper` | `#FFFFFF` | Panels, tables, forms, documents |
-| `--paper-sunken` | `#F2F0EB` | Table headers, read-only fields, inset areas |
-| `--ink` | `#1C2430` | Body text and headings on light grounds |
-| `--ink-2` | `#4D5664` | Secondary text, labels, table headers |
-| `--ink-3` | `#5C6470` | Hints and timestamps (not below 12px) |
-| `--rule` | `#D3CFC6` | Panel borders, table row rules, dividers |
-| `--rule-strong` | `#B9B4A8` | Section dividers, form-cell grids |
-| `--input-border` | `#7D8590` | Input and select borders (3:1 non-text contrast) |
+### Light
 
-### Status colors
-
-Every status renders as text on a tinted fill, with a small shape before
-the label, so status never depends on color alone.
-
-| Tone | Text | Fill | Shape | Statuses |
-|---|---|---|---|---|
-| Neutral | `#4F5866` | `#E9ECF0` | hollow circle | Submitted (uploaded), Draft, No RFQs |
-| Review | `#7A4F00` | `#FAEBCB` | half-filled circle | In Review, Pending Review, Awaiting responses, For Compliance |
-| Progress | `#1A5296` | `#E2ECF8` | filled circle | Matched, RFQ sent, Responses in progress |
-| Success | `#1D6136` | `#DCEFE1` | check | Completed, Approved, Verified, Response received |
-| Danger | `#9B2318` | `#F9E1DD` | cross | Rejected, Returned |
-
-Alerts and toasts use the same five tones, with a 3px left rule in the text
-color.
-
-### Measured contrast (WCAG 2.1)
-
-| Pair | Ratio | Needs |
-|---|---|---|
-| ink on workspace / on paper | 12.5 / 15.6 | 4.5 |
-| ink-2 on workspace / sidebar / paper-sunken | 6.0 / 6.7 / 6.5 | 4.5 |
-| white on navy | 11.6 | 4.5 |
-| navy on sidebar | 10.6 | 4.5 |
-| manila on navy | 6.1 | 4.5 |
-| manila-deep on sidebar | 4.7 | 3 (marker) |
-| input border on paper / workspace | 3.7 / 3.0 | 3 |
-| each status text on its fill | 6.0 to 6.5 | 4.5 |
-
-## Typography
-
-| Role | Face | Size / line height | Weight |
+| Token | OKLCH | Hex | Use |
 |---|---|---|---|
-| Page title (h1) | Literata | 26 / 32 | 600 |
-| Section title (h2) | Literata | 20 / 26 | 600 |
-| Panel title (h3) | Public Sans | 16 / 22 | 650 |
-| Body, controls | Public Sans | 14 / 21 | 400, 600 for buttons and labels |
-| Table body | Public Sans | 13.5 / 20 | 400 |
-| Small, hints, table headers | Public Sans | 12.5 / 18 | 600 for headers, 400 otherwise |
+| `--paper` | 0.985 0.004 165 | `#F8FBF9` | Page ground |
+| `--surface` | 1 0 0 | `#FFFFFF` | Inputs, dialogs, table body |
+| `--sunk` | 0.955 0.009 165 | `#EBF2EF` | Secondary bands, side columns, table header |
+| `--rule` | 0.885 0.012 165 | `#D2DCD7` | Hairlines between rows and sections |
+| `--input-line` | 0.62 0.02 170 | `#7B8A84` | Input and checkbox borders (3.5:1) |
+| `--ink` | 0.23 0.02 170 | `#13201B` | Text, strong rules |
+| `--ink-2` | 0.44 0.02 170 | `#485651` | Secondary text |
+| `--ink-3` | 0.53 0.018 170 | `#626F6A` | Hints, placeholders |
+| `--jade` | 0.47 0.105 168 | `#006D4F` | **Primary.** Buttons, the travelled line, selected states |
+| `--jade-deep` | 0.36 0.085 168 | `#004B34` | Links, record numbers, hover on primary |
+| `--jade-wash` | 0.945 0.03 168 | `#DBF4E9` | Selected rows, active nav ground |
+| `--marigold` | 0.83 0.155 82 | `#F9BC38` | **Accent.** Current station, counts waiting on you, focus ring |
+| `--marigold-ink` | 0.47 0.1 70 | `#7E4F04` | Marigold as text, for warning statuses |
+| `--marigold-wash` | 0.95 0.05 90 | `#FBEEC9` | Warning status fill |
+| `--danger` | 0.52 0.19 27 | `#BE2323` | Errors, rejection |
+| `--info` | 0.48 0.09 235 | `#1C6589` | In-progress statuses only |
 
-- Figures are tabular (`font-variant-numeric: tabular-nums`) in tables,
-  amounts, PR numbers and dates. There is no monospace face.
-- Text is left-aligned. Numbers are right-aligned in table columns.
-- Sentence case everywhere: headings, buttons, table headers, nav. The only
-  capitals are acronyms (PR, RFQ, BAC, TIN).
-- Running text is capped at 72 characters per line (`--measure`).
+### Dark
 
-## Spacing, size and shape
+Dark mode follows the system setting and can be overridden from the top bar
+(stored per browser). It is not an inversion: the ground is a deep green
+black, so jade reads as light emitted rather than paint, and marigold stays
+the same hue so the current station is recognisable in both modes.
 
-- **Spacing scale (4px base):** 4, 8, 12, 16, 20, 24, 32, 48. Panels pad 20px.
-  Sections are 24px apart.
-- **Control heights:** 36px default, 32px compact (table row actions), 40px
-  for login and registration fields. Touch targets are at least 24px.
-- **Table density:** 40px rows, 8px by 12px cell padding.
-- **Radius:** 2px for controls and badges, 4px for panels and cards, 6px for
-  dialogs. Nothing is fully rounded except avatar-style circles.
-- **Elevation:** panels have none and use a 1px `--rule` border instead.
-  Dialogs and toasts use `--shadow-overlay`.
-- **Focus:** a 2px solid navy outline at 2px offset on light grounds, and
-  manila on navy. It is always visible on keyboard focus and never removed.
-- **Motion:** 120 to 200ms ease-out for state changes only (opening a row,
-  showing a toast). All motion is turned off under `prefers-reduced-motion`.
+| Token | OKLCH | Hex |
+|---|---|---|
+| `--paper` | 0.195 0.012 170 | `#101714` |
+| `--surface` | 0.225 0.013 170 | `#161E1B` |
+| `--sunk` | 0.235 0.014 170 | `#18201D` |
+| `--rule` | 0.34 0.015 170 | `#313B37` |
+| `--ink` | 0.94 0.008 165 | `#E6EDEA` |
+| `--ink-2` | 0.76 0.015 165 | `#A9B4AF` |
+| `--ink-3` | 0.66 0.015 165 | `#8A9590` |
+| `--jade` | 0.74 0.12 168 | `#4FC39C` (text on it is `--paper`) |
+| `--jade-deep` | 0.8 0.11 168 | `#6FD5B0` |
+| `--marigold` | 0.83 0.155 82 | `#F9BC38` |
+| `--danger` | 0.72 0.15 27 | `#F47C70` |
+
+### Contrast (WCAG 2.1 AA)
+
+| Pair | Light | Dark |
+|---|---|---|
+| ink on paper | 16.1 | 15.3 |
+| ink-2 on paper | 7.4 | 8.6 |
+| ink-3 on paper / sunk | 5.0 / 4.6 | 5.9 |
+| Text on jade button | 6.4 | 8.3 |
+| jade-deep link on paper | 9.8 | 10.2 |
+| ink on marigold | 9.8 | 10.7 |
+| marigold-ink on marigold-wash | 6.0 | n/a |
+| danger on paper | 5.8 | 6.9 |
+| input-line on paper (non-text, 3:1 needed) | 3.5 | n/a |
+
+### Status
+
+Status is always text first, color second, with a dot before the label. It
+is never a filled pastel pill.
+
+| Tone | Statuses |
+|---|---|
+| neutral (`ink-2`) | Submitted, Draft, Not posted |
+| info (`info`) | In review, Sent, Pending review |
+| success (`jade`) | Matched, Posted, Quotation received, Approved |
+| warning (`marigold-ink`) | For compliance, Awaiting quotation |
+| danger (`danger`) | Rejected |
+
+## Type
+
+One variable family: **Archivo** (Google Fonts, `wdth` 62 to 125,
+`wght` 100 to 900). One family keeps a 64px headline and a 13px table cell
+recognisably the same product. The scale contrast comes from the width axis:
+
+| Role | Size / line height | Width | Weight | Tracking |
+|---|---|---|---|---|
+| Display (dashboard headline, landing) | `clamp(44px, 6vw, 84px)` / 0.92 | 112 | 820 | -0.035em |
+| Page title (`h1`) | `clamp(32px, 3.4vw, 44px)` / 1 | 110 | 780 | -0.025em |
+| Section (`h2`) | 22px / 1.15 | 106 | 720 | -0.015em |
+| Sub-section (`h3`) | 16px / 1.3 | 100 | 650 | 0 |
+| Body | 15px / 1.5 | 100 | 400 | 0 |
+| Data (tables, forms, meta) | 13.5px / 1.4 | 88 | 420 | 0 |
+| Small | 12.5px / 1.4 | 92 | 450 | 0.005em |
+| Station number | 48px / 1 | 118 | 800 | -0.03em |
+| Queue number | 44px / 1 | 70 | 300 | -0.02em |
+
+- Peso amounts, PR numbers and counts use `font-variant-numeric:
+  tabular-nums`, right-aligned in tables.
+- Two numeral voices: **wide and heavy** for where things are (stations),
+  **condensed and light** for what is waiting (queues). They never swap.
+- No all-caps labels, no letter-spaced eyebrows, no monospace for data.
+- Sentence case everywhere. Procurement terms keep their capitals: PR, RFQ,
+  ABC, BAC, PO, PhilGEPS.
 
 ## Layout
 
+### Shell
+
 ```
-+--------------------------------------------------------------------------+
-| eProcure  Bids and Awards Committee, CTU Tuburan        Name, role  Log out| masthead, navy, 52px
-+--------------+-----------------------------------------------------------+
-| Overview     | Admin portal / PR review                                  |
-|  Dashboard   | Page title                                     [actions]  |
-| Procurement  | One-line description                                      |
-| |PR review 2 | +-------------------------------------------------------+ |
-|  RFQs        | | panel: white, 1px rule, 4px radius                     | |
-|  Manual RFQs | +-------------------------------------------------------+ |
-| Accounts     |                                                           |
-|  Suppliers   |                       workspace, stone                    |
-| Settings     |                                                           |
-+--------------+-----------------------------------------------------------+
+┌────────────────────────────────────────────────────────────────────────┐
+│ eProcure  BAC · Admin   [ Jump to a PR or supplier…  Ctrl K ]  ◐  User ⎋ │  top bar, 56px, paper
+├────────────────────────────────────────────────────────────────────────┤
+│ Overview │ Purchase requests ⁷  RFQs  Manual RFQs │ Suppliers  End users │ … │  index bar, rules between groups
+├────────────────────────────────────────────────────────────────────────┤
+│ content, max 1440px, 40px side margin (16px on phones)                   │
 ```
 
-- **Masthead:** navy, full width. It names the system and the office it
-  belongs to, and holds the signed-in user and Log out.
-- **Sidebar:** light, 240px, grouped by task in sentence case. The active
-  item has a 3px manila-deep bar and a navy-tint background. It collapses to
-  icons, and on phones it becomes a drawer behind a menu button.
-- **Content:** max 1320px wide, 32px side padding on desktop, 16px on
-  phones. Each page has a breadcrumb, a Literata title, a one-line
-  description and its actions on the right.
-- **Breakpoints:** 1200px (tables tighten), 960px (sidebar collapses to
-  icons), 720px (sidebar becomes a drawer, tables become labelled rows),
-  480px (single column, full-width actions).
+- **No sidebar.** The portal navigation is a horizontal index under the top
+  bar, grouped by task with a rule between groups. The active item has a
+  jade underline and ink text; a count waiting on you is a marigold numeral.
+  This returns the full width to tables.
+- Below 960px the index collapses into a drawer opened from the top bar.
+- The public site uses the same top bar with its own links (Home,
+  Opportunities, Help and FAQ) and a log in button.
 
-## Components
+### Grids
 
-- **Buttons:** Primary is solid navy with white text, one per view, for the
-  main action. Secondary is white with a navy text and an `--input-border`
-  border. Quiet is navy text with no border, for low-emphasis and table
-  actions. Danger is red text with a red border, and solid red only inside
-  a delete confirmation. All buttons are sentence case, 600 weight and 2px
-  radius, with a lucide icon only where it adds meaning.
-- **Tables:** paper background, `--paper-sunken` header row with 12.5px
-  sentence-case labels, 1px row rules, no zebra stripes, a navy-tint row
-  hover. Sort buttons show their direction. Below 720px, tables marked
-  responsive turn into labelled rows.
-- **Forms:** labels sit above fields (no floating labels), 14px, weight 600.
-  Required fields are marked with a red asterisk and a legend. Hints are
-  12.5px `--ink-2`. Errors are red text with an icon under the field, plus an
-  error summary at the top of long forms. Read-only fields use
-  `--paper-sunken` with a solid border.
-- **Status badges:** 2px radius, 12px text weight 600, tone shape first.
-  The same status has the same label and tone in every portal.
-- **Panels:** white, 1px `--rule`, 4px radius. The header row holds a 16px
-  title, an optional count and actions, separated by a rule.
-- **Dialogs:** 6px radius, overlay shadow, a header with a title and Close,
-  a footer with actions aligned right (primary last). Large review tasks
-  such as PR review open as a full-height sheet, not a small dialog.
-- **Empty, loading and error states:** empty states say what is missing and
-  give the next action in one line, left-aligned in the panel, with no large
-  illustration. Loading uses skeleton rows the shape of the content. Errors
-  use a danger alert that says what failed and offers "Try again".
-- **Alerts and toasts:** tinted fill, 3px left rule in the tone color, an
-  icon, a one-sentence message.
+- Pages use a 12-column grid with a 32px gutter, but content is placed
+  asymmetrically: **8/4** (work and context), **5/7** (headline and queue)
+  or full bleed (the line, wide tables).
+- Side columns sit on `--sunk` and run to the edge of their band instead of
+  floating in a box.
+- Text is left-aligned. Numbers are right-aligned. Nothing in the app is
+  centred except empty states.
 
-## Status vocabulary
+### Spacing
 
-| Stored value | Label shown | Tone |
+4px base: 4, 8, 12, 16, 24, 32, 48, 72. Table rows are 36px (compact) or
+44px (comfortable). Bands are separated by 48 to 72px; items inside a band
+by 8 to 16px. That jump is the point.
+
+### Shape
+
+| Element | Radius |
+|---|---|
+| Panels, bands, tables | 0 |
+| Buttons, inputs, selects | 6px |
+| Index tabs, segmented controls, density toggle | 999px (pill) |
+| Dialogs, menus, command palette | 12px, with the only shadow in the system |
+
+## The line (signature component)
+
+`src/components/ui/PipelineLine.jsx`. Six stations, always in this order:
+
+1. Purchase request
+2. Posting
+3. RFQ
+4. Quotation
+5. Evaluation
+6. Purchase order
+
+A station is **done** (jade ring, travelled jade track), **now** (marigold
+ring with a soft halo, track ends here), **later** (rule-colored ring and
+track) or **stopped** (danger ring, for a rejected PR). Evaluation and
+purchase order are drawn as part of the line even though eProcure does not
+record them yet, so the whole process is visible.
+
+| Variant | Where | Content |
 |---|---|---|
-| `uploaded` | Submitted | Neutral |
-| `in_review` | In Review | Review |
-| `matched` | Matched | Progress |
-| `approved` | Completed | Success |
-| `rejected` | Rejected | Danger |
+| `overview` | Admin dashboard | Each station with its count (station-number style) and a short note |
+| `record` | PR details, RFQ screens | Each station named, the current one with its state in words |
+| `mini` | Table rows | Six 18x4px segments, with the stage named in text next to it |
 
-Supplier registration: Pending Review and For Compliance use Review, Approved
-uses Success, Rejected uses Danger. Documents: Pending uses Review, Verified
-uses Success, Rejected uses Danger.
+The stage of a PR comes from data already on the record: rejected stops at
+the request; uploaded or in review is at the request; matched and not
+posted is at posting; posted is at RFQ; RFQs sent are at quotation; every
+RFQ answered is at evaluation; completed is past all six.
 
-## Tokens
+The RFQ progress indicator (`ProcurementStepper`) uses the same ring and
+track drawing for its three RFQ steps.
 
-The canonical copy is `src/styles/tokens.css`. If the two ever disagree, the
-CSS file wins and this table should be updated.
+## Data
 
-```css
-:root {
-  /* Color */
-  --navy: #1B3A5C;
-  --navy-hover: #142C47;
-  --navy-tint: #E4EAF1;
-  --manila: #D9B872;
-  --manila-deep: #8A6722;
-  --manila-tint: #F6EEDC;
-  --workspace: #E9E7E1;
-  --sidebar: #F5F4F0;
-  --paper: #FFFFFF;
-  --paper-sunken: #F2F0EB;
-  --ink: #1C2430;
-  --ink-2: #4D5664;
-  --ink-3: #5C6470;
-  --rule: #D3CFC6;
-  --rule-strong: #B9B4A8;
-  --input-border: #7D8590;
+- **Tables** have a sticky header on `--sunk` with a 2px ink rule beneath,
+  hairline rows, and a hover in `--jade-wash`. No zebra stripes, no outer
+  border, no rounded corners.
+- **Status is inline**: dot and label, and on PR rows the mini line.
+- **Row expansion**: PR rows open in place to show the record line, the
+  items and the next action, without leaving the list.
+- **Density toggle** (Comfortable / Compact) in every table toolbar,
+  remembered per browser. Compact is the default for the BAC.
+- **Command palette** (Ctrl K or Cmd K, also the top bar search field):
+  jump to any page, PR (by number, office or purpose) or supplier (by name
+  or email). Arrow keys move, Enter opens, Escape closes. In the Supplier
+  and End User portals it lists that portal's pages and records.
 
-  --tone-neutral: #4F5866;   --tone-neutral-fill: #E9ECF0;
-  --tone-review: #7A4F00;    --tone-review-fill: #FAEBCB;
-  --tone-progress: #1A5296;  --tone-progress-fill: #E2ECF8;
-  --tone-success: #1D6136;   --tone-success-fill: #DCEFE1;
-  --tone-danger: #9B2318;    --tone-danger-fill: #F9E1DD;
+## Motion
 
-  /* Type */
-  --font-serif: 'Literata', 'Iowan Old Style', Georgia, serif;
-  --font-sans: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
-  --text-xs: 12px;
-  --text-sm: 12.5px;
-  --text-table: 13.5px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 26px;
-  --leading-tight: 1.25;
-  --leading-body: 1.5;
-  --measure: 72ch;
+- **Page changes** use the View Transitions API: the content area
+  cross-fades and rises 8px (220ms). The top bar and index stay still.
+- **One orchestrated entrance**: on the dashboard the line draws from left
+  to right and the stations appear in sequence (60ms apart). Nothing else
+  staggers.
+- **Skeletons** for anything loading longer than a moment: blocks in
+  `--sunk` with a slow sheen, shaped like the content they replace.
+- Feedback motion only: dialogs scale in from 98%, rows expand with a
+  height transition, the palette fades in.
+- `prefers-reduced-motion: reduce` removes the transitions, the line
+  animation and the sheen. Everything still appears, immediately.
 
-  /* Space */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 48px;
+## Removed on purpose
 
-  /* Size and shape */
-  --control-h: 36px;
-  --control-h-sm: 32px;
-  --control-h-lg: 40px;
-  --row-h: 40px;
-  --radius-control: 2px;
-  --radius-panel: 4px;
-  --radius-dialog: 6px;
-  --shadow-overlay: 0 12px 32px rgba(28, 36, 48, 0.18), 0 2px 6px rgba(28, 36, 48, 0.08);
-  --masthead-h: 52px;
-  --sidebar-w: 240px;
-  --content-max: 1320px;
+These made the earlier designs read as a template. They do not come back.
 
-  /* Focus and motion */
-  --focus: 2px solid var(--navy);
-  --focus-on-dark: 2px solid var(--manila);
-  --focus-offset: 2px;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
-  --duration: 160ms;
-}
-```
+- Rows of identical rounded stat cards with soft shadows. Key figures are
+  stations on the line or numbers in the queue.
+- Pastel circles behind icons. Icons are 16px, ink-2, inline with text, and
+  only where they help recognition.
+- Gradient heroes and gradient washes.
+- A centred "Welcome back" login on a plain background. Sign-in is a split
+  page: the line and what eProcure does on one side, the form on the other.
+- Emoji as icons.
+- The navy masthead with a light sidebar.
+
+## Accessibility
+
+- WCAG 2.1 AA contrast for all text and controls (table above).
+- Focus is a 2px marigold outline with a 2px offset plus an ink inner
+  outline, visible on paper, jade and dark grounds alike.
+- The line is a list with `aria-current="step"` on the current station and
+  each station's state written out, so it never relies on color.
+- Targets are at least 36px tall (44px on touch widths).
+- The layout works from 320px. Tables become labelled stacks below 720px.
+
+## Files
+
+| File | Contents |
+|---|---|
+| `src/styles/tokens.css` | Color (light and dark), type, space, shape, motion |
+| `src/styles/base.css` | Element defaults, typography, focus, reduced motion, view transitions |
+| `src/styles/components.css` | Buttons, forms, status, tables, dialogs, alerts, palette, the line |
+| `src/styles/shell.css` | Top bar, index navigation, public navigation, footer |
+| `src/styles/screens-*.css` | Screen-specific layout: public, admin, supplier, enduser |
