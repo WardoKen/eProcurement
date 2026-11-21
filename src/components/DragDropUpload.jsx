@@ -1216,7 +1216,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
             </div>
 
             <div className="table-shell" tabIndex={0} role="region" aria-label="Requested items">
-              <table className="enterprise-table items-table requested-items-table">
+              <table className="enterprise-table items-table requested-items-table requested-items-table--entry">
                 <thead>
                   <tr>
                     <th style={{ width: '56px' }}>Item No.</th>

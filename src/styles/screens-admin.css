@@ -334,16 +334,23 @@
 /* Column widths are set inline in the JSX; these replace them so the
    description column can never collapse. */
 .requested-items-table { width: 100%; min-width: 1000px; table-layout: fixed; }
-.requested-items-table th:nth-child(1) { width: 40px !important; }
-.requested-items-table th:nth-child(2) { width: 104px !important; }
-.requested-items-table th:nth-child(3) { width: 76px !important; }
+/* Columns: Item No. · Stock/Property No. · Unit · Description · Qty ·
+   Unit Cost · Total · Category · Actions (BAC edit modal). The end-user
+   upload table has no Category, so its 8th column is Actions (--entry).
+   Each fixed width fits its nowrap header plus the 8px side padding below,
+   so no header spills into its neighbour. */
+.requested-items-table th:nth-child(1) { width: 68px !important; }
+.requested-items-table th:nth-child(2) { width: 136px !important; }
+.requested-items-table th:nth-child(3) { width: 80px !important; }
 .requested-items-table th:nth-child(4) { width: auto !important; }
-.requested-items-table th:nth-child(5) { width: 72px !important; }
-.requested-items-table th:nth-child(6) { width: 96px !important; }
-.requested-items-table th:nth-child(7) { width: 96px !important; }
+.requested-items-table th:nth-child(5) { width: 76px !important; }
+.requested-items-table th:nth-child(6) { width: 112px !important; }
+.requested-items-table th:nth-child(7) { width: 112px !important; }
 .requested-items-table th:nth-child(8) { width: 140px !important; }
-.requested-items-table th:nth-child(9) { width: 44px !important; }
-.requested-items-table thead th { position: static; }
+.requested-items-table th:nth-child(9) { width: 68px !important; }
+.requested-items-table--entry th:nth-child(8) { width: 68px !important; }
+.requested-items-table thead th { position: static; padding: 8px; overflow: hidden; text-overflow: ellipsis; }
+.requested-items-table thead th:first-child { text-align: center; }
 .requested-items-table .requested-item-description { min-height: 60px; resize: none; }
 .requested-items-block .table-shell { overflow-x: auto; border-top: 0; }
 .requested-items-table td { height: auto; padding: 6px 8px; vertical-align: top; }
@@ -351,7 +358,8 @@
 .requested-items-table td :is(input, textarea) { min-height: 34px; padding: 6px 8px; border-color: var(--rule); font-size: 13.5px; }
 .requested-items-table td :is(input, textarea):hover { border-color: var(--input-line); }
 .requested-items-table td input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
-.requested-items-table td:nth-child(7) { padding-top: 14px; text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+.requested-items-table td:nth-child(7) { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+.requested-items-table td:nth-child(7):not(:has(input)) { padding-top: 14px; }
 .requested-items-table tbody tr:hover > td { background: transparent; }
 
 .pr-edit-modal > .modal-actions { padding: 12px var(--s-6); }

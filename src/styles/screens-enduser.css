@@ -104,10 +104,21 @@
   background: var(--sunk);
 }
 .submission-declaration { border-left-color: var(--marigold); }
-.submission-check-list, .submission-declaration-points { display: grid; gap: 6px; margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+/* Space the items table, the two panels and the save button apart; the
+   button gets the most room so it reads as the step after the declaration. */
+.requested-items-block > :is(.submission-check-panel, .submission-declaration) { margin-top: var(--s-4); }
+.requested-items-block > .save-row { margin-top: var(--s-6); }
+.submission-declaration-points { display: grid; gap: 6px; margin: var(--s-2) 0 0; padding-left: var(--s-5); }
+/* Icon and label sit on one row; the icon is nudged to the first line's
+   centre so it stays put when a label wraps. */
+.submission-check-list { display: grid; gap: 6px; margin: var(--s-2) 0 0; padding: 0; list-style: none; }
+.submission-check-list li { display: flex; align-items: flex-start; gap: var(--s-2); margin: 0; line-height: 1.45; }
+.submission-check-list li > svg { flex: none; margin-top: 0.15em; }
 .submission-check-ok { color: var(--jade); }
 .submission-check-fail { color: var(--danger); }
-.submission-check-note, .submission-declaration-lead { margin-top: var(--s-2); color: var(--ink-2); }
+.submission-declaration-lead { margin-top: var(--s-2); color: var(--ink-2); }
+.submission-check-note { display: flex; align-items: center; gap: 6px; margin: var(--s-2) 0 0; color: var(--ink-2); }
+.submission-check-note > svg { flex: none; color: var(--marigold-ink); }
 .submission-declaration-ack { display: flex; align-items: flex-start; gap: var(--s-2); margin-top: var(--s-3); font-weight: 600; }
 .sig-confirm { display: flex; align-items: flex-start; gap: var(--s-2); margin-top: 4px; font-size: 13px; }
 .signature-validation-summary { margin-top: var(--s-3); display: grid; gap: 4px; font-size: 13px; }
