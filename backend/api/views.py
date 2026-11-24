@@ -52,7 +52,7 @@ from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCa
 from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, PRNumberFormat, PRNotificationSettings, Quotation, Notification, RFQ, RFQItem
 from .models import PRAuditLog, PRPostingLog, SupplierChangeLog
 from .auth import require_auth
-from . import pr_changes, pr_posting, supplier_changes, supplier_emails
+from . import pr_changes, pr_posting, supplier_changes, supplier_emails, supplier_scoring
 from .rfq import procurement_checks
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
@@ -2286,15 +2286,40 @@ def suppliers_search(request):
     by default without a search term and without duplicating the category-matched
     section. A short/blank query is a browse of that list, not an error.
 
+    Parameters:
+      ``name``          company name only.
+      ``q``             broad: company name, products/services, nature of
+                        business, contact person or a registered category
+                        name, so the BAC can find a supplier it knows carries
+                        an item even when the name is not remembered.
+      ``approved_only`` ``1`` drops suppliers that cannot be selected yet.
+      ``offset``        skip this many results (paging, 20 per page).
+
     Restricted to admin/BAC users; buyers and suppliers cannot use it.
     """
-    query = normalize_text(request.GET.get('name') or request.GET.get('q') or '')
+    name_query = normalize_text(request.GET.get('name') or '')
+    broad_query = normalize_text(request.GET.get('q') or '')
+    query = name_query or broad_query
 
     supplier_qs = Supplier.objects.all()
-    if query:
+    if name_query:
         # ``icontains`` gives case-insensitive partial matching on every DB
         # backend the project supports; ``normalize_text`` collapsed whitespace.
-        supplier_qs = supplier_qs.filter(company_name__icontains=query)
+        supplier_qs = supplier_qs.filter(company_name__icontains=name_query)
+    elif broad_query:
+        in_category = SupplierCategory.objects.filter(
+            category__name__icontains=broad_query
+        ).values_list('supplier_id', flat=True)
+        supplier_qs = supplier_qs.filter(
+            Q(company_name__icontains=broad_query)
+            | Q(products_services__icontains=broad_query)
+            | Q(goods_services__icontains=broad_query)
+            | Q(nature_of_business__icontains=broad_query)
+            | Q(contact_person__icontains=broad_query)
+            | Q(id__in=in_category)
+        )
+    if request.GET.get('approved_only') in ('1', 'true'):
+        supplier_qs = supplier_qs.filter(status='Approved')
 
     # Drop suppliers already registered under the PR's procurement category -
     # those belong to the category-matched section, never to "Other Suppliers".
@@ -2314,16 +2339,20 @@ def suppliers_search(request):
             supplier_qs = supplier_qs.exclude(id__in=in_category_ids)
 
     limit = 20
+    try:
+        offset = max(0, int(request.GET.get('offset') or 0))
+    except ValueError:
+        offset = 0
     # Approved suppliers first so the selectable ones lead the default browse,
-    # then alphabetical.
+    # then alphabetical (id breaks ties so paging is stable).
     supplier_qs = supplier_qs.annotate(
         _approved_first=Case(
             When(status='Approved', then=Value(0)),
             default=Value(1),
             output_field=IntegerField(),
         )
-    ).order_by('_approved_first', 'company_name')
-    matches = list(supplier_qs[:limit + 1])
+    ).order_by('_approved_first', 'company_name', 'id')
+    matches = list(supplier_qs[offset:offset + limit + 1])
     has_more = len(matches) > limit
     matches = matches[:limit]
 
@@ -2352,6 +2381,7 @@ def suppliers_search(request):
         'results': results,
         'query': query,
         'count': len(results),
+        'offset': offset,
         'has_more': has_more,
     })
 
@@ -3028,8 +3058,7 @@ def supplier_dashboard_summary(request, supplier_id):
         'verification_status': supplier.status,
         'registered_categories': (supplier.goods_services or 'Not specified').split(',')[0],
         'open_opportunities': matching_count,
-        'submitted_quotations': quotations.filter(status__in=['submitted', 'under_review', 'awarded', 'rejected']).count(),
-        'awarded_quotations': quotations.filter(status='awarded').count(),
+        'submitted_quotations': quotations.filter(status__in=['submitted', 'under_review', 'rejected']).count(),
         'pending_quotations': quotations.filter(status='under_review').count(),
         'rejected_quotations': quotations.filter(status='rejected').count(),
         'unread_notifications': Notification.objects.filter(supplier=supplier, is_read=False).count(),
@@ -3705,6 +3734,13 @@ def pr_supplier_match(request, pr_id):
             'compliance_percentage': round(((len(required_keys) - len(missing_documents)) / len(required_keys)) * 100) if required_keys else 100,
         }
 
+    # Advisory ranking of the eligible suppliers (never excludes anyone).
+    scoring_context = supplier_scoring.build_scoring_context(
+        [sid for sid, c in compliance_by_id.items() if c['eligible']],
+        {name: [i.item_description for i in items] for name, items in grouped.items()},
+        exclude_pr_id=pr.id,
+    )
+
     groups = []
     for name in category_names:
         cat_supplier_ids = set(
@@ -3729,12 +3765,12 @@ def pr_supplier_match(request, pr_id):
                 'nature_of_business': supplier.nature_of_business,
                 'business_type': supplier.business_type,
                 'status': supplier.status,
-                'match_score': 1,
+                **supplier_scoring.score_supplier(supplier, name, scoring_context),
                 'category_match': True,
                 'compliance_status': 'Eligible',
                 **compliance,
             })
-        matched.sort(key=lambda s: s['company_name'].lower())
+        matched.sort(key=supplier_scoring.rank_key)
         group_items = grouped[name]
         groups.append({
             'category': name,

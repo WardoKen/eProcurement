@@ -1,13 +1,15 @@
 import { Check } from 'lucide-react'
 import { PIPELINE_STAGES, STAGE_COUNT, pipelineStateFor as stateFor } from '../../lib/pipeline'
 
-// The line: eProcure's six procurement stations drawn as a transit line
+// The line: eProcure's procurement stations drawn as a transit line
 // (DESIGN.md, "The line"). Display only. It never changes a record.
 //
-//   variant="overview"  dashboard: every station with a count and a note
+//   variant="overview"  dashboard: every station with a count and a note.
+//                       A distribution, not progress: a station is occupied
+//                       (count > 0) or empty, and the rail stays neutral.
 //   variant="record"    one PR: each station named, its state in words
 //   variant="explain"   public pages: the route itself, a note per station
-//   <PipelineMini />    six segments for a table row
+//   <PipelineMini />    one segment per station for a table row
 //
 // A station is done, now, later or stopped (a rejected PR).
 
@@ -27,10 +29,13 @@ export default function PipelineLine({
 }) {
   const className = ['pipeline-line', `is-${variant}`, animate ? 'is-animated' : ''].filter(Boolean).join(' ')
   const explain = variant === 'explain'
+  const overview = variant === 'overview'
   return (
-    <ol className={className} aria-label={label}>
+    <ol className={className} aria-label={label} style={{ '--stations': STAGE_COUNT }}>
       {PIPELINE_STAGES.map((stage, index) => {
-        const state = explain ? 'route' : (states?.[index] || stateFor(index, current, stopped))
+        const state = explain ? 'route'
+          : overview ? ((counts?.[index] ?? 0) > 0 ? 'occupied' : 'empty')
+          : (states?.[index] || stateFor(index, current, stopped))
         const note = notes?.[index]
         let content
         if (variant === 'overview') {
@@ -56,7 +61,7 @@ export default function PipelineLine({
             </>
           )
         }
-        const spokenState = !explain && variant === 'overview' ? <span className="sr-only">, {STATE_WORDS[state].toLowerCase()}</span> : null
+        const spokenState = overview && note ? <span className="sr-only">, {note}</span> : null
         return (
           <li
             key={stage.key}

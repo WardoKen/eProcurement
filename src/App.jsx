@@ -221,15 +221,13 @@ const HOME_STATION_NOTES = [
   'An End User uploads the signed PR. The BAC checks it and assigns the PR number.',
   'The BAC posts the PR as an opportunity for suppliers in its categories.',
   'Each category group becomes an RFQ, sent to approved suppliers.',
-  'Suppliers fill in, sign and upload their quotations.',
-  'The BAC compares the quotations it received.',
-  'The winning supplier is issued the purchase order.',
+  'Suppliers fill in, sign and upload their quotations for the BAC.',
 ]
 
 const Home = () => (
   <div className="home">
     <section className="home-hero">
-      <h1 className="home-display">Every purchase request, from signed form to purchase order.</h1>
+      <h1 className="home-display">Every purchase request, from signed form to supplier quotations.</h1>
       <div className="home-hero-side">
         <p className="home-lede">eProcure is how the Bids and Awards Committee of CTU Tuburan receives Purchase Requests, posts them to suppliers and collects quotations, with a record at every step.</p>
         <div className="home-actions">
@@ -241,7 +239,7 @@ const Home = () => (
 
     <section className="home-line" aria-labelledby="home-line-title">
       <h2 id="home-line-title" className="sr-only">The procurement line</h2>
-      <PipelineLine variant="explain" notes={HOME_STATION_NOTES} label="The six stages of a procurement" animate />
+      <PipelineLine variant="explain" notes={HOME_STATION_NOTES} label="The stages of a procurement in eProcure" animate />
     </section>
 
     <section className="home-roles" aria-labelledby="home-roles-title">
@@ -820,11 +818,11 @@ const Login = () => {
   return (
     <div className="login-page">
       <section className="login-context" aria-labelledby="login-context-title">
-        <h2 id="login-context-title" className="login-statement">Procurement for CTU Tuburan, from request to purchase order.</h2>
+        <h2 id="login-context-title" className="login-statement">Procurement for CTU Tuburan, from request to quotation.</h2>
         <PipelineLine
           variant="explain"
           label="Who acts at each stage"
-          notes={['End User', 'BAC Secretariat', 'BAC Secretariat', 'Supplier', 'BAC', 'BAC and supplier']}
+          notes={['End User', 'BAC Secretariat', 'BAC Secretariat', 'Supplier']}
         />
       </section>
       <div className="login-panel">
@@ -1810,28 +1808,58 @@ const rfqStatusLabelText = (status) => {
 // suppliers, "other supplier" search and manual-RFQ action are all scoped to
 // this group only.
 const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSelectSupplier, onManualRfq }) => {
+  // Other Registered Suppliers: every supplier outside this group's category
+  // match, listed as soon as the group opens and searchable by name, products
+  // and services, or registered category. For suppliers the BAC knows carry
+  // the item even though they are not registered under this category.
   const [query, setQuery] = React.useState('')
+  const [includePending, setIncludePending] = React.useState(false)
   const [results, setResults] = React.useState([])
+  const [fetched, setFetched] = React.useState(0)
+  const [hasMore, setHasMore] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
-  const [ran, setRan] = React.useState(false)
+  const [loaded, setLoaded] = React.useState(false)
   const [searchError, setSearchError] = React.useState('')
+  const requestRef = React.useRef(0)
   const matchedIds = React.useMemo(() => new Set(group.suppliers.map((s) => s.id)), [group.suppliers])
 
-  const runSearch = async (event) => {
-    if (event) event.preventDefault()
-    setBusy(true); setSearchError(''); setRan(true)
+  const fetchOthers = React.useCallback(async (offset) => {
+    const requestId = ++requestRef.current
+    setBusy(true); setSearchError('')
     try {
       const params = new URLSearchParams()
-      if (query.trim()) params.set('name', query.trim())
+      if (query.trim()) params.set('q', query.trim())
+      if (!includePending) params.set('approved_only', '1')
+      if (offset) params.set('offset', String(offset))
       const res = await apiFetch(`${apiBase}/api/suppliers/search/?${params.toString()}`)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.message || `Search failed (HTTP ${res.status})`)
-      setResults((Array.isArray(data.results) ? data.results : []).filter((s) => !matchedIds.has(s.id)))
+      if (requestId !== requestRef.current) return
+      const page = Array.isArray(data.results) ? data.results : []
+      const others = page.filter((s) => !matchedIds.has(s.id))
+      setResults((prev) => (offset ? [...prev, ...others.filter((s) => !prev.some((p) => p.id === s.id))] : others))
+      setFetched(offset + page.length)
+      setHasMore(Boolean(data.has_more))
+      setLoaded(true)
     } catch (err) {
-      setSearchError(err.message || 'Supplier search failed'); setResults([])
+      if (requestId !== requestRef.current) return
+      setSearchError(err.message || 'Supplier search failed')
+      if (!offset) setResults([])
     } finally {
-      setBusy(false)
+      if (requestId === requestRef.current) setBusy(false)
     }
+  }, [apiBase, query, includePending, matchedIds])
+
+  // Load on open, then re-run as the BAC types (debounced).
+  React.useEffect(() => {
+    if (!expanded) return undefined
+    const timer = setTimeout(() => fetchOthers(0), query.trim() ? 300 : 0)
+    return () => clearTimeout(timer)
+  }, [expanded, fetchOthers, query])
+
+  const runSearch = (event) => {
+    event.preventDefault()
+    fetchOthers(0)
   }
 
   return (
@@ -1858,20 +1886,21 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
           <div className="match-section-heading"><h3>Category-Matched Suppliers</h3></div>
           {group.suppliers.length === 0 ? (
             <div className="alert alert-info">
-              No eligible suppliers are registered under this category. Search <strong>Other Registered Suppliers</strong> or add an unregistered supplier below.
+              No eligible suppliers are registered under this category. Choose from <strong>Other Registered Suppliers</strong> or add an unregistered supplier below.
             </div>
           ) : (
             <div className="supplier-match-grid">
-              {group.suppliers.map((s) => {
+              {group.suppliers.map((s, index) => {
                 const status = issuedFor(group.category, s.id)
                 return (
                   <article key={s.id} className="supplier-match-card">
                     <div className="supplier-match-head">
-                      <h4>{s.company_name}</h4>
+                      <h4><span className="supplier-match-rank" aria-label={`Rank ${index + 1}`}>#{index + 1}</span> {s.company_name}</h4>
                       <span className="status-badge tone-success">{s.status || 'Approved'}</span>
                     </div>
                     <div className="supplier-match-body">
                       <div><span className="match-tag match-tag-category"><Check size={12} aria-hidden="true" /> Category match</span></div>
+                      {typeof s.match_score === 'number' && <div><strong>Match score:</strong> {s.match_score}/100</div>}
                       <div>Coverage: {group.item_count}/{group.item_count} items</div>
                       {s.contact_person && <div><strong>Contact:</strong> {s.contact_person}</div>}
                       {s.email && <div><strong>Email:</strong> {s.email}</div>}
@@ -1884,6 +1913,21 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                         <button type="button" className="btn-sm btn-primary" onClick={() => onSelectSupplier(s, group, 'category_match')}>Request Quotation</button>
                       )}
                     </div>
+                    {Array.isArray(s.score_breakdown) && s.score_breakdown.length > 0 && (
+                      <details className="supplier-score-breakdown">
+                        <summary>Why this rank?</summary>
+                        <ul>
+                          {s.score_breakdown.map((f) => (
+                            <li key={f.factor}>
+                              <strong>{f.factor}</strong>
+                              <span className="supplier-score-points">{f.points}/{f.max_points}</span>
+                              <span>{f.explanation}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="helper-text">Advisory ranking only. Every supplier listed here is eligible; the BAC decides who receives an RFQ.</p>
+                      </details>
+                    )}
                   </article>
                 )
               })}
@@ -1894,24 +1938,42 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
           <div className="match-section-heading">
             <h3>Other Registered Suppliers</h3>
             <p className="helper-text">
-              Suppliers not registered under this category. Selecting one is recorded as a <strong>Manual BAC Selection</strong> for this group only.
+              Suppliers not registered under <strong>{group.category}</strong> whom the BAC knows can supply these items.
+              Selecting one is recorded as a <strong>Manual BAC Selection</strong> for this group only.
             </p>
           </div>
-          <form className="other-supplier-search" onSubmit={runSearch}>
+          <form className="other-supplier-search" onSubmit={runSearch} role="search" aria-label={`Other suppliers for ${group.category}`}>
             <label className="form-field" style={{ flex: 1, margin: 0 }}>
-              <span>Search by supplier name</span>
-              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search supplier name" />
+              <span>Search suppliers</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Company name, product or service, or category"
+              />
             </label>
-            <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Searching…' : 'Search'}</button>
+            <label className="other-supplier-toggle">
+              <input type="checkbox" checked={includePending} onChange={(e) => setIncludePending(e.target.checked)} />
+              <span>Include suppliers not yet approved</span>
+            </label>
           </form>
           {searchError && <div className="alert alert-error" style={{ marginTop: 10 }}>{searchError}</div>}
-          {ran && !searchError && (
-            results.length === 0 ? (
-              <div className="supplier-match-empty">No other registered suppliers found.</div>
-            ) : (
+          {!loaded && busy && (
+            <div className="skeleton-stack" style={{ marginTop: 10 }}><div className="skeleton-line" style={{ height: 56 }} /></div>
+          )}
+          {loaded && !searchError && (
+            <p className="other-supplier-summary" aria-live="polite">
+              {busy ? 'Searching…' : results.length === 0
+                ? (query.trim() ? `No other suppliers match "${query.trim()}".` : 'No other registered suppliers.')
+                : `${results.length}${hasMore ? '+' : ''} other supplier${results.length === 1 && !hasMore ? '' : 's'}${query.trim() ? ` matching "${query.trim()}"` : ''}`}
+            </p>
+          )}
+          {loaded && results.length > 0 && (
+            <>
               <div className="supplier-match-grid">
                 {results.map((s) => {
                   const status = issuedFor(group.category, s.id)
+                  const offers = s.products_services || s.nature_of_business
                   return (
                     <article key={s.id} className="supplier-match-card supplier-match-card-manual">
                       <div className="supplier-match-head">
@@ -1921,6 +1983,8 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                       <div className="supplier-match-body">
                         <div><span className="match-tag match-tag-manual">Manual BAC Selection</span></div>
                         <div><strong>Registered Categories:</strong> {s.categories && s.categories.length ? s.categories.join(', ') : 'None on file'}</div>
+                        {offers && <div className="other-supplier-offers"><strong>Offers:</strong> {offers}</div>}
+                        {s.contact_person && <div><strong>Contact:</strong> {s.contact_person}</div>}
                         {s.email && <div><strong>Email:</strong> {s.email}</div>}
                       </div>
                       <div className="supplier-match-foot">
@@ -1942,7 +2006,12 @@ const ProcurementGroup = ({ group, expanded, onToggle, apiBase, issuedFor, onSel
                   )
                 })}
               </div>
-            )
+              {hasMore && (
+                <button type="button" className="btn-sm btn-secondary other-supplier-more" onClick={() => fetchOthers(fetched)} disabled={busy}>
+                  {busy ? 'Loading…' : 'Show more suppliers'}
+                </button>
+              )}
+            </>
           )}
 
           <div className="match-section-divider" />
@@ -3954,11 +4023,6 @@ const Admin = () => {
   const completedCount = positions.filter((entry) => entry.position.index >= PIPELINE_STATION_KEYS.length).length
   const rejectedCount = positions.filter((entry) => entry.position.stopped).length
   const readyToPost = stationCounts[1]
-  const busiest = stationCounts.slice(0, 5).reduce((best, count, index) => (count > stationCounts[best] ? index : best), 0)
-  const stationStates = stationCounts.map((count, index) => {
-    if (index === busiest && count > 0) return 'now'
-    return count > 0 ? 'done' : 'later'
-  })
   const queueRows = [
     { key: 'pr', count: unnumberedPrRecords.length, one: 'Purchase Request needs a PR number', many: 'Purchase Requests need a PR number', hint: 'Review each request and assign its number.', clear: 'Every Purchase Request has a PR number.', action: 'Review PRs', tab: 'pr-monitoring' },
     { key: 'post', count: readyToPost, one: 'matched request is ready to post', many: 'matched requests are ready to post', hint: 'Suppliers see a PR only once it is posted.', clear: 'No matched request is waiting to be posted.', action: 'Post PRs', tab: 'pr-monitoring' },
@@ -4065,7 +4129,7 @@ const Admin = () => {
               <div className="dash-line-head">
                 <h2 id="dash-line-title">Where every request is</h2>
                 <span className="dash-line-meta">
-                  {prRecords.length} on record{completedCount > 0 ? `, ${completedCount} completed` : ''}{rejectedCount > 0 ? `, ${rejectedCount} rejected` : ''}
+                  {prRecords.length} on record{completedCount > 0 ? `, ${completedCount} with all quotations in` : ''}{rejectedCount > 0 ? `, ${rejectedCount} rejected` : ''}
                 </span>
               </div>
               {prLoading && prRecords.length === 0 ? <SkeletonRows count={3} /> : (
@@ -4073,15 +4137,12 @@ const Admin = () => {
                   variant="overview"
                   animate
                   label="Purchase Requests at each stage"
-                  states={stationStates}
                   counts={stationCounts}
                   notes={[
                     unnumberedPrRecords.length ? `${unnumberedPrRecords.length} need a PR number` : 'Submitted or in review',
                     'Matched, not posted',
                     'Posted, no RFQ sent',
                     dashboardBreakdowns.rfqAwaiting ? `${dashboardBreakdowns.rfqAwaiting} RFQs awaiting a quotation` : 'RFQs out to suppliers',
-                    'All quotations in',
-                    'Not recorded in eProcure yet',
                   ]}
                   onSelectStage={() => goTo('pr-monitoring')}
                 />
@@ -7941,10 +8002,9 @@ const SupplierNotifications = ({ supplierId, apiBaseUrl }) => {
                     {notif.type === 'rfq_received' && <Send size={20} />}
                     {notif.type === 'quotation_submitted' && <CheckCircle size={20} />}
                     {notif.type === 'quotation_review' && <Clock size={20} />}
-                    {notif.type === 'quotation_awarded' && <CheckCircle size={20} />}
                     {notif.type === 'quotation_rejected' && <AlertCircle size={20} />}
                     {notif.type === 'profile_approved' && <CheckCircle size={20} />}
-                    {!['opportunity', 'rfq_received', 'quotation_submitted', 'quotation_review', 'quotation_awarded', 'quotation_rejected', 'profile_approved'].includes(notif.type) && <Bell size={20} />}
+                    {!['opportunity', 'rfq_received', 'quotation_submitted', 'quotation_review', 'quotation_rejected', 'profile_approved'].includes(notif.type) && <Bell size={20} />}
                   </div>
                   <div className="notification-content">
                     <h4>{notif.title}</h4>

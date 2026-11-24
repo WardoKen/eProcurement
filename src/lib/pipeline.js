@@ -1,13 +1,14 @@
-// The six procurement stations and where a PR sits on them (DESIGN.md,
-// "The line"). Used by src/components/ui/PipelineLine.jsx.
+// The procurement stations eProcure covers and where a PR sits on them
+// (DESIGN.md, "The line"). Used by src/components/ui/PipelineLine.jsx.
+//
+// The line ends at Quotation: evaluation, award and the purchase order are
+// out of eProcure's scope and happen outside the system.
 
 export const PIPELINE_STAGES = [
   { key: 'request', label: 'Purchase request' },
   { key: 'posting', label: 'Posting' },
   { key: 'rfq', label: 'RFQ' },
   { key: 'quotation', label: 'Quotation' },
-  { key: 'evaluation', label: 'Evaluation' },
-  { key: 'order', label: 'Purchase order' },
 ]
 
 export const STAGE_COUNT = PIPELINE_STAGES.length
@@ -26,7 +27,7 @@ export function prPipelinePosition(pr) {
   if (status === 'uploaded' || status === 'in_review' || !status) {
     return { index: 0, stopped: false, label: status === 'in_review' ? 'In BAC review' : 'Submitted' }
   }
-  if (sent > 0 && responded >= sent) return { index: 4, stopped: false, label: 'Quotations in, ready to evaluate' }
+  if (sent > 0 && responded >= sent) return { index: STAGE_COUNT, stopped: false, label: 'All quotations received' }
   if (sent > 0) return { index: 3, stopped: false, label: `${responded} of ${sent} quotations in` }
   if (pr.is_posted) return { index: 2, stopped: false, label: 'Posted, RFQs not sent yet' }
   return { index: 1, stopped: false, label: 'Matched, not posted' }
@@ -38,4 +39,3 @@ export const pipelineStateFor = (index, current, stopped) => {
   if (index === current) return 'now'
   return 'later'
 }
-

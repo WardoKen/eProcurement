@@ -915,6 +915,41 @@ class ManualBACSupplierSelectionTests(TestCase):
             for r in results if r['company_name'] in approved
         ))
 
+    def _broad(self, params):
+        _login_as(self.client, 'admin')
+        return self.client.get(f'/api/suppliers/search/?{params}').json()
+
+    def test_broad_search_matches_products_and_categories(self):
+        # The BAC may know a supplier carries an item without recalling its name.
+        self.other_supplier.products_services = 'Split-type and floor standing aircon units'
+        self.other_supplier.save()
+        by_product = [r['company_name'] for r in self._broad('q=floor%20standing')['results']]
+        self.assertIn('CoolTech Climate Solutions Inc.', by_product)
+        by_category = [r['company_name'] for r in self._broad('q=hvac%20services')['results']]
+        self.assertIn('CoolTech Climate Solutions Inc.', by_category)
+
+    def test_name_search_stays_company_name_only(self):
+        self.other_supplier.products_services = 'floor standing aircon'
+        self.other_supplier.save()
+        self.assertEqual(self._search('floor').json()['results'], [])
+
+    def test_approved_only_drops_suppliers_not_yet_approved(self):
+        Supplier.objects.create(company_name='CoolBreeze Pending', status='Pending Review')
+        names = [r['company_name'] for r in self._broad('q=cool&approved_only=1')['results']]
+        self.assertIn('CoolTech Climate Solutions Inc.', names)
+        self.assertNotIn('CoolBreeze Pending', names)
+
+    def test_offset_pages_through_results(self):
+        for n in range(25):
+            Supplier.objects.create(company_name=f'Widget Supplier {n:02d}', status='Approved')
+        first = self._broad('q=widget%20supplier')
+        second = self._broad('q=widget%20supplier&offset=20')
+        self.assertTrue(first['has_more'])
+        self.assertFalse(second['has_more'])
+        self.assertEqual(len(second['results']), 5)
+        first_ids = {r['id'] for r in first['results']}
+        self.assertFalse(first_ids & {r['id'] for r in second['results']})
+
     # ---- manual selection on the RFQ endpoint --------------------------------
     def test_manual_selection_accepts_supplier_outside_pr_category(self):
         _login_as(self.client, 'admin')

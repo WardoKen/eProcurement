@@ -460,17 +460,16 @@ class PRAuditLog(models.Model):
 
 
 class Quotation(models.Model):
+    # No "awarded" status: evaluation and award are out of eProcure's scope.
     STATUS_DRAFT = 'draft'
     STATUS_SUBMITTED = 'submitted'
     STATUS_UNDER_REVIEW = 'under_review'
-    STATUS_AWARDED = 'awarded'
     STATUS_REJECTED = 'rejected'
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, 'Draft'),
         (STATUS_SUBMITTED, 'Submitted'),
         (STATUS_UNDER_REVIEW, 'Under Review'),
-        (STATUS_AWARDED, 'Awarded'),
         (STATUS_REJECTED, 'Rejected'),
     ]
 
@@ -500,7 +499,6 @@ class Notification(models.Model):
     TYPE_RFQ_RECEIVED = 'rfq_received'
     TYPE_QUOTATION_SUBMITTED = 'quotation_submitted'
     TYPE_QUOTATION_REVIEW = 'quotation_review'
-    TYPE_QUOTATION_AWARDED = 'quotation_awarded'
     TYPE_QUOTATION_REJECTED = 'quotation_rejected'
     TYPE_PROFILE_APPROVED = 'profile_approved'
 
@@ -509,7 +507,6 @@ class Notification(models.Model):
         (TYPE_RFQ_RECEIVED, 'New Request for Quotation'),
         (TYPE_QUOTATION_SUBMITTED, 'Quotation Submitted'),
         (TYPE_QUOTATION_REVIEW, 'Quotation Under Review'),
-        (TYPE_QUOTATION_AWARDED, 'Quotation Awarded'),
         (TYPE_QUOTATION_REJECTED, 'Quotation Rejected'),
         (TYPE_PROFILE_APPROVED, 'Profile Approved'),
     ]

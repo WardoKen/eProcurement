@@ -200,7 +200,7 @@
   box-shadow: 0 0 0 2px var(--marigold-halo);
 }
 
-:is(.status-badge.status-open, .status-badge.status-approved, .status-badge.status-awarded,
+:is(.status-badge.status-open, .status-badge.status-approved,
 .status-badge.status-completed, .status-badge.status-success, .status-badge.status-matched,
 .status-badge.tone-success, .status-pill.success, .status-pill.tone-success, .match-tag) { color: var(--jade); }
 
@@ -908,7 +908,11 @@ tr.row-detail:hover > td { background: var(--sunk); }
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
-.pl-station.is-later .pl-count { color: var(--ink-3); font-weight: 300; }
+.pl-station:is(.is-later, .is-empty) .pl-count { color: var(--ink-3); font-weight: 300; }
+/* Overview is a head count per station, not progress: the rail stays
+   neutral, an occupied station is a solid stop, an empty one a hollow ring. */
+.pl-station.is-occupied .pl-dot { border-color: var(--jade); background: var(--jade); }
+.pl-station.is-empty .pl-dot { border-width: 3px; }
 .pipeline-line.is-overview .pl-name { margin-top: var(--s-4); color: var(--ink-2); font-weight: 600; }
 .pl-count-link {
   padding: 0;
@@ -928,7 +932,7 @@ tr.row-detail:hover > td { background: var(--sunk); }
 @keyframes track-draw { from { transform: scaleX(0); } }
 @keyframes dot-in { from { transform: scale(0.4); opacity: 0; } }
 
-/* Mini: six segments in a table row */
+/* Mini: one segment per station in a table row */
 .pl-mini {
   display: inline-flex;
   gap: 3px;
@@ -1153,6 +1157,9 @@ tr.row-detail:hover > td { background: var(--sunk); }
 }
 .field-value.is-edited :is(input, textarea) { border-color: var(--marigold-ink) !important; background: var(--marigold-wash) !important; }
 .field-value.is-edited .signature-card { background: transparent; }
+/* Signatories are ruled boxes: the highlight fills its own box exactly
+   instead of bleeding over the dividers into the neighbouring signatory. */
+.signature-grid > .field-value.is-edited:not(.field-value-inline) { margin: 0; padding: 0; }
 
 .field-value-badge {
   position: absolute;

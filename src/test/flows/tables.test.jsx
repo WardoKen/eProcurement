@@ -145,7 +145,7 @@ describe('supplier portal lists', () => {
       'GET /api/suppliers/7/opportunities/': { json: { opportunities: [] } },
       'GET /api/suppliers/7/quotations/': { json: { quotations: [
         { id: 1, pr_no: '2026-11-001', created_at: '2026-11-02T00:00:00Z', quoted_amount: 1900, status: 'under_review' },
-        { id: 2, pr_no: '2026-10-004', created_at: '2026-10-12T00:00:00Z', quoted_amount: 500, status: 'awarded' },
+        { id: 2, pr_no: '2026-10-004', created_at: '2026-10-12T00:00:00Z', quoted_amount: 500, status: 'submitted' },
       ] } },
     })
     const { user } = renderAt('/supplier')
@@ -153,7 +153,7 @@ describe('supplier portal lists', () => {
 
     const table = await screen.findByRole('table', { name: /your submitted quotations/i })
     expect(within(table).getByText('Under Review')).toBeInTheDocument()
-    await user.type(screen.getByLabelText(/search quotations/i), 'awarded')
+    await user.type(screen.getByLabelText(/search quotations/i), 'submitted')
     expect(within(table).getAllByRole('row')).toHaveLength(2)
   })
 })

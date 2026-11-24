@@ -33,7 +33,14 @@ const routes = {
   'POST /api/pr/43/rfq/': ({ body }) => ({ json: savedRfq(body) }),
   'PATCH /api/pr/43/rfq/': ({ body }) => ({ json: savedRfq(body, body.send ? 'sent' : 'draft') }),
   'POST /api/pr/43/manual-rfq/': ({ body }) => ({ json: { id: 31, manual_supplier_name: body.manual_supplier_name, quotation_no: '2026-022' } }),
+  'GET /api/suppliers/search/': { json: { results: [], has_more: false } },
 }
+
+const otherSuppliers = [
+  // Already category-matched: must not be repeated under Other Suppliers.
+  { id: 7, company_name: 'Acme Supplies, Inc.', status: 'Approved', categories: ['IT Equipment'] },
+  { id: 12, company_name: 'Bisaya Computer Center', status: 'Approved', categories: ['Office Supplies'], products_services: 'Laptops, printers and toner', contact_person: 'Ana Cruz', email: 'ana@bcc.ph' },
+]
 
 async function openMatching(user) {
   await user.click(screen.getAllByRole('button', { name: /^purchase requests/i })[0])
@@ -90,6 +97,33 @@ describe('supplier matching and RFQ distribution', () => {
     if (dialog) await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
 
     expect(api.find('PATCH', '/api/pr/43/rfq/')).toHaveLength(0)
+  })
+
+  it('lists other registered suppliers on open, searches them, and selects one as a manual BAC selection', async () => {
+    signIn(adminUser)
+    const api = installApi({
+      ...routes,
+      'GET /api/suppliers/search/': { json: { results: otherSuppliers, has_more: false } },
+    })
+    const { user } = renderAt('/admin')
+    await openMatching(user)
+
+    // Listed without a search: approved suppliers only, matched ones left out.
+    const card = (await screen.findByRole('heading', { name: 'Bisaya Computer Center' })).closest('article')
+    expect(within(card).getByText(/laptops, printers and toner/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: /acme supplies, inc\./i })).toHaveLength(1)
+    expect(api.calls.some((c) => c.path === '/api/suppliers/search/?approved_only=1')).toBe(true)
+
+    // Search covers products and services, not only the company name.
+    await user.type(screen.getByRole('searchbox', { name: /search suppliers/i }), 'laptop')
+    await waitFor(() => expect(api.calls.some((c) => c.path === '/api/suppliers/search/?q=laptop&approved_only=1')).toBe(true))
+
+    await user.click(within(card).getByRole('button', { name: /select supplier/i }))
+    await screen.findByRole('heading', { name: /email to supplier/i })
+    await user.type(document.querySelector('input[list="procurement-mode-options"]'), 'Shopping')
+    await user.click(screen.getByRole('button', { name: /^save rfq/i }))
+    await waitFor(() => expect(api.find('POST', '/api/pr/43/rfq/')).toHaveLength(1))
+    expect(api.find('POST', '/api/pr/43/rfq/')[0].body).toMatchObject({ supplier_id: 12, selection_type: 'manual_bac' })
   })
 
   it('issues a manual RFQ to an unregistered supplier', async () => {

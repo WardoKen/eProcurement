@@ -663,9 +663,22 @@
 .supplier-match-foot { display: flex; justify-content: flex-end; }
 .match-tag-category { color: var(--jade); }
 .match-tag-manual { color: var(--marigold-ink); }
+.supplier-match-rank { color: var(--ink-2); font-variant-numeric: tabular-nums; font-weight: 650; }
+.supplier-score-breakdown { grid-column: 1 / -1; color: var(--ink-2); font-size: 13px; }
+.supplier-score-breakdown summary { width: fit-content; color: var(--ink); font-weight: 600; cursor: pointer; }
+.supplier-score-breakdown ul { display: grid; gap: 4px; margin: var(--s-2) 0; padding: 0; list-style: none; }
+.supplier-score-breakdown li { display: grid; grid-template-columns: minmax(9rem, auto) 4.5rem minmax(0, 1fr); gap: var(--s-3); }
+.supplier-score-breakdown li strong { color: var(--ink); font-weight: 600; }
+.supplier-score-points { font-variant-numeric: tabular-nums; }
 
 .other-supplier-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-3); }
 .other-supplier-search .form-field span { color: var(--ink); font-size: 13.5px; font-weight: 620; }
+.other-supplier-search .form-field input { min-width: min(100%, 280px); }
+.other-supplier-toggle { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 40px; color: var(--ink-2); font-size: 13px; cursor: pointer; }
+.other-supplier-toggle span { color: inherit; font-weight: 500; }
+.other-supplier-summary { margin: var(--s-3) 0 var(--s-2); color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.other-supplier-offers { flex-basis: 100%; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.other-supplier-more { margin-top: var(--s-3); }
 
 /* RFQ preparation */
 .supplier-panel-title { color: var(--ink); font-weight: 750; }
@@ -764,6 +777,8 @@ select.dropdown-control { cursor: pointer; }
 @media (max-width: 960px) {
   .supplier-match-card { grid-template-columns: minmax(0, 1fr); }
   .supplier-match-foot { justify-content: flex-start; }
+  .supplier-score-breakdown li { grid-template-columns: minmax(0, 1fr) auto; gap: 0 var(--s-3); }
+  .supplier-score-breakdown li > span:last-child { grid-column: 1 / -1; }
   .rfq-mgmt-group-header { grid-template-columns: 24px minmax(0, 1fr); }
   .rfq-mgmt-group-header > :nth-child(n + 3) { grid-column: 2; justify-self: start; }
   .rfq-mgmt-group-body, .procurement-group-body { padding-left: var(--s-3); padding-right: var(--s-3); }

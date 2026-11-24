@@ -224,5 +224,8 @@ pre-verified steps):
   a placeholder for a future ML model.
 - **No mobile app.** eProcure is a responsive web application only.
 - **No payment or financial transaction processing.** The system covers
-  the procurement workflow (PR → matching → RFQ → quotation → award); it
-  does not handle actual payment or disbursement.
+  the procurement workflow (PR → matching → RFQ → quotation); it does not
+  handle actual payment or disbursement.
+- **No evaluation, award or purchase order.** eProcure ends once suppliers'
+  quotations are in. The BAC evaluates them, awards the contract and issues
+  the purchase order outside the system.

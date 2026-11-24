@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
   Save,
@@ -68,7 +68,7 @@ const getCurrentDate = () => {
 
 function normalizeOcrDate(value, rawText = '') {
   const source = String(value || '').trim() || String(rawText || '')
-  const match = source.match(/\b(\d{1,2})\s*[\/-]\s*(\d{1,2})\s*[\/-]\s*(\d{4})\b/)
+  const match = source.match(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{4})\b/)
   if (!match) return String(value || '').trim()
   const month = Number(match[1])
   const day = Number(match[2])
@@ -415,21 +415,14 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const [removingRowIndex, setRemovingRowIndex] = useState(null)
 
   const fileInputRef = useRef(null)
-  const [previewUrl, setPreviewUrl] = useState('')
-
   // The document preview is purely a client-side convenience - it reads the
   // already-selected File object directly, no extra request or backend
   // change needed. Revoke the previous object URL whenever it changes so we
   // don't leak memory across repeated uploads.
-  useEffect(() => {
-    if (!file) {
-      setPreviewUrl('')
-      return undefined
-    }
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [file])
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file])
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
 
   useEffect(() => {
     let cancelled = false

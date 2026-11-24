@@ -107,7 +107,7 @@
 /* Space the items table, the two panels and the save button apart; the
    button gets the most room so it reads as the step after the declaration. */
 .requested-items-block > :is(.submission-check-panel, .submission-declaration) { margin-top: var(--s-4); }
-.requested-items-block > .save-row { margin-top: var(--s-6); }
+.requested-items-block > .save-row { margin-top: var(--s-6); margin-bottom: var(--s-4); }
 .submission-declaration-points { display: grid; gap: 6px; margin: var(--s-2) 0 0; padding-left: var(--s-5); }
 /* Icon and label sit on one row; the icon is nudged to the first line's
    centre so it stays put when a label wraps. */

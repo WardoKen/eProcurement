@@ -9,13 +9,14 @@ The direction was chosen from three mockups in [`design-lab/`](design-lab/README
 ## The idea
 
 Procurement is a journey with fixed stations: a Purchase Request is
-submitted, posted as an opportunity, sent out as RFQs, answered with
-quotations, evaluated, and ends in a purchase order. Staff ask one question
-of every record: *where is it on the line, and is it waiting on me?*
+submitted, posted as an opportunity, sent out as RFQs, and answered with
+quotations. Evaluation, award and the purchase order follow, but they are
+out of eProcure's scope and happen outside the system. Staff ask one
+question of every record: *where is it on the line, and is it waiting on me?*
 
-So the product is built around **the line**: the six stations drawn like a
+So the product is built around **the line**: the four stations drawn like a
 transit line. It is the largest element on the dashboard, the header of a
-record, and a six-segment strip in a table row. Everything else stays quiet
+record, and a segmented strip in a table row. Everything else stays quiet
 so the line, and the numbers on it, carry the page.
 
 Four rules follow from that:
@@ -180,31 +181,29 @@ by 8 to 16px. That jump is the point.
 
 ## The line (signature component)
 
-`src/components/ui/PipelineLine.jsx`. Six stations, always in this order:
+`src/components/ui/PipelineLine.jsx`. Four stations, always in this order:
 
 1. Purchase request
 2. Posting
 3. RFQ
 4. Quotation
-5. Evaluation
-6. Purchase order
 
 A station is **done** (jade ring, travelled jade track), **now** (marigold
 ring with a soft halo, track ends here), **later** (rule-colored ring and
-track) or **stopped** (danger ring, for a rejected PR). Evaluation and
-purchase order are drawn as part of the line even though eProcure does not
-record them yet, so the whole process is visible.
+track) or **stopped** (danger ring, for a rejected PR). The line ends at
+Quotation: evaluation, award and the purchase order are out of scope, so
+they are not drawn.
 
 | Variant | Where | Content |
 |---|---|---|
 | `overview` | Admin dashboard | Each station with its count (station-number style) and a short note |
 | `record` | PR details, RFQ screens | Each station named, the current one with its state in words |
-| `mini` | Table rows | Six 18x4px segments, with the stage named in text next to it |
+| `mini` | Table rows | One 16x4px segment per station, with the stage named in text next to it |
 
 The stage of a PR comes from data already on the record: rejected stops at
 the request; uploaded or in review is at the request; matched and not
 posted is at posting; posted is at RFQ; RFQs sent are at quotation; every
-RFQ answered is at evaluation; completed is past all six.
+RFQ answered, or a completed PR, is past all four.
 
 The RFQ progress indicator (`ProcurementStepper`) uses the same ring and
 track drawing for its three RFQ steps.
