@@ -158,6 +158,82 @@ def extract_text_from_block(block: Dict[str, Any], block_map: Dict[str, Dict[str
     return merged_text, float(avg_conf)
 
 
+SIGNATORY_LABEL_RE = re.compile(r"^(requested|funds|approved|signature|printed\s+name|designation)\b", re.I)
+
+
+def strip_signature_ink(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop handwriting that Textract merged into the footer's printed labels.
+
+    A signature drawn across "Requested by:" comes back as one LINE such as
+    "Requested Vennee by:", and one drawn over "Approved by:" can swallow the
+    "by:" entirely ("Approved New"). Textract tags those strokes as
+    HANDWRITING words, so on lines whose printed words form a signatory label
+    the HANDWRITING words are removed and the line's text and box rebuilt from
+    the printed ones. Every other line, handwritten or not, is left alone.
+    """
+    block_map = index_blocks(blocks)
+    dropped: set = set()
+    rebuilt: Dict[str, Dict[str, Any]] = {}
+
+    for block in blocks:
+        if block.get("BlockType") != "LINE":
+            continue
+        words = [
+            block_map[child_id]
+            for child_id in relationship_ids(block, "CHILD")
+            if (block_map.get(child_id) or {}).get("BlockType") == "WORD"
+        ]
+        printed = [word for word in words if word.get("TextType") != "HANDWRITING"]
+        ink = [word for word in words if word.get("TextType") == "HANDWRITING"]
+        if not printed or not ink:
+            continue
+        printed_text = normalize_space(" ".join(str(word.get("Text") or "") for word in printed))
+        if not SIGNATORY_LABEL_RE.match(printed_text):
+            continue
+
+        boxes = [((word.get("Geometry") or {}).get("BoundingBox") or {}) for word in printed]
+        left = min(float(box.get("Left") or 0.0) for box in boxes)
+        top = min(float(box.get("Top") or 0.0) for box in boxes)
+        right = max(float(box.get("Left") or 0.0) + float(box.get("Width") or 0.0) for box in boxes)
+        bottom = max(float(box.get("Top") or 0.0) + float(box.get("Height") or 0.0) for box in boxes)
+        ink_ids = {word.get("Id") for word in ink}
+        dropped.update(ink_ids)
+
+        line = dict(block)
+        line["Text"] = printed_text
+        line["Geometry"] = {
+            **(block.get("Geometry") or {}),
+            "BoundingBox": {"Left": left, "Top": top, "Width": right - left, "Height": bottom - top},
+        }
+        line["Relationships"] = [
+            {**relation, "Ids": [i for i in relation.get("Ids", []) or [] if i not in ink_ids]}
+            if relation.get("Type") == "CHILD"
+            else relation
+            for relation in block.get("Relationships", []) or []
+        ]
+        rebuilt[block.get("Id")] = line
+        logger.info("Stripped signature ink from label | before=%s after=%s", block.get("Text"), printed_text)
+
+    if not dropped:
+        return blocks
+    return [rebuilt.get(block.get("Id"), block) for block in blocks if block.get("Id") not in dropped]
+
+
+def signatory_heading_key(norm: str) -> Optional[str]:
+    """Which footer column a normalised label line heads, if any.
+
+    A bare "Requested" or "Approved" counts too: a signature drawn over the
+    label can leave only that word printed.
+    """
+    if "requested by" in norm or norm == "requested":
+        return "requested_by"
+    if "funds available" in norm:
+        return "funds_available"
+    if "approved by" in norm or norm == "approved":
+        return "approved_by"
+    return None
+
+
 def build_line_index(blocks: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     lines = [block for block in blocks if block.get("BlockType") == "LINE"]
     lines.sort(
@@ -661,12 +737,9 @@ def parse_signatories(blocks: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]
         left, top, right, bottom = bbox(block)
         page = int(block.get("Page", 1) or 1)
 
-        if "requested by" in norm and "requested_by" not in anchors:
-            anchors["requested_by"] = {"page": page, "left": left, "top": top, "right": right, "bottom": bottom}
-        if "funds available" in norm and "funds_available" not in anchors:
-            anchors["funds_available"] = {"page": page, "left": left, "top": top, "right": right, "bottom": bottom}
-        if "approved by" in norm and "approved_by" not in anchors:
-            anchors["approved_by"] = {"page": page, "left": left, "top": top, "right": right, "bottom": bottom}
+        heading_key = signatory_heading_key(norm)
+        if heading_key and heading_key not in anchors:
+            anchors[heading_key] = {"page": page, "left": left, "top": top, "right": right, "bottom": bottom}
         if (
             "specifications verified by technical working group" in norm
             or norm == "technical working group"
@@ -692,9 +765,23 @@ def parse_signatories(blocks: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]
     if region_right <= region_left:
         region_left, region_right = 0.0, 1.0
 
-    region_width = region_right - region_left
-    col1_end = region_left + (region_width / 3.0)
-    col2_end = region_left + ((region_width * 2.0) / 3.0)
+    # Column edges sit halfway between the label centres, so a long name in the
+    # first column (e.g. "...VILLANUEVA" running past a third of the page) is
+    # not pulled into the middle one.
+    label_centres = [
+        (float(anchors[key]["left"]) + float(anchors[key]["right"])) / 2.0
+        for key in ("requested_by", "funds_available", "approved_by")
+    ]
+    if label_centres[0] < label_centres[1] < label_centres[2]:
+        col1_end = (label_centres[0] + label_centres[1]) / 2.0
+        col2_end = (label_centres[1] + label_centres[2]) / 2.0
+    else:
+        region_width = region_right - region_left
+        col1_end = region_left + (region_width / 3.0)
+        col2_end = region_left + ((region_width * 2.0) / 3.0)
+
+    def column_of(cx: float) -> int:
+        return 0 if cx < col1_end else 1 if cx < col2_end else 2
 
     logger.info(
         "Detected signatory region | page=%s top=%.4f bottom=%.4f left=%.4f right=%.4f",
@@ -720,6 +807,50 @@ def parse_signatories(blocks: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]
         overlaps_x = right >= region_left and left <= region_right
         overlaps_y = bottom >= region_top and top <= region_bottom
         return overlaps_x and overlaps_y
+
+    def split_across_columns(block: Dict[str, Any], record: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Split a LINE whose words run into more than one column.
+
+        Textract joins names printed close together into one line, e.g.
+        "Printed Name : ENGR. RAMIL C. VILLANUEVA MRS. LORNA D. MANGUBAT".
+        """
+        if record["type"] != "LINE":
+            return [record]
+        words = [
+            block_map[child_id]
+            for child_id in relationship_ids(block, "CHILD")
+            if (block_map.get(child_id) or {}).get("BlockType") == "WORD"
+        ]
+        groups: List[Tuple[int, List[Tuple[float, float, float, float, str]]]] = []
+        for word in words:
+            left, top, right, bottom = bbox(word)
+            col = column_of((left + right) / 2.0)
+            entry = (left, top, right, bottom, normalize_space(str(word.get("Text") or "")))
+            if groups and groups[-1][0] == col:
+                groups[-1][1].append(entry)
+            else:
+                groups.append((col, [entry]))
+        if len(groups) < 2:
+            return [record]
+
+        pieces = []
+        for _, entries in groups:
+            text = normalize_space(" ".join(entry[4] for entry in entries))
+            left = min(entry[0] for entry in entries)
+            right = max(entry[2] for entry in entries)
+            pieces.append(
+                {
+                    **record,
+                    "text": text,
+                    "norm": normalize_label(text),
+                    "left": left,
+                    "top": min(entry[1] for entry in entries),
+                    "right": right,
+                    "bottom": max(entry[3] for entry in entries),
+                    "cx": (left + right) / 2.0,
+                }
+            )
+        return pieces
 
     region_records: List[Dict[str, Any]] = []
     seen_keys = set()
@@ -750,16 +881,17 @@ def parse_signatories(blocks: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]
         if not in_region(record):
             continue
 
-        dedupe_key = (
-            record["type"],
-            round(record["left"], 4),
-            round(record["top"], 4),
-            record["text"],
-        )
-        if dedupe_key in seen_keys:
-            continue
-        seen_keys.add(dedupe_key)
-        region_records.append(record)
+        for piece in split_across_columns(block, record):
+            dedupe_key = (
+                piece["type"],
+                round(piece["left"], 4),
+                round(piece["top"], 4),
+                piece["text"],
+            )
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            region_records.append(piece)
 
     column_map = {
         0: "requested_by",
@@ -773,9 +905,7 @@ def parse_signatories(blocks: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]
     }
 
     for record in sorted(region_records, key=lambda item: (item["top"], item["left"], item["type"])):
-        cx = float(record.get("cx") or 0.0)
-        col_idx = 0 if cx < col1_end else 1 if cx < col2_end else 2
-        col_key = column_map[col_idx]
+        col_key = column_map[column_of(float(record.get("cx") or 0.0))]
         columns[col_key].append(record)
         logger.info(
             "Assigned signatory block | column=%s type=%s top=%.4f left=%.4f text=%s",
@@ -1083,13 +1213,11 @@ def extract_footer_fields(
 
         heading_indices: Dict[str, int] = {}
         for idx, text in enumerate(line_texts):
-            norm = normalize_label(text)
-            if "requested by" in norm and "requested_by" not in heading_indices:
-                heading_indices["requested_by"] = idx
-            if "funds available" in norm and "budget_officer" not in heading_indices:
-                heading_indices["budget_officer"] = idx
-            if "approved by" in norm and "approved_by" not in heading_indices:
-                heading_indices["approved_by"] = idx
+            heading_key = signatory_heading_key(normalize_label(text))
+            if heading_key == "funds_available":
+                heading_key = "budget_officer"
+            if heading_key and heading_key not in heading_indices:
+                heading_indices[heading_key] = idx
 
         if not all(key in heading_indices for key in ("requested_by", "budget_officer", "approved_by")):
             return parsed
@@ -1332,6 +1460,7 @@ def extract_footer_fields(
 
 def parse_ctu_purchase_request(blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Primary structured parser for CTU Purchase Request documents using Textract blocks."""
+    blocks = strip_signature_ink(blocks)
     kv_fields = parse_key_value_sets(blocks)
     header_fields = extract_header_fields(kv_fields)
     line_header_fallback = extract_header_fields_from_lines(blocks)

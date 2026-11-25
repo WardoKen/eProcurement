@@ -292,6 +292,109 @@ def test_parse_ctu_purchase_request_maps_grouped_signatories_to_correct_fields()
     assert result["signatory_designations"]["approved_by"] == "Campus Director"
 
 
+def _footer_blocks(rows):
+    """Textract LINE + WORD blocks for a CTU footer.
+
+    ``rows`` is a list of ``(top, [(text, left, right, text_type), ...])``;
+    each row becomes one LINE whose CHILD words carry the given boxes.
+    """
+    blocks = []
+    for row_idx, (top, words) in enumerate(rows):
+        word_ids = []
+        for word_idx, (text, left, right, text_type) in enumerate(words):
+            word_id = f"w{row_idx}-{word_idx}"
+            word_ids.append(word_id)
+            blocks.append({
+                "Id": word_id,
+                "BlockType": "WORD",
+                "Text": text,
+                "TextType": text_type,
+                "Confidence": 99.0,
+                "Page": 1,
+                "Geometry": {"BoundingBox": {"Left": left, "Top": top, "Width": right - left, "Height": 0.01}},
+            })
+        left = min(word[1] for word in words)
+        right = max(word[2] for word in words)
+        blocks.append({
+            "Id": f"l{row_idx}",
+            "BlockType": "LINE",
+            "Text": " ".join(word[0] for word in words),
+            "Confidence": 99.0,
+            "Page": 1,
+            "Geometry": {"BoundingBox": {"Left": left, "Top": top, "Width": right - left, "Height": 0.01}},
+            "Relationships": [{"Type": "CHILD", "Ids": word_ids}],
+        })
+    return blocks
+
+
+def _printed(*words):
+    return [(text, left, right, "PRINTED") for text, left, right in words]
+
+
+def test_signature_ink_over_the_labels_does_not_break_signatory_extraction():
+    # Signatures drawn across the labels come back as HANDWRITING words merged
+    # into the label lines; over "Approved by:" the stroke swallows "by:".
+    blocks = _footer_blocks([
+        (0.41, _printed(("Purpose:", 0.089, 0.147))),
+        (0.477, [("Requested", 0.201, 0.272, "PRINTED"), ("Vennee", 0.214, 0.382, "HANDWRITING"), ("by:", 0.275, 0.296, "PRINTED")]),
+        (0.477, [("Funds", 0.464, 0.506, "PRINTED"), ("Available", 0.489, 0.574, "HANDWRITING"), ("Available:", 0.509, 0.578, "PRINTED")]),
+        (0.47, [("Approved", 0.681, 0.749, "PRINTED"), ("New", 0.719, 0.895, "HANDWRITING")]),
+        (0.494, _printed(("Signature", 0.087, 0.152), (":", 0.156, 0.16))),
+        (0.51, _printed(("Printed", 0.087, 0.136), ("Name", 0.139, 0.18), (":", 0.185, 0.188),
+                        ("MR.", 0.193, 0.22), ("JOVEN", 0.224, 0.273), ("T.", 0.275, 0.289), ("ALCANTARA", 0.292, 0.386))),
+        (0.51, _printed(("MRS.", 0.422, 0.458), ("ROSALIE", 0.462, 0.526), ("M.", 0.529, 0.546), ("DUMDUM", 0.55, 0.621))),
+        (0.51, _printed(("DR.", 0.714, 0.738), ("FERDINAND", 0.742, 0.83), ("S.", 0.834, 0.846), ("OCAMPO", 0.849, 0.914))),
+        (0.527, _printed(("Designation", 0.087, 0.169), (":", 0.173, 0.176))),
+        (0.527, _printed(("PIO", 0.241, 0.269), ("Head", 0.272, 0.309))),
+        (0.527, _printed(("AO", 0.448, 0.473), ("IV", 0.476, 0.495), ("/", 0.498, 0.503),
+                         ("Budget", 0.507, 0.556), ("Officer", 0.56, 0.609), ("2", 0.612, 0.62))),
+        (0.527, _printed(("Campus", 0.739, 0.794), ("Director", 0.798, 0.855))),
+        (0.547, _printed(("Specifications", 0.088, 0.176), ("verified", 0.179, 0.227), ("by", 0.23, 0.246),
+                         ("Technical", 0.249, 0.309), ("Working", 0.312, 0.365), ("Group:", 0.369, 0.412))),
+    ])
+
+    result = parse_ctu_purchase_request(blocks)
+
+    assert result["requested_by"] == "MR. JOVEN T. ALCANTARA"
+    assert result["budget_officer"] == "MRS. ROSALIE M. DUMDUM"
+    assert result["approved_by"] == "DR. FERDINAND S. OCAMPO"
+    assert result["signatory_designations"] == {
+        "requested_by": "PIO Head",
+        "budget_officer": "AO IV / Budget Officer 2",
+        "approved_by": "Campus Director",
+        "twg": "",
+    }
+
+
+def test_names_textract_joins_into_one_line_are_split_by_column():
+    blocks = _footer_blocks([
+        (0.41, _printed(("Purpose:", 0.089, 0.147))),
+        (0.478, _printed(("Requested", 0.201, 0.272), ("by:", 0.275, 0.296))),
+        (0.478, _printed(("Funds", 0.465, 0.506), ("Available:", 0.509, 0.577))),
+        (0.478, _printed(("Approved", 0.681, 0.749), ("by:", 0.752, 0.773))),
+        (0.494, _printed(("Signature", 0.087, 0.152), (":", 0.156, 0.159))),
+        (0.51, _printed(("Printed", 0.087, 0.136), ("Name", 0.139, 0.18), (":", 0.185, 0.188),
+                        ("ENGR.", 0.193, 0.238), ("RAMIL", 0.242, 0.291), ("C.", 0.294, 0.308), ("VILLANUEVA", 0.312, 0.411),
+                        ("MRS.", 0.421, 0.456), ("LORNA", 0.461, 0.513), ("D.", 0.516, 0.531), ("MANGUBAT", 0.535, 0.623))),
+        (0.51, _printed(("DR.", 0.71, 0.735), ("ERNESTO", 0.739, 0.807), ("P.", 0.811, 0.823), ("LAGUMBAY", 0.827, 0.914))),
+        (0.527, _printed(("Designation", 0.087, 0.169), (":", 0.173, 0.176))),
+        (0.527, _printed(("MIS", 0.239, 0.265), ("Chair", 0.268, 0.311))),
+        (0.527, _printed(("AO", 0.448, 0.473), ("IV", 0.476, 0.495), ("/", 0.498, 0.503),
+                         ("Budget", 0.507, 0.556), ("Officer", 0.56, 0.609), ("2", 0.612, 0.621))),
+        (0.527, _printed(("Campus", 0.739, 0.794), ("Director", 0.798, 0.854))),
+        (0.547, _printed(("Specifications", 0.088, 0.176), ("verified", 0.179, 0.227), ("by", 0.23, 0.246),
+                         ("Technical", 0.249, 0.309), ("Working", 0.312, 0.365), ("Group:", 0.369, 0.411))),
+    ])
+
+    result = parse_ctu_purchase_request(blocks)
+
+    assert result["requested_by"] == "ENGR. RAMIL C. VILLANUEVA"
+    assert result["budget_officer"] == "MRS. LORNA D. MANGUBAT"
+    assert result["approved_by"] == "DR. ERNESTO P. LAGUMBAY"
+    assert result["signatory_designations"]["requested_by"] == "MIS Chair"
+    assert result["signatory_designations"]["budget_officer"] == "AO IV / Budget Officer 2"
+
+
 def test_textract_reconstructs_wrapped_description_until_numeric_row():
     def row(row_index, description='', unit='', quantity='', unit_cost='', total_cost=''):
         values = {
