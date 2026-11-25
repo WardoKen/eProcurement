@@ -391,6 +391,8 @@ class PrReceivedAndNumberAssignedEmailTests(TestCase):
                 'entity_name': pr.entity_name, 'office_section': 'ICT Office', 'purpose': 'Printers',
                 'items': [{'item_description': 'Printer', 'quantity': 2, 'unit_cost': 6250}],
                 'finalize_review': finalize,
+                # No document on disk: the BAC verifies each signature by hand.
+                'signature_verifications': ['requested_by', 'funds_available', 'approved_by'],
                 'reason': 'BAC review corrections',
             }),
             content_type='application/json',

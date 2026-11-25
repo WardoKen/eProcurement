@@ -1421,8 +1421,11 @@ class PurchaseRequestNumberTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['pr_no'], '2026-08-010')
 
+    # The signature gates have their own tests (SignaturePresenceValidationTests,
+    # SignatureNumberingGateTests); here the document passes the submission one.
+    @patch('api.views._signature_guard', return_value=(None, [], None))
     @patch('api.views.timezone.localdate', return_value=date(2026, 8, 24))
-    def test_review_only_creation_waits_for_admin_numbering(self, _localdate):
+    def test_review_only_creation_waits_for_admin_numbering(self, _localdate, _guard):
         response = self.client.post(
             '/api/pr/',
             data=json.dumps({'fields': {
@@ -1455,6 +1458,8 @@ class PurchaseRequestNumberTests(TestCase):
                 'entity_name': 'Corrected Buyer Entity',
                 'items': [],
                 'finalize_review': True,
+                # buyer-pr.pdf is not on disk: the BAC verifies each box by hand.
+                'signature_verifications': ['requested_by', 'funds_available', 'approved_by'],
                 'reason': 'Corrected entity name',
             }),
             content_type='application/json',
@@ -1651,6 +1656,21 @@ class FileValidationEndpointTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('Unsupported file type', response.json()['error'])
         self.assertEqual(SupplierDocument.objects.count(), 0)
+
+
+def _detector_result(**states):
+    """A detector result: every signatory ``present`` unless named otherwise."""
+    from api.views import signature_detection
+
+    signatories = {
+        key: {'state': states.get(key, 'present'), 'reason': 'test', 'key': key}
+        for key in signature_detection.ALL_SIGNATORIES
+    }
+    return {
+        'signatories': signatories,
+        'summary': signature_detection._summarise(signatories),
+        'regions': {},
+    }
 
 
 class SignaturePresenceValidationTests(TestCase):
@@ -1853,10 +1873,54 @@ class SignaturePresenceValidationTests(TestCase):
         self.assertTrue(validation['summary']['needs_confirmation'])
         self.assertEqual(validation['signatories']['requested_by']['reason'], 'no_ocr_geometry')
 
-    def test_missing_document_does_not_hard_block_the_buyer(self):
-        # No file on disk -> upload-time check + disabled button are the gate.
+    def test_missing_document_blocks_the_submission(self):
+        # No file on disk -> nothing to check and nothing for the BAC to review.
         response = self._post_pr('sigtest-nonexistent.pdf')
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 422)
+        self.assertTrue(response.json().get('document_missing'))
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_no_document_at_all_blocks_the_submission(self):
+        response = self._post_pr('')
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    # ---- Unverifiable signatures: submitted, flagged for the BAC ------------
+    def test_unverifiable_signature_is_submitted_and_flagged_for_the_bac(self):
+        name = self._signed('sigtest-unverifiable.pdf')
+        result = _detector_result(funds_available='unverifiable')
+        with patch('api.views.recheck_signature_validation', return_value=result):
+            response = self._post_pr(name)
+        self.assertEqual(response.status_code, 201, response.content)
+        pr = PurchaseRequest.objects.get()
+        self.assertEqual(pr.signature_confirmations, [])
+        self.assertEqual(pr.signature_check['bac_verification_keys'], ['funds_available'])
+        self.assertEqual(pr.signature_check['states']['funds_available'], 'unverifiable')
+        self.assertEqual(pr.signature_check['states']['requested_by'], 'present')
+
+    def test_uncertain_and_unverifiable_submit_once_the_uncertain_one_is_confirmed(self):
+        name = self._signed('sigtest-mixed.pdf')
+        result = _detector_result(requested_by='uncertain', approved_by='unverifiable')
+        with patch('api.views.recheck_signature_validation', return_value=result):
+            blocked = self._post_pr(name)
+            self.assertEqual(blocked.status_code, 422)
+            response = self._post_pr(name, extra={'signature_confirmations': ['requested_by']})
+        self.assertEqual(response.status_code, 201, response.content)
+        pr = PurchaseRequest.objects.get()
+        self.assertEqual([c['key'] for c in pr.signature_confirmations], ['requested_by'])
+        self.assertEqual(pr.signature_confirmations[0]['confirmed_role'], 'submitter')
+        self.assertEqual(pr.signature_confirmations[0]['detected_state'], 'uncertain')
+        self.assertEqual(pr.signature_check['bac_verification_keys'], ['approved_by'])
+
+    def test_blank_signature_blocks_even_when_another_is_unverifiable(self):
+        name = self._signed('sigtest-blank-unverifiable.pdf')
+        result = _detector_result(funds_available='absent', approved_by='unverifiable')
+        with patch('api.views.recheck_signature_validation', return_value=result):
+            response = self._post_pr(name)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['missing_signatures'], ['Funds Available'])
+        self.assertIn('only the BAC can override', response.json()['error'])
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
 
     def test_recheck_endpoint_returns_per_signatory_status(self):
         name = self._make_pr_pdf(
@@ -1882,7 +1946,8 @@ class SignaturePresenceValidationTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_admin_pr_edit_is_not_subject_to_the_signature_guard(self):
-        # The Admin review path (pr_update) must stay unaffected.
+        # A plain BAC edit is not gated; only numbering is (see
+        # SignatureNumberingGateTests).
         pr = PurchaseRequest.objects.create(entity_name='Legacy PR', status=PurchaseRequest.STATUS_UPLOADED)
         _login_as(self.client, 'admin')
         response = self.client.patch(
@@ -1940,6 +2005,126 @@ class SignaturePresenceValidationTests(TestCase):
         self.assertTrue(second.json().get('duplicate'))
         self.assertEqual(second.json()['id'], first.json()['id'])
         self.assertEqual(PurchaseRequest.objects.count(), 1)
+
+
+class SignatureNumberingGateTests(TestCase):
+    """The BAC must verify every required signature the detector did not find
+    before assigning the PR number. Only the BAC can override a blank box, and
+    only with a note."""
+
+    def setUp(self):
+        self.admin = _login_as(self.client, 'admin')
+        self.pr = PurchaseRequest.objects.create(
+            entity_name='CTU-Tuburan Campus', source_filename='gate.pdf',
+            submitted_by='enduser1', status=PurchaseRequest.STATUS_UPLOADED,
+        )
+
+    def _finalize(self, result, verifications=None, finalize=True):
+        body = {'entity_name': self.pr.entity_name, 'items': [], 'finalize_review': finalize}
+        if verifications is not None:
+            body['signature_verifications'] = verifications
+        with patch('api.views.recheck_signature_validation', return_value=result) as recheck:
+            response = self.client.patch(
+                f'/api/pr/{self.pr.id}/edit/', data=json.dumps(body), content_type='application/json',
+            )
+        self.pr.refresh_from_db()
+        self.recheck = recheck
+        return response
+
+    def test_all_signatures_present_numbers_without_verification(self):
+        response = self._finalize(_detector_result())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.pr.pr_no)
+        self.assertEqual(self.pr.signature_confirmations, [])
+        self.assertEqual(self.recheck.call_args.args[0], 'gate.pdf')
+
+    def test_unverifiable_signature_must_be_verified(self):
+        response = self._finalize(_detector_result(funds_available='unverifiable'))
+        self.assertEqual(response.status_code, 422)
+        body = response.json()
+        self.assertTrue(body['signature_verification_required'])
+        self.assertEqual(body['unverified_signatures'], ['funds_available'])
+        self.assertIsNone(self.pr.pr_no)
+
+    def test_verified_signature_is_numbered_and_recorded(self):
+        response = self._finalize(
+            _detector_result(funds_available='unverifiable'), [{'key': 'funds_available'}],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.pr.pr_no)
+        [entry] = self.pr.signature_confirmations
+        self.assertEqual(entry['key'], 'funds_available')
+        self.assertEqual(entry['confirmed_role'], 'bac')
+        self.assertEqual(entry['confirmed_by'], self.admin.username)
+        self.assertEqual(entry['detected_state'], 'unverifiable')
+        self.assertTrue(entry['confirmed_at'])
+
+    def test_blank_signature_override_needs_a_note(self):
+        result = _detector_result(approved_by='absent')
+        for verification in ([{'key': 'approved_by'}], [{'key': 'approved_by', 'note': 'ok'}]):
+            response = self._finalize(result, verification)
+            self.assertEqual(response.status_code, 422, verification)
+            self.assertEqual(response.json()['notes_required'], ['approved_by'])
+            self.assertIsNone(self.pr.pr_no)
+
+        note = 'Signed in light pencil; checked the paper original.'
+        response = self._finalize(result, [{'key': 'approved_by', 'note': note}])
+        self.assertEqual(response.status_code, 200, response.content)
+        [entry] = self.pr.signature_confirmations
+        self.assertEqual(entry['detected_state'], 'absent')
+        self.assertEqual(entry['note'], note)
+
+    def test_uncertain_signature_confirmed_by_the_submitter_needs_no_bac_verification(self):
+        self.pr.signature_confirmations = [
+            # Older record shape (no confirmed_role): a submitter confirmation.
+            {'key': 'requested_by', 'label': 'Requested By', 'confirmed_by': 'enduser1', 'confirmed_at': 'x'},
+        ]
+        self.pr.save(update_fields=['signature_confirmations'])
+        response = self._finalize(_detector_result(requested_by='uncertain'))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(self.pr.signature_confirmations), 1)
+
+    def test_submitter_confirmation_does_not_cover_a_box_that_now_reads_blank(self):
+        self.pr.signature_confirmations = [{'key': 'requested_by', 'confirmed_role': 'submitter'}]
+        self.pr.save(update_fields=['signature_confirmations'])
+        response = self._finalize(_detector_result(requested_by='absent'))
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['unverified_signatures'], ['requested_by'])
+
+    def test_missing_document_needs_every_required_signature_verified(self):
+        from api.views import signature_detection
+
+        result = signature_detection.blank_result({})
+        response = self._finalize(result, ['requested_by', 'funds_available'])
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['unverified_signatures'], ['approved_by'])
+        response = self._finalize(result, ['requested_by', 'funds_available', 'approved_by'])
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(self.pr.signature_confirmations), 3)
+
+    def test_verifications_for_present_or_unknown_keys_are_ignored(self):
+        response = self._finalize(_detector_result(), ['requested_by', 'twg', 'bogus'])
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.pr.signature_confirmations, [])
+
+    def test_saving_without_numbering_is_not_gated(self):
+        response = self._finalize(_detector_result(approved_by='absent'), finalize=False)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.recheck.assert_not_called()
+
+    def test_bac_pr_list_flags_signatures_to_verify(self):
+        self.pr.signature_check = {'states': {}, 'bac_verification_keys': ['funds_available']}
+        self.pr.save(update_fields=['signature_check'])
+        [row] = self.client.get('/api/pr/list/').json()
+        self.assertEqual(row['signatures_to_verify'], ['Funds Available'])
+        self.assertNotIn('signature_check', row)
+
+        buyer = User.objects.create(
+            username='enduser1', password_hash='x', role=Role.objects.get_or_create(name='buyer')[0], is_active=True,
+        )
+        _login_as(self.client, 'buyer', user=buyer)
+        [row] = self.client.get('/api/pr/list/').json()
+        self.assertEqual(row['signatures_to_verify'], [])
 
 
 class ManualRFQTests(TestCase):

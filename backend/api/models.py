@@ -205,10 +205,17 @@ class PurchaseRequest(models.Model):
     # and ``declaration_acknowledged_at`` / ``created_at``.
     declaration_acknowledged = models.BooleanField(default=False)
     declaration_acknowledged_at = models.DateTimeField(null=True, blank=True)
-    # Required signatures the detector could not decide ("uncertain") that the
-    # submitter confirmed by hand against the document, for the BAC's review:
-    # [{"key", "label", "confirmed_by", "confirmed_at"}].
+    # Required signatures released by hand instead of by the detector (see
+    # api/signature_review.py): "uncertain" boxes the submitter confirmed, and
+    # boxes the BAC verified before numbering the PR (including blank boxes it
+    # overrode, with a note): [{"key", "label", "detected_state",
+    # "detected_reason", "confirmed_by", "confirmed_role" ("submitter" | "bac"),
+    # "confirmed_at", "note"}]. Older rows carry only key/label/by/at and are
+    # submitter confirmations.
     signature_confirmations = models.JSONField(default=list, blank=True)
+    # What the detector saw at submission: {"checked_at", "states": {key:
+    # state}, "bac_verification_keys": [...]}. Null for PRs created before it.
+    signature_check = models.JSONField(null=True, blank=True)
     # Posting: the BAC posts a PR explicitly (api/pr_posting.py) to make it a
     # procurement opportunity - on the public Opportunities page and in the
     # supplier portal. ``is_posted`` is the current state; ``posted_at`` /

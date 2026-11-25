@@ -10,6 +10,10 @@ from django.test import TestCase
 from api import pr_changes
 from api.models import PRAuditLog, PurchaseRequest, PurchaseRequestItem, Role, User
 
+# These PRs have no document on disk, so numbering one needs the BAC to verify
+# every required signature by hand (api/signature_review.py).
+ALL_SIGNATURES_VERIFIED = [{'key': key} for key in ('requested_by', 'funds_available', 'approved_by')]
+
 
 def _login(client, role_name, username=None):
     role = Role.objects.get_or_create(name=role_name)[0]
@@ -142,7 +146,10 @@ class EditLoggingTests(ChangeHistoryTestBase):
         self.assertFalse(PRAuditLog.objects.exists())
 
     def test_finalizing_logs_the_edits_then_locks(self):
-        response = self._edit(purpose='Printer ink', reason='OCR misread', finalize_review=True)
+        response = self._edit(
+            purpose='Printer ink', reason='OCR misread', finalize_review=True,
+            signature_verifications=ALL_SIGNATURES_VERIFIED,
+        )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()['pr_no'])
         self.assertEqual(PRAuditLog.objects.filter(pr=self.pr).count(), 1)
@@ -228,7 +235,10 @@ class ChangesEndpointTests(ChangeHistoryTestBase):
         self.assertEqual(body['changed_count'], 0)
 
     def test_changes_endpoint_works_on_a_numbered_pr(self):
-        self._edit(purpose='Printer ink', reason='OCR misread', finalize_review=True)
+        self._edit(
+            purpose='Printer ink', reason='OCR misread', finalize_review=True,
+            signature_verifications=ALL_SIGNATURES_VERIFIED,
+        )
         self.pr.refresh_from_db()
         self.assertTrue(self.pr.is_locked)
 

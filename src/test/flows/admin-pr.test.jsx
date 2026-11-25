@@ -27,6 +27,26 @@ async function openReview(user) {
   await screen.findByDisplayValue('RC-100')
 }
 
+// The recheck result for a PR whose Funds Available box could not be read
+// and whose Approved By box reads blank.
+const sigRow = (key, label, state, reason = 'test') => ({ key, label, state, reason, required: key !== 'twg', name: '' })
+const failedSignatureCheck = {
+  summary: {
+    can_save: false, needs_confirmation: false, needs_bac_verification: false,
+    required_detected: 1, required_total: 3, status: 'incomplete',
+    message: 'One or more required signatures are missing.',
+    missing_signatures: ['Approved By'], missing_keys: ['approved_by'],
+    uncertain_signatures: [], uncertain_keys: [],
+    unverifiable_signatures: ['Funds Available'], unverifiable_keys: ['funds_available'],
+  },
+  signatories: {
+    requested_by: sigRow('requested_by', 'Requested By', 'present'),
+    funds_available: sigRow('funds_available', 'Funds Available', 'unverifiable', 'analysis_error'),
+    approved_by: sigRow('approved_by', 'Approved By', 'absent'),
+    twg: sigRow('twg', 'TWG Verified By', 'present'),
+  },
+}
+
 describe('BAC PR review and numbering', () => {
   it('Save Corrections sends the edited record without finalizing', async () => {
     signIn(adminUser)
@@ -227,5 +247,71 @@ describe('PR change history', () => {
 
     expect(screen.queryByRole('button', { name: /view changes/i })).not.toBeInTheDocument()
     expect(screen.queryByText('Edited', { selector: '.field-value-badge, .field-value-badge *' })).not.toBeInTheDocument()
+  })
+
+  it('signatures the detector did not find must be verified before numbering; a blank one needs a note', async () => {
+    signIn(adminUser)
+    const api = installApi(routes({
+      'GET /api/pr/list/': { json: [{ ...unnumberedPr, signatures_to_verify: ['Funds Available'] }, numberedPr] },
+      'GET /api/pr/42/details/': { json: { ...prDetails, source_filename: 'pr-42.pdf', source_file_url: '/uploads/pr-42.pdf' } },
+      'POST /api/pr/recheck-signatures/': { json: { success: true, signature_validation: failedSignatureCheck } },
+    }))
+    const { user } = renderAt('/admin')
+    await openPrMonitoring(user)
+    expect(screen.getByText('Verify signatures: Funds Available')).toBeInTheDocument()
+    await openReview(user)
+
+    const assign = await screen.findByRole('button', { name: /assign pr number/i })
+    await screen.findByRole('checkbox', { name: /funds available is signed/i })
+    expect(assign).toBeDisabled()
+
+    await user.click(screen.getByRole('checkbox', { name: /i checked the original document: funds available is signed/i }))
+    expect(assign).toBeDisabled()
+    await user.click(screen.getByRole('checkbox', { name: /override: .*approved by is signed/i }))
+    const note = screen.getByLabelText(/why the detector was wrong/i)
+    await user.type(note, 'pencil')
+    expect(assign).toBeDisabled()
+    await user.type(note, ' signature, checked the paper original')
+    expect(assign).toBeEnabled()
+
+    await user.click(assign)
+    await acceptConfirmation(user)
+    await waitFor(() => expect(api.find('PATCH', '/api/pr/42/edit/')).toHaveLength(1))
+    expect(api.find('PATCH', '/api/pr/42/edit/')[0].body.signature_verifications).toEqual([
+      { key: 'funds_available', note: '' },
+      { key: 'approved_by', note: 'pencil signature, checked the paper original' },
+    ])
+  })
+
+  it('without a document, numbering asks the BAC to verify the signatures the server could not check', async () => {
+    signIn(adminUser)
+    const blank = {
+      ...failedSignatureCheck,
+      signatories: Object.fromEntries(Object.entries(failedSignatureCheck.signatories).map(
+        ([key, row]) => [key, { ...row, state: 'unverifiable', reason: 'document_missing' }],
+      )),
+    }
+    installApi(routes({
+      'PATCH /api/pr/42/edit/': {
+        status: 422,
+        json: {
+          success: false,
+          signature_verification_required: true,
+          message: 'Verify these signatures against the original document before assigning the PR number: Requested By, Funds Available, Approved By.',
+          signature_validation: blank,
+        },
+      },
+    }))
+    const { user } = renderAt('/admin')
+    await openPrMonitoring(user)
+    await openReview(user)
+    expect(screen.getByText(/no document is on file for this pr/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /assign pr number/i }))
+    await acceptConfirmation(user)
+
+    expect(await screen.findByText(/verify these signatures against the original document before assigning/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox', { name: /i checked the original document/i })).toHaveLength(3)
+    expect(screen.getByRole('button', { name: /assign pr number/i })).toBeDisabled()
   })
 })

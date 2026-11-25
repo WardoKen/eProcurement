@@ -28,6 +28,7 @@ exports[`BAC PR review and numbering > Assign PR Number finalizes the review wit
   "reason": "",
   "requested_by": "Ana Cruz",
   "responsibility_center_code": "RC-100",
+  "signature_verifications": [],
   "twg_verified_by": "",
 }
 `;
@@ -60,6 +61,7 @@ exports[`BAC PR review and numbering > Save Corrections sends the edited record 
   "reason": "Entity name misread",
   "requested_by": "Ana Cruz",
   "responsibility_center_code": "RC-100",
+  "signature_verifications": [],
   "twg_verified_by": "",
 }
 `;

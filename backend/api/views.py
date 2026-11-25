@@ -52,7 +52,7 @@ from .models import Role, Supplier, User, SupplierDocument, Category, SupplierCa
 from .models import PurchaseRequest, PurchaseRequestItem, PRNumberSequence, PRNumberFormat, PRNotificationSettings, Quotation, Notification, RFQ, RFQItem
 from .models import PRAuditLog, PRPostingLog, SupplierChangeLog
 from .auth import require_auth
-from . import pr_changes, pr_posting, supplier_changes, supplier_emails, supplier_scoring
+from . import pr_changes, pr_posting, signature_review, supplier_changes, supplier_emails, supplier_scoring
 from .rfq import procurement_checks
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
@@ -279,52 +279,30 @@ def _signature_confirmations(fields: dict) -> set:
 
 
 def _signature_guard(filename: str, names: dict, confirmations=frozenset()):
-    """Check the document's required signatures before a save.
+    """The End User's submission gate (rules in ``api.signature_review``).
 
-    Returns ``(error_payload, confirmed_keys)``. ``error_payload`` is ``None``
-    when the save may proceed. A required signature marked "uncertain" passes
-    only when the submitter confirmed it (``confirmations``); those keys are
-    returned so the save can record who confirmed what. Blank ("absent") and
-    unreadable signatures can never be confirmed away.
+    Returns ``(error_payload, confirmed_keys, result)``. ``error_payload`` is
+    ``None`` when the save may proceed; ``confirmed_keys`` are the "uncertain"
+    boxes the submitter confirmed, to record who confirmed what; ``result`` is
+    the detector output the decision was made on.
 
-    The check re-analyses the actual document; a document that cannot be found
-    on disk is not blocked here (the upload-time check + disabled button are the
-    front line), but any real uploaded file referenced in a bypass attempt is
-    re-verified.
+    The check re-analyses the actual document, never a value from the browser.
+    A submission whose document is not on the server is refused: there is
+    nothing to check, and nothing for the BAC to review.
     """
     file_path = UPLOADS_DIR / Path(str(filename or '')).name
     if not filename or not file_path.is_file():
-        return None, []
+        return {
+            'success': False,
+            'error': (
+                'The uploaded Purchase Request document could not be found. '
+                'Upload the signed document again before submitting.'
+            ),
+            'document_missing': True,
+        }, [], None
     result = recheck_signature_validation(filename, names)
-    summary = result.get('summary', {})
-    if summary.get('can_save'):
-        return None, []
-    uncertain_keys = list(summary.get('uncertain_keys') or [])
-    if summary.get('needs_confirmation') and set(uncertain_keys) <= set(confirmations or ()):
-        return None, uncertain_keys
-    missing = summary.get('missing_signatures') or []
-    uncertain = summary.get('uncertain_signatures') or []
-    unverifiable = summary.get('unverifiable_signatures') or []
-    if missing:
-        error = 'Purchase Request cannot be saved because one or more required signatures are missing.'
-    elif uncertain and not unverifiable:
-        error = (
-            'Please confirm the signatures marked "Please confirm" against the original document '
-            'before submitting.'
-        )
-    else:
-        error = (
-            'One or more required signatures could not be verified. '
-            'Please review the original document and recheck signatures before saving.'
-        )
-    return {
-        'success': False,
-        'error': error,
-        'missing_signatures': missing,
-        'uncertain_signatures': uncertain,
-        'unverifiable_signatures': unverifiable,
-        'signature_validation': result,
-    }, []
+    error, confirmed_keys = signature_review.check_submission(result, confirmations)
+    return error, confirmed_keys, result
 
 
 def extract_text_from_upload(path: Path, filename: str) -> tuple[dict, str]:
@@ -917,24 +895,22 @@ def create_pr(request):
                     'created_at': recent.created_at.isoformat(),
                 }, status=200)
 
-        blocked, confirmed_keys = _signature_guard(
+        blocked, confirmed_keys, signature_result = _signature_guard(
             source_filename, _signatory_names(fields), _signature_confirmations(fields),
         )
         if blocked is not None:
             return JsonResponse(blocked, status=422)
-        confirmed_by = getattr(request.auth_user, 'username', '') or ''
-        confirmed_at = timezone.now().isoformat()
+        checked_at = timezone.now()
         signature_confirmations = [
-            {
-                'key': key,
-                'label': signature_detection.DISPLAY_NAMES.get(key, key),
-                'confirmed_by': confirmed_by,
-                'confirmed_at': confirmed_at,
-            }
+            signature_review.record(
+                signature_result, key, request.auth_user, signature_review.ROLE_SUBMITTER, at=checked_at,
+            )
             for key in confirmed_keys
         ]
+        signature_check = signature_review.submission_snapshot(signature_result, at=checked_at)
     else:
         signature_confirmations = []
+        signature_check = None
 
     if review_only:
         assigned_pr_number = None
@@ -970,6 +946,7 @@ def create_pr(request):
                 declaration_acknowledged=bool(declaration_ack),
                 declaration_acknowledged_at=timezone.now() if declaration_ack else None,
                 signature_confirmations=signature_confirmations,
+                signature_check=signature_check,
             )
 
             for item in items:
@@ -1311,6 +1288,7 @@ def pr_list(request):
             'has_quotation',
             'assigned_category_exists',
             'source_filename',
+            'signature_check',
         )
     records = list(prs)
 
@@ -1343,6 +1321,14 @@ def pr_list(request):
     for record in records:
         if record.pop('assigned_category_exists') is False and record['status'] == PurchaseRequest.STATUS_MATCHED:
             record['status'] = PurchaseRequest.STATUS_IN_REVIEW
+
+        # Boxes the detector could not read at submission, which the BAC has
+        # to verify by hand before numbering (BAC only; gone once numbered).
+        signature_check = record.pop('signature_check', None) or {}
+        record['signatures_to_verify'] = [
+            signature_detection.DISPLAY_NAMES.get(key, key)
+            for key in signature_check.get('bac_verification_keys') or []
+        ] if request.auth_role == 'admin' and not (record['pr_no'] or '').strip() else []
 
         source_filename = record.pop('source_filename', '') or ''
         record['source_file_url'] = (
@@ -1700,6 +1686,30 @@ def pr_update(request, pr_id: int):
 
     reason = str(payload.get('reason') or '').strip()
     old_status = pr.status
+
+    # Numbering gate (api/signature_review.py): the document is checked again,
+    # and every required signature the detector did not find must be verified
+    # here by the BAC - a blank box only with a note. Run before the locked
+    # transaction because rendering the document is slow.
+    admin_released_keys = []
+    signature_result = None
+    if payload.get('finalize_review'):
+        signature_result = recheck_signature_validation(
+            str(payload.get('source_filename') or pr.source_filename or '').strip(),
+            _signatory_names({
+                'requested_by_name': payload.get('requested_by'),
+                'funds_available_name': payload.get('funds_available_by'),
+                'approved_by_name': payload.get('approved_by'),
+                'twg_name': payload.get('twg_verified_by'),
+            }),
+        )
+        verifications = signature_review.parse_verifications(payload.get('signature_verifications'))
+        blocked, admin_released_keys = signature_review.check_finalize(
+            signature_result, pr.signature_confirmations, verifications,
+        )
+        if blocked is not None:
+            return JsonResponse(blocked, status=422)
+
     try:
         from decimal import Decimal
         with transaction.atomic():
@@ -1794,11 +1804,19 @@ def pr_update(request, pr_id: int):
                     assigned_number = generate_pr_number()
                 pr.pr_no = assigned_number
                 pr.status = PurchaseRequest.STATUS_IN_REVIEW
+                verified_at = timezone.now()
+                pr.signature_confirmations = list(pr.signature_confirmations or []) + [
+                    signature_review.record(
+                        signature_result, key, request.auth_user, signature_review.ROLE_BAC,
+                        note=verifications.get(key, ''), at=verified_at,
+                    )
+                    for key in admin_released_keys
+                ]
 
             pr.grand_total = sum((values['total_cost'] for _, values in plan), Decimal('0'))
             update_fields = ['entity_name', 'source_filename', 'category', 'fund_cluster', 'office_section', 'responsibility_center_code', 'date', 'purpose', 'requested_by', 'funds_available_by', 'approved_by', 'twg_verified_by', 'grand_total']
             if finalize_review:
-                update_fields.extend(['pr_no', 'status'])
+                update_fields.extend(['pr_no', 'status', 'signature_confirmations'])
             pr.save(update_fields=update_fields)
 
             user = request.auth_user
@@ -3564,6 +3582,7 @@ def purchase_request_details(request, pr_id):
         'source_filename': pr.source_filename,
         'source_file_url': request.build_absolute_uri(f'/uploads/{pr.source_filename}') if pr.source_filename else '',
         'signature_confirmations': pr.signature_confirmations or [],
+        'signature_check': pr.signature_check if request.auth_role == 'admin' else None,
         'entity_name': pr.entity_name,
         'fund_cluster': pr.fund_cluster,
         'office_section': pr.office_section,

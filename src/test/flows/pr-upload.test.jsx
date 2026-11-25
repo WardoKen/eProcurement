@@ -142,4 +142,70 @@ describe('End User PR upload and review', () => {
     expect(saves).toHaveLength(1)
     expect(saves[0].body.fields.signature_confirmations).toEqual(['funds_available'])
   })
+
+  // A detector result with one non-present required box, as the backend's
+  // signature_detection._summarise reports it.
+  const singleIssueValidation = (key, label, state) => {
+    const row = (k, l, st) => ({ key: k, label: l, state: st, required: k !== 'twg', name: '', reason: 'analysis_error' })
+    const rows = {
+      requested_by: row('requested_by', 'Requested By', 'present'),
+      funds_available: row('funds_available', 'Funds Available', 'present'),
+      approved_by: row('approved_by', 'Approved By', 'present'),
+      twg: row('twg', 'TWG Verified By', 'present'),
+    }
+    rows[key] = row(key, label, state)
+    return {
+      summary: {
+        can_save: false,
+        needs_confirmation: false,
+        needs_bac_verification: state === 'unverifiable',
+        required_detected: 2,
+        required_total: 3,
+        status: state === 'absent' ? 'incomplete' : 'unverifiable',
+        message: state === 'absent' ? 'One or more required signatures are missing.' : 'Some signatures could not be checked automatically.',
+        missing_signatures: state === 'absent' ? [label] : [],
+        missing_keys: state === 'absent' ? [key] : [],
+        uncertain_signatures: [],
+        uncertain_keys: [],
+        unverifiable_signatures: state === 'unverifiable' ? [label] : [],
+        unverifiable_keys: state === 'unverifiable' ? [key] : [],
+      },
+      signatories: rows,
+    }
+  }
+
+  it('a signature the detector could not read can be submitted for the BAC to verify', async () => {
+    signIn(buyerUser)
+    const api = installApi({
+      ...routes,
+      'POST /api/upload/': { json: { ...extraction, signature_validation: singleIssueValidation('approved_by', 'Approved By', 'unverifiable') } },
+    })
+    const { user } = renderAt('/enduser')
+
+    await uploadPr(user)
+    expect(screen.getByText(/1 to be verified by the bac/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/the bac will check this signature/i).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('checkbox', { name: /read and understood this declaration/i }))
+    const save = screen.getByRole('button', { name: /save purchase request/i })
+    expect(save).toBeEnabled()
+    await user.click(save)
+
+    await screen.findByText(/purchase request submitted successfully/i)
+    expect(api.find('POST', '/api/pr/')).toHaveLength(1)
+  })
+
+  it('a blank signature cannot be submitted or overridden by the End User', async () => {
+    signIn(buyerUser)
+    installApi({
+      ...routes,
+      'POST /api/upload/': { json: { ...extraction, signature_validation: singleIssueValidation('funds_available', 'Funds Available', 'absent') } },
+    })
+    const { user } = renderAt('/enduser')
+
+    await uploadPr(user)
+    expect(screen.getByText(/only the bac can override a blank signature/i)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /funds available is signed/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: /read and understood this declaration/i }))
+    expect(screen.getByRole('button', { name: /save purchase request/i })).toBeDisabled()
+  })
 })

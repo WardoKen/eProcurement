@@ -27,12 +27,16 @@ band" - it deliberately does **not** try to judge whether a mark is a genuine
 signature. There are no silent passes:
 
 * ``present``   - clear handwritten ink in the box.
-* ``absent``    - the box is clearly empty (blocks the save).
+* ``absent``    - the box is clearly empty. Blocks the submission; only the BAC
+  (admin) can override it, during review, with a written note.
 * ``uncertain`` - there is something in the box but not enough to be sure, or
-  the box could not be located (e.g. no OCR geometry). The reviewer must look
+  the box could not be located (e.g. no OCR geometry). The submitter must look
   at the document and confirm it before the save is allowed.
-* ``unverifiable`` - the document itself could not be read (missing file,
-  render failure). Blocks the save; there is nothing for a reviewer to confirm.
+* ``unverifiable`` - the page could not be read (render failure, analysis
+  error). The detector failed, not the document, so the PR may be submitted;
+  the BAC verifies the box against the document before numbering the PR.
+
+The submission and review gates themselves live in ``api.signature_review``.
 """
 
 from __future__ import annotations
@@ -1388,16 +1392,27 @@ def _summarise(signatories: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     detected = [key for key, state in states.items() if state == STATE_PRESENT]
     missing = [DISPLAY_NAMES[key] for key, state in states.items() if state == STATE_ABSENT]
     uncertain_keys = [key for key, state in states.items() if state == STATE_UNCERTAIN]
-    unverifiable = [
-        DISPLAY_NAMES[key] for key, state in states.items()
+    unverifiable_keys = [
+        key for key, state in states.items()
         if state not in (STATE_PRESENT, STATE_ABSENT, STATE_UNCERTAIN)
     ]
+    unverifiable = [DISPLAY_NAMES[key] for key in unverifiable_keys]
     all_present = len(detected) == len(REQUIRED_SIGNATORIES)
-    # No silent passes: the save is allowed only when every required box has
-    # clear ink. Uncertain boxes can be released by a reviewer confirming them
-    # (``needs_confirmation``); a blank or unreadable box cannot.
+    # No silent passes: ``can_save`` is true only when every required box has
+    # clear ink. Short of that:
+    # * an uncertain box can be released by the submitter confirming it
+    #   against the document (``needs_confirmation``);
+    # * a box the detector could not read at all says nothing about the
+    #   document, so the PR may be submitted and the BAC verifies that box by
+    #   hand before numbering it (``needs_bac_verification``);
+    # * a blank box blocks the submission. Only the BAC can override it.
     can_save = all_present
-    needs_confirmation = bool(uncertain_keys) and not missing and not unverifiable
+    needs_confirmation = bool(uncertain_keys) and not missing
+    needs_bac_verification = bool(unverifiable_keys) and not missing
+    bac_note = (
+        " The signatures that could not be checked will be verified by the BAC "
+        "against the original document."
+    )
 
     if all_present:
         status = "complete"
@@ -1408,18 +1423,23 @@ def _summarise(signatories: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     elif needs_confirmation:
         status = "needs_confirmation"
         message = "Please confirm the signatures marked for review against the original document."
+        if needs_bac_verification:
+            message += bac_note
     else:
         status = "unverifiable"
-        message = "Signatures could not be checked. Please review the original document."
+        message = "Some signatures could not be checked automatically." + bac_note
     return {
         "required_total": len(REQUIRED_SIGNATORIES),
         "required_detected": len(detected),
         "missing_signatures": missing,
+        "missing_keys": [key for key, state in states.items() if state == STATE_ABSENT],
         "uncertain_signatures": [DISPLAY_NAMES[key] for key in uncertain_keys],
         "uncertain_keys": uncertain_keys,
         "unverifiable_signatures": unverifiable,
+        "unverifiable_keys": unverifiable_keys,
         "all_required_present": all_present,
         "needs_confirmation": needs_confirmation,
+        "needs_bac_verification": needs_bac_verification,
         "can_save": can_save,
         "status": status,
         "message": message,

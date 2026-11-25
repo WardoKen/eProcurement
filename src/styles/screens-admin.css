@@ -49,6 +49,8 @@
 .pr-intake-main { display: grid; min-width: 0; }
 .pr-intake-main strong { font-size: 15px; font-weight: 700; }
 .pr-intake-main span { overflow: hidden; color: var(--ink-2); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.pr-intake-main .pr-intake-flag { display: flex; align-items: center; gap: 4px; color: var(--marigold-ink); font-weight: 600; }
+.pr-intake-flag > svg { flex: none; }
 .pr-intake-total { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pr-intake-actions { display: flex; gap: var(--s-2); }
 
@@ -319,6 +321,7 @@
 
 .signature-validation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 var(--s-4); margin: 0; padding: 0; list-style: none; }
 .signature-validation-list li { display: flex; align-items: flex-start; gap: var(--s-2); margin: 0; padding: 8px 0; border-top: 1px solid var(--rule); }
+.signature-validation-list li > svg { flex: none; margin-top: 2px; }
 .signature-validation-list li > div { display: flex; flex-direction: column; min-width: 0; }
 .signature-validation-list li strong { font-size: 13px; font-weight: 650; }
 .signature-validation-list li span { color: var(--ink-2); font-size: 12.5px; }

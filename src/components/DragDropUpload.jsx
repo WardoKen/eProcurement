@@ -15,6 +15,12 @@ import {
 
 import { apiFetch } from '../lib/apiClient'
 import Modal from './ui/Modal'
+import {
+  MIN_ABSENT_NOTE_LENGTH,
+  bacPendingSignatureKeys,
+  describeConfirmation,
+  isSubmitterConfirmation,
+} from '../lib/signatureReview'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from '../lib/fileValidation'
 
 const normalizeNumberInput = (value) => (value || '').toString().replace(/,/g, '').trim()
@@ -204,6 +210,45 @@ export const SignatureBlock = ({ title, designationKey, nameKey, fields, onField
   </section>
 )
 
+// The BAC reviewer's sign-off on one required signature the detector did not
+// find. Overriding a blank ("absent") box also needs a note for the record.
+const BacVerificationField = ({ row, note, onChange }) => {
+  const checked = note !== undefined && note !== null
+  const needsNote = row.state === 'absent'
+  const noteId = `bac-sig-note-${row.key}`
+  const noteShort = needsNote && checked && (note || '').trim().length < MIN_ABSENT_NOTE_LENGTH
+  return (
+    <div className="sig-bac-verify">
+      <label className="sig-confirm">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked ? '' : null)}
+        />
+        {needsNote
+          ? `Override: I checked the original document and ${row.label} is signed`
+          : `I checked the original document: ${row.label} is signed`}
+      </label>
+      {needsNote && checked && (
+        <>
+          <label className="sig-bac-note-label" htmlFor={noteId}>Why the detector was wrong (required)</label>
+          <textarea
+            id={noteId}
+            rows={2}
+            value={note || ''}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="e.g. Signed in light pencil; checked the paper original."
+            aria-invalid={noteShort || undefined}
+          />
+          {noteShort && (
+            <span className="sig-uncertain-reason">{`At least ${MIN_ABSENT_NOTE_LENGTH} characters.`}</span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export const SignatureValidationPanel = ({
   validation,
   onRecheck,
@@ -212,11 +257,20 @@ export const SignatureValidationPanel = ({
   confirmedKeys = [],
   onConfirmChange,
   confirmations = [],
+  // BAC review only: {key: note} for the boxes the reviewer has verified, and
+  // the setter (note === null clears the tick).
+  bacVerifications,
+  onBacVerificationChange,
 }) => {
   const summary = validation?.summary
   const signatories = validation?.signatories || {}
   const order = ['requested_by', 'funds_available', 'approved_by', 'twg']
   const rows = order.map((key) => signatories[key]).filter(Boolean)
+  const isBacReview = Boolean(onBacVerificationChange)
+  const bacPending = isBacReview ? bacPendingSignatureKeys(validation, confirmations) : []
+  const submitterConfirmations = confirmations.filter(isSubmitterConfirmation)
+  const bacConfirmations = confirmations.filter((item) => !isSubmitterConfirmation(item))
+  const submitterConfirmedKeys = new Set(submitterConfirmations.map((item) => item.key))
 
   const statusTone = summary?.status === 'complete'
     ? 'sig-panel-complete'
@@ -240,7 +294,13 @@ export const SignatureValidationPanel = ({
       </div>
 
       {!validation ? (
-        <p className="helper-text">Upload a Purchase Request to check its signatures.</p>
+        <p className="helper-text">
+          {isBacReview
+            ? (hasDocument
+              ? 'Checking the signatures on the original document…'
+              : 'No document is on file for this PR. You will verify each required signature against the paper original when you assign the PR number.')
+            : 'Upload a Purchase Request to check its signatures.'}
+        </p>
       ) : (
         <>
           <ul className="signature-validation-list">
@@ -275,6 +335,30 @@ export const SignatureValidationPanel = ({
                         {`I checked the document: ${row.label} is signed`}
                       </label>
                     )}
+                    {row.state === 'unverifiable' && row.required && (
+                      <span className="sig-uncertain-reason">
+                        {row.reason === 'document_missing'
+                          ? 'The document file is not on the server. Check the paper original.'
+                          : 'The detector could not read this box.'}
+                        {!isBacReview && ' The BAC will check this signature against the original document.'}
+                      </span>
+                    )}
+                    {row.state === 'absent' && row.required && onConfirmChange && (
+                      <span className="sig-uncertain-reason">
+                        Have this box signed and upload the document again. If it is already signed,
+                        contact the BAC Secretariat: only the BAC can override a blank signature.
+                      </span>
+                    )}
+                    {isBacReview && row.state === 'uncertain' && submitterConfirmedKeys.has(row.key) && (
+                      <span className="sig-uncertain-reason">Confirmed by the submitter against the document.</span>
+                    )}
+                    {isBacReview && bacPending.includes(row.key) && (
+                      <BacVerificationField
+                        row={row}
+                        note={bacVerifications?.[row.key]}
+                        onChange={(note) => onBacVerificationChange(row.key, note)}
+                      />
+                    )}
                   </div>
                 </li>
               )
@@ -300,19 +384,28 @@ export const SignatureValidationPanel = ({
                 </p>
               )}
               {summary.unverifiable_signatures?.length > 0 && (
-                <p className="sig-missing">
-                  Could not verify:
+                <p className="sig-uncertain">
+                  {isBacReview ? 'Could not be checked automatically:' : 'To be verified by the BAC:'}
                   <span> {summary.unverifiable_signatures.join(', ')}</span>
                 </p>
               )}
             </div>
           )}
-          {confirmations.length > 0 && (
+          {isBacReview && bacPending.length > 0 && (
+            <p className="sig-uncertain">
+              {`Verify ${bacPending.length === 1 ? 'this signature' : `these ${bacPending.length} signatures`} against the original document before assigning the PR number.`}
+            </p>
+          )}
+          {submitterConfirmations.length > 0 && (
             <p className="sig-confirmed-note">
-              <strong>Confirmed by hand at submission: </strong>
-              {confirmations
-                .map((item) => `${item.label}${item.confirmed_by ? ` (by ${item.confirmed_by})` : ''}`)
-                .join(', ')}
+              <strong>Confirmed by the submitter: </strong>
+              {submitterConfirmations.map(describeConfirmation).join('; ')}
+            </p>
+          )}
+          {bacConfirmations.length > 0 && (
+            <p className="sig-confirmed-note">
+              <strong>Verified by the BAC: </strong>
+              {bacConfirmations.map(describeConfirmation).join('; ')}
             </p>
           )}
         </>
@@ -737,7 +830,7 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
           const missing = err.missing_signatures || []
           setSaveBlockedMessage(
             missing.length
-              ? `Purchase Request cannot be saved yet. Missing signatures: ${missing.join(', ')}.`
+              ? `Purchase Request cannot be saved yet. Missing signatures: ${missing.join(', ')}. Only the BAC can override a blank signature.`
               : err.error,
           )
           return
@@ -767,11 +860,20 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
   const signaturesChecked = Boolean(signatureValidation?.summary)
   const uncertainKeys = signatureValidation?.summary?.uncertain_keys || []
   const unconfirmedCount = uncertainKeys.filter((key) => !signatureConfirmations.includes(key)).length
-  // "Please confirm" signatures pass once the reviewer has ticked each one;
-  // the backend re-checks the document and the confirmations on save.
+  // "Please confirm" signatures pass once the reviewer has ticked each one.
+  // Boxes the detector could not read pass too, flagged for the BAC to verify.
+  // A blank box never passes here: only the BAC can override it. The backend
+  // re-checks the document and the confirmations on save.
+  const bacVerificationCount = signatureValidation?.summary?.needs_bac_verification
+    ? (signatureValidation.summary.unverifiable_keys || []).length
+    : 0
   const signaturesComplete = !signaturesChecked
     || signatureValidation.summary.can_save === true
-    || (signatureValidation.summary.needs_confirmation === true && unconfirmedCount === 0)
+    || (
+      (signatureValidation.summary.needs_confirmation === true || bacVerificationCount > 0)
+      && (signatureValidation.summary.missing_signatures || []).length === 0
+      && unconfirmedCount === 0
+    )
 
   const lineItems = Array.isArray(fields.lineItems) ? fields.lineItems : []
   const requiredInfoComplete = Boolean(
@@ -788,11 +890,12 @@ export default function DragDropUpload({ apiBase = (import.meta.env.VITE_API_BAS
       key: 'sig',
       label: !sigSummary
         ? 'Required signatures detected'
-        : sigSummary.needs_confirmation && unconfirmedCount > 0
-          ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected; confirm ${unconfirmedCount} marked "Please confirm"`
-          : sigSummary.needs_confirmation
-            ? `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected; ${uncertainKeys.length} confirmed by you`
-            : `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected`,
+        : [
+          `${sigSummary.required_detected} of ${sigSummary.required_total} required signatures detected`,
+          sigSummary.needs_confirmation && unconfirmedCount > 0 && `confirm ${unconfirmedCount} marked "Please confirm"`,
+          sigSummary.needs_confirmation && unconfirmedCount === 0 && `${uncertainKeys.length} confirmed by you`,
+          bacVerificationCount > 0 && `${bacVerificationCount} to be verified by the BAC`,
+        ].filter(Boolean).join('; '),
       ok: signaturesComplete,
     },
   ]

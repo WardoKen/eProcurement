@@ -626,6 +626,28 @@ def test_summary_states():
     # A blank box can never be confirmed away.
     blank = summary("absent", "uncertain", "present")
     assert blank["needs_confirmation"] is False and blank["status"] == "incomplete"
+    assert blank["missing_keys"] == [REQUESTED_BY]
+
+
+def test_summary_unverifiable_goes_to_the_bac():
+    from ocr.signature_detection import _summarise
+
+    def summary(*states):
+        return _summarise({key: {"state": state} for key, state in zip(REQUIRED, states)})
+
+    unread = summary("present", "unverifiable", "present")
+    assert unread["can_save"] is False
+    assert unread["needs_bac_verification"] is True
+    assert unread["unverifiable_keys"] == [FUNDS_AVAILABLE]
+    assert unread["status"] == "unverifiable"
+    assert "BAC" in unread["message"]
+    # Uncertain + unverifiable: the submitter still confirms the uncertain box.
+    mixed = summary("uncertain", "unverifiable", "present")
+    assert mixed["needs_confirmation"] is True and mixed["needs_bac_verification"] is True
+    assert mixed["status"] == "needs_confirmation"
+    # A blank box blocks regardless.
+    blank = summary("absent", "unverifiable", "present")
+    assert blank["needs_bac_verification"] is False and blank["status"] == "incomplete"
 
 
 # ===========================================================================

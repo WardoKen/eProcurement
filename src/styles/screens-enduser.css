@@ -126,6 +126,10 @@
 .sig-uncertain { color: var(--marigold-ink); }
 .sig-confirmed-note { color: var(--jade); }
 .sig-uncertain-reason { display: block; color: var(--ink-2); font-size: 12px; }
+/* BAC review: sign-off on a signature the detector did not find. */
+.sig-bac-verify { display: grid; gap: 4px; margin-top: 6px; }
+.sig-bac-note-label { color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.sig-bac-verify textarea { width: 100%; min-height: 0; font-size: 13px; resize: vertical; }
 
 .upload-success-modal-body { display: grid; justify-items: start; gap: var(--s-2); }
 .upload-success-modal-body > svg { color: var(--jade); }

@@ -26,6 +26,7 @@ import {
   Edit2,
   FileText,
   TrendingUp,
+  AlertTriangle,
   CheckCircle,
   Circle,
   CircleDot,
@@ -47,6 +48,7 @@ import DragDropUpload, {
   SignatureBlock,
   AutoGrowTextarea,
 } from './components/DragDropUpload'
+import { bacVerificationsComplete } from './lib/signatureReview'
 import { ChangeHistoryModal, EditedBySummary, FieldValue, ViewChangesButton } from './components/PRChangeHistory'
 import { prChangeKey, usePrChanges } from './lib/prChanges'
 import SupplierRegistration from './components/SupplierRegistration'
@@ -3056,6 +3058,10 @@ const Admin = () => {
   // the BAC reviewer next to the live recheck.
   const [editPrSignatureConfirmations, setEditPrSignatureConfirmations] = React.useState([])
   const [editPrSignatureChecking, setEditPrSignatureChecking] = React.useState(false)
+  // The BAC reviewer's verification of each required signature the detector
+  // did not find: {key: note}. Sent when assigning the PR number.
+  const [editPrSignatureVerifications, setEditPrSignatureVerifications] = React.useState({})
+  const [editPrSignatureError, setEditPrSignatureError] = React.useState('')
   const [dashboardStats, setDashboardStats] = React.useState(null)
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
@@ -3848,6 +3854,8 @@ const Admin = () => {
       setEditPrSourceUrl(details.source_file_url || '')
       setEditPrSourceFilename(details.source_filename || '')
       setEditPrSignatureValidation(null)
+      setEditPrSignatureVerifications({})
+      setEditPrSignatureError('')
       setEditPrSignatureConfirmations(Array.isArray(details.signature_confirmations) ? details.signature_confirmations : [])
       if (details.source_filename) {
         checkEditPrSignatures(details.source_filename, {
@@ -3876,7 +3884,10 @@ const Admin = () => {
       })
       const data = await res.json().catch(() => null)
       if (res.ok && data?.signature_validation) {
+        // A new result: earlier ticks belonged to the previous one.
         setEditPrSignatureValidation(data.signature_validation)
+        setEditPrSignatureVerifications({})
+        setEditPrSignatureError('')
       }
     } catch {
       // Non-fatal - the BAC reviewer can still edit the PR without the
@@ -3903,7 +3914,19 @@ const Admin = () => {
     setEditPrReason('')
     setEditPrShowChanges(false)
     setEditPrSignatureValidation(null)
+    setEditPrSignatureVerifications({})
+    setEditPrSignatureError('')
     setEditPrSourceFilename('')
+  }
+
+  const handleEditPrSignatureVerification = (key, note) => {
+    setEditPrSignatureError('')
+    setEditPrSignatureVerifications((current) => {
+      const next = { ...current }
+      if (note === null) delete next[key]
+      else next[key] = note
+      return next
+    })
   }
 
   const handleSavePrEdit = async (finalizeReview = false) => {
@@ -3920,9 +3943,18 @@ const Admin = () => {
           pr_number_mode: editPrNumberMode === 'custom' ? 'custom' : 'automatic',
           custom_pr_number: editPrCustomNumber,
           reason: editPrReason.trim(),
+          signature_verifications: Object.entries(editPrSignatureVerifications)
+            .map(([key, note]) => ({ key, note: (note || '').trim() })),
         }),
       })
       const payload = await res.json().catch(() => null)
+      if (!res.ok && payload?.signature_verification_required) {
+        // The document was checked again on the server: show what it found
+        // (keeping the ticks already made) and what is still to verify.
+        if (payload.signature_validation) setEditPrSignatureValidation(payload.signature_validation)
+        setEditPrSignatureError(payload.message || 'Verify the required signatures before assigning the PR number.')
+        return false
+      }
       if (!res.ok) {
         // Locked (already numbered) - refresh so the modal shows read-only.
         if (res.status === 409 && payload?.locked) editPrChanges.reload()
@@ -3981,6 +4013,11 @@ const Admin = () => {
   const editPrAddedItemIds = new Set((editPrChanges.data.events || []).filter((event) => event.type === 'item_added').map((event) => event.item_id))
   const editPrDirty = Boolean(editPrForm) && !editPrLocked && prFormSignature(editPrForm) !== editPrInitialSignature
   const editPrReasonMissing = editPrDirty && !editPrReason.trim()
+  // Without a result (no document, or the check failed) the server decides
+  // and answers with the result, which then shows the boxes to verify.
+  const editPrSignaturesVerified = !editPrSignatureValidation || bacVerificationsComplete(
+    editPrSignatureValidation, editPrSignatureConfirmations, editPrSignatureVerifications,
+  )
 
   const handleSelectMatchedSupplier = (card) => {
     const name = card?.supplier?.company_name || card?.supplier?.name || 'supplier'
@@ -4967,6 +5004,12 @@ const Admin = () => {
                       <span className="pr-intake-main">
                         <strong>{pr.office_section || 'Office not specified'}</strong>
                         <span>{pr.entity_name || 'Unnamed entity'}{pr.purpose ? `, ${pr.purpose}` : ''}</span>
+                        {pr.signatures_to_verify?.length > 0 && (
+                          <span className="pr-intake-flag">
+                            <AlertTriangle size={13} aria-hidden="true" />
+                            {`Verify signatures: ${pr.signatures_to_verify.join(', ')}`}
+                          </span>
+                        )}
                       </span>
                       <span className="pr-intake-total">{formatPeso(pr.grand_total ?? 0)}</span>
                       <span className={`status-badge ${getPrStatusMeta(pr.status).className}`}>{getPrStatusMeta(pr.status).label}</span>
@@ -5315,6 +5358,8 @@ const Admin = () => {
                                 rechecking={editPrSignatureChecking}
                                 hasDocument={Boolean(editPrSourceFilename)}
                                 confirmations={editPrSignatureConfirmations}
+                                bacVerifications={editPrLocked ? undefined : editPrSignatureVerifications}
+                                onBacVerificationChange={editPrLocked ? undefined : handleEditPrSignatureVerification}
                               />
 
                               <div className="requested-items-block">
@@ -5473,10 +5518,16 @@ const Admin = () => {
                               })
                               if (confirmed) handleSavePrEdit(true)
                             }}
-                            disabled={editPrSaving || !editPrForm.entity_name.trim() || editPrReasonMissing}
+                            disabled={editPrSaving || !editPrForm.entity_name.trim() || editPrReasonMissing || !editPrSignaturesVerified}
+                            title={editPrSignaturesVerified ? undefined : 'Verify the required signatures in Signature Validation first.'}
                           >
                             {editPrSaving ? 'Assigning...' : 'Assign PR Number'}
                           </button>
+                        )}
+                        {!editPrForm.pr_no && (editPrSignatureError || !editPrSignaturesVerified) && (
+                          <p className="field-error" role="status" style={{ flexBasis: '100%', justifyContent: 'flex-end' }}>
+                            {editPrSignatureError || 'Verify the required signatures in Signature Validation before assigning the PR number.'}
+                          </p>
                         )}
                         {!editPrForm.entity_name.trim() && (
                           <p className="field-error" role="status" style={{ flexBasis: '100%', justifyContent: 'flex-end' }}>
