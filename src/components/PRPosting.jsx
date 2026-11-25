@@ -116,7 +116,7 @@ export default function PRPosting({ apiBase, prId, onChange }) {
           <span><span className="status-badge tone-neutral">Not posted</span> Not visible to the public or to suppliers.</span>
         )}
         {posting.is_posted ? (
-          <button type="button" className="btn-sm btn-outline" onClick={() => { setError(''); setUnposting(true) }} disabled={busy}>Take down</button>
+          <button type="button" className="btn-sm btn-danger" onClick={() => { setError(''); setUnposting(true) }} disabled={busy}>Take down</button>
         ) : (
           <button type="button" className="btn-sm btn-primary" onClick={() => { setError(''); setConfirmingPost(true) }} disabled={busy || !posting.can_post}>
             Post as opportunity

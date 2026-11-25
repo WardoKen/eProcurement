@@ -1685,10 +1685,11 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
       </div>
       <div className="card rfq-review-card">
         <h2>RFQ Information</h2>
-        <div className="detail-grid">
-          <label className="form-field">
-            <span>Mode of Procurement<RequiredMark /></span>
+        <div className="rfq-info">
+          <div className="form-field rfq-info-mode">
+            <label htmlFor="rfq-mode">Mode of Procurement<RequiredMark /></label>
             <input
+              id="rfq-mode"
               type="text"
               className="dropdown-control"
               list="procurement-mode-options"
@@ -1704,27 +1705,49 @@ const RFQPreparation = ({ prId, apiBase, supplier, prDetails, onBack }) => {
             <datalist id="procurement-mode-options">
               {procurementModes.map((mode) => <option key={mode} value={mode} />)}
             </datalist>
-          </label>
-          <label className="form-field">
-            <span>Quotation Basis</span>
-            <select className="dropdown-control" value={quotationBasis} onChange={(event) => setQuotationBasis(event.target.value)} disabled={isSent}>
-              <option value="LOT">Lot</option>
-              <option value="LINE">Line</option>
-            </select>
-          </label>
-          <label className="form-field"><span>ABC</span><input value={abc || computedAbc} readOnly /></label>
+            <p className="helper-text" id="rfq-mode-hint">
+              {!modeOfProcurement.trim()
+                ? 'Required to save or send. Pick a suggested procedure or type your own; it is separate from the PR category.'
+                : 'Printed on the RFQ exactly as entered.'}
+            </p>
+          </div>
+
+          <div className="rfq-info-abc" role="group" aria-labelledby="rfq-abc-label">
+            <span id="rfq-abc-label" className="rfq-info-abc-label">Approved Budget for the Contract (ABC)</span>
+            <strong className="rfq-info-abc-value">{abc || computedAbc}</strong>
+            <span className="helper-text">The PR&apos;s grand total, printed on the RFQ.</span>
+          </div>
+
+          <fieldset className="rfq-info-basis" disabled={isSent}>
+            <legend>Quotation Basis</legend>
+            <div className="rfq-basis-options">
+              {[
+                { value: 'LOT', title: 'Lot', text: 'Suppliers must quote every item, or they are disqualified. The award covers the whole lot.' },
+                { value: 'LINE', title: 'Per line item', text: 'Suppliers may quote one or more items. Each item is awarded on its own.' },
+              ].map((option) => (
+                <label key={option.value} className={`rfq-basis-option${quotationBasis === option.value ? ' is-selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="rfq-quotation-basis"
+                    value={option.value}
+                    checked={quotationBasis === option.value}
+                    onChange={() => setQuotationBasis(option.value)}
+                  />
+                  <span>
+                    <strong>{option.title}</strong>
+                    <span>{option.text}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="form-field rfq-info-notes">
+            <label htmlFor="rfq-notes">Additional RFQ Notes <span className="rfq-info-optional">Optional</span></label>
+            <textarea id="rfq-notes" rows="4" value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Terms, delivery notes, or instructions for the supplier" disabled={isSent} aria-describedby="rfq-notes-hint" />
+            <p className="helper-text" id="rfq-notes-hint">Added to the RFQ and to the email sent with it.</p>
+          </div>
         </div>
-        <p className="helper-text" id="rfq-mode-hint" style={{ marginTop: 4 }}>
-          {!modeOfProcurement.trim()
-            ? 'Required to save or send. Choose a suggested procurement procedure or type your own. This is separate from the PR category.'
-            : 'Printed on the RFQ exactly as entered.'}
-        </p>
-        <p className="helper-text" style={{ marginTop: 4 }}>
-          {quotationBasis === 'LINE'
-            ? 'The RFQ note will state the award is on a per line item basis; suppliers may quote for one or more items.'
-            : 'The RFQ note will state the award is on a LOT basis; suppliers must quote all items to avoid disqualification.'}
-        </p>
-        <label className="form-field"><span>Additional RFQ Notes</span><textarea rows="5" value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Optional terms, notes, or instructions for the supplier" disabled={isSent} /></label>
       </div>
       <div className="card rfq-review-card">
         <h2 id="rfq-prep-items-heading">Requested Items</h2>
