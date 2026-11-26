@@ -41,6 +41,7 @@ urlpatterns = [
     path('admin/export/suppliers/', views.admin_export_suppliers, name='admin_export_suppliers'),
     path('admin/export/purchase-requests/', views.admin_export_purchase_requests, name='admin_export_purchase_requests'),
     path('admin/export/rfqs/', views.admin_export_rfqs, name='admin_export_rfqs'),
+    path('admin/reports/procurement-summary/', views.admin_procurement_summary_pdf, name='admin_procurement_summary_pdf'),
     path('admin/export/pr-audit-trail/', views.admin_export_pr_audit_trail, name='admin_export_pr_audit_trail'),
     path('admin/export/supplier-change-log/', views.admin_export_supplier_change_log, name='admin_export_supplier_change_log'),
     path('admin/pr-number-format/', views.admin_pr_number_format, name='admin_pr_number_format'),

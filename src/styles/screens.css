@@ -88,6 +88,22 @@
   background: var(--marigold);
 }
 
+/* Procurement summary PDF: a period and a download button. */
+.dash-report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-6);
+  padding: var(--s-4) 0 var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+.dash-report-text { flex: 1 1 260px; min-width: 0; }
+.dash-report-text h2 { font-size: 15px; font-weight: 700; font-variation-settings: 'wdth' 100; letter-spacing: 0; }
+.dash-report-text p { margin: 4px 0 0; color: var(--ink-2); font-size: 13px; max-width: 60ch; }
+.dash-report-controls { margin: 0; }
+.dash-report > .alert { flex-basis: 100%; margin: 0; }
+
 /* The line band */
 .dash-line {
   margin: 0 calc(var(--gutter) * -1);

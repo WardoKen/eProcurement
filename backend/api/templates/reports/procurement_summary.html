@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{ title }} - {{ period_label }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 36pt 40pt 52pt 40pt;
+        @frame footer {
+          -pdf-frame-content: page-footer;
+          bottom: 22pt;
+          margin-left: 40pt;
+          margin-right: 40pt;
+          height: 24pt;
+        }
+      }
+      body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #13201B; line-height: 1.35; }
+      p { margin: 0 0 4pt 0; }
+
+      .masthead { border-bottom: 2pt solid #13201B; padding-bottom: 8pt; margin-bottom: 10pt; }
+      .masthead td { vertical-align: bottom; }
+      .doc-title { font-size: 17pt; font-weight: bold; color: #13201B; }
+      .doc-period { font-size: 10.5pt; color: #006D4F; font-weight: bold; }
+      .meta { font-size: 7.5pt; color: #4A5A54; text-align: right; }
+
+      h2 { font-size: 11.5pt; color: #006D4F; margin: 14pt 0 5pt 0; padding-bottom: 3pt;
+           border-bottom: 0.75pt solid #C9D5D0; -pdf-keep-with-next: true; }
+      h3 { font-size: 9pt; margin: 8pt 0 3pt 0; color: #13201B; -pdf-keep-with-next: true; }
+      .note { font-size: 7.5pt; color: #4A5A54; }
+
+      table.figures { width: 100%; margin: 2pt 0 4pt 0; }
+      table.figures td { width: 25%; padding: 5pt 6pt; border-left: 2pt solid #006D4F; vertical-align: top; }
+      .fig-value { font-size: 14pt; font-weight: bold; color: #13201B; }
+      .fig-label { font-size: 7.5pt; color: #4A5A54; }
+
+      table.data { width: 100%; margin: 2pt 0 6pt 0; }
+      table.data th { font-size: 7.5pt; text-align: left; color: #4A5A54; font-weight: bold; vertical-align: bottom;
+                      padding: 3pt 4pt; border-bottom: 0.75pt solid #13201B; }
+      table.data td { padding: 2pt 4pt 1pt 4pt; border-bottom: 0.5pt solid #DDE5E1; vertical-align: top; }
+      table.data .num { text-align: right; }
+      table.data tr.total td { font-weight: bold; border-top: 0.75pt solid #13201B; border-bottom: 0; }
+      .empty { color: #4A5A54; font-style: italic; padding: 2pt 0 6pt 0; }
+
+      table.split td.half { width: 50%; vertical-align: top; padding: 0; }
+      table.split td.gap { width: 4%; }
+
+      #page-footer { font-size: 7pt; color: #4A5A54; }
+    </style>
+  </head>
+  <body>
+    <div id="page-footer">
+      <table width="100%"><tr>
+        <td>eProcure &middot; {{ title }} &middot; {{ period_label }}</td>
+        <td style="text-align: right;">Page <pdf:pagenumber> of <pdf:pagecount></td>
+      </tr></table>
+    </div>
+
+    <table class="masthead" width="100%">
+      <tr>
+        <td width="58%">
+          {% if logo_path %}<img src="{{ logo_path }}" height="26" />{% endif %}
+          <p class="doc-title" style="margin-top: 8pt;">{{ title }}</p>
+          <p class="doc-period">{{ period_label }}</p>
+        </td>
+        <td width="42%" class="meta">
+          Bids and Awards Committee<br />
+          Generated {{ generated_at }}<br />
+          by {{ generated_by }}
+        </td>
+      </tr>
+    </table>
+    <p class="note">
+      Counts and totals of what eProcure recorded in the period. Purchase Requests are counted by upload date,
+      RFQs by the date sent, postings and BAC decisions by the date they happened. Quotations are not compared
+      or ranked: evaluation and award are outside eProcure. This is not the GPPB Procurement Monitoring Report.
+    </p>
+
+    <!-- 1. Purchase Requests -->
+    <h2>1. Purchase Requests</h2>
+    <table class="figures"><tr>
+      <td><div class="fig-value">{{ pr.count }}</div><div class="fig-label">Purchase Requests uploaded</div></td>
+      <td><div class="fig-value">{{ pr.value }}</div><div class="fig-label">Total value (grand totals)</div></td>
+      <td><div class="fig-value">{{ pr.numbered }}</div><div class="fig-label">Given a PR number</div></td>
+      <td><div class="fig-value">{{ timeliness.posted_count }}</div><div class="fig-label">Posted as opportunities</div></td>
+    </tr></table>
+
+    {% if pr.count %}
+    <h3>By current status</h3>
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th width="50%">Status</th><th class="num" width="20%">PRs</th><th class="num" width="30%">Value</th></tr>
+      {% for row in pr.by_status %}
+      <tr><td>{{ row.label }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.value }}</td></tr>
+      {% endfor %}
+      <tr class="total"><td>Total</td><td class="num">{{ pr.count }}</td><td class="num">{{ pr.value }}</td></tr>
+    </table>
+
+    <h3>By office / section</h3>
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th width="50%">Office / Section</th><th class="num" width="20%">PRs</th><th class="num" width="30%">Value</th></tr>
+      {% for row in pr.by_office %}
+      <tr><td>{{ row.label }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.value }}</td></tr>
+      {% endfor %}
+    </table>
+
+    <h3>By procurement category</h3>
+    <p class="note">Categories are assigned per item, so a PR with items in several categories appears under each, with that category's share of the value.</p>
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th>Category</th><th class="num">PRs</th><th class="num">Items</th><th class="num">Value</th></tr>
+      {% for row in pr.by_category %}
+      <tr><td>{{ row.label }}</td><td class="num">{{ row.prs }}</td><td class="num">{{ row.items }}</td><td class="num">{{ row.value }}</td></tr>
+      {% empty %}
+      <tr><td colspan="4" class="empty">No line items recorded.</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="empty">No Purchase Requests were uploaded in this period.</p>
+    {% endif %}
+
+    <!-- 2. RFQs and responses -->
+    <h2>2. RFQs and supplier responses</h2>
+    <table class="figures"><tr>
+      <td><div class="fig-value">{{ rfq.sent }}</div><div class="fig-label">RFQs sent ({{ rfq.prs }} PR{{ rfq.prs|pluralize }})</div></td>
+      <td><div class="fig-value">{{ rfq.responded }}</div><div class="fig-label">Answered by the supplier</div></td>
+      <td><div class="fig-value">{{ rfq.awaiting }}</div><div class="fig-label">Still awaiting a response</div></td>
+      <td><div class="fig-value">{{ rfq.rate }}</div><div class="fig-label">Response rate</div></td>
+    </tr></table>
+
+    {% if rfq.sent %}
+    <p class="note">{{ rfq.quotations }} quotation{{ rfq.quotations|pluralize }} submitted through the supplier portal for these RFQs.</p>
+
+    <h3>By mode of procurement</h3>
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th>Mode of procurement</th><th class="num">RFQs</th><th class="num">PRs</th></tr>
+      {% for row in rfq.by_mode %}
+      <tr><td>{{ row.label }}</td><td class="num">{{ row.rfqs }}</td><td class="num">{{ row.prs }}</td></tr>
+      {% endfor %}
+    </table>
+
+    <h3>By Purchase Request</h3>
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th>PR No.</th><th>Office / Section</th><th class="num">RFQs sent</th><th class="num">Of which manual</th><th class="num">Answered</th><th class="num">Awaiting</th><th class="num">Rate</th></tr>
+      {% for row in rfq.per_pr %}
+      <tr><td>{{ row.pr_no }}</td><td>{{ row.office }}</td><td class="num">{{ row.sent }}</td><td class="num">{{ row.manual }}</td><td class="num">{{ row.responded }}</td><td class="num">{{ row.awaiting }}</td><td class="num">{{ row.rate }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="empty">No RFQs were sent in this period.</p>
+    {% endif %}
+
+    <!-- 3. Timeliness -->
+    <h2>3. Timeliness</h2>
+    <table class="data" cellspacing="0">
+      <tr><th>Measure</th><th class="num">Average</th><th>Based on</th></tr>
+      <tr>
+        <td>Upload to first public posting</td>
+        <td class="num">{{ timeliness.avg_to_post }}</td>
+        <td>{{ timeliness.posted_count }} PR{{ timeliness.posted_count|pluralize }} uploaded in the period and posted; {{ timeliness.not_posted }} not yet posted</td>
+      </tr>
+      <tr>
+        <td>RFQ sent to supplier response</td>
+        <td class="num">{{ rfq.avg_response }}</td>
+        <td>{{ rfq.response_count }} answered RFQ{{ rfq.response_count|pluralize }} with a recorded response time</td>
+      </tr>
+      <tr>
+        <td>Time a posting stayed up</td>
+        <td class="num">{{ timeliness.avg_posted }}</td>
+        <td>{{ timeliness.closed_postings }} posting{{ timeliness.closed_postings|pluralize }} made in the period and since taken down</td>
+      </tr>
+    </table>
+    <p class="note">{{ timeliness.posts_in_period }} posting{{ timeliness.posts_in_period|pluralize }} made in the period. {{ timeliness.currently_posted }} PR{{ timeliness.currently_posted|pluralize }} currently posted.</p>
+
+    <!-- 4. Suppliers -->
+    <h2>4. Suppliers</h2>
+    <table class="figures"><tr>
+      <td><div class="fig-value">{{ suppliers.registrations }}</div><div class="fig-label">New registrations in the period</div></td>
+      <td><div class="fig-value">{{ suppliers.decision_total }}</div><div class="fig-label">BAC status decisions in the period</div></td>
+      <td><div class="fig-value">{{ suppliers.total }}</div><div class="fig-label">Suppliers registered (all time)</div></td>
+      <td><div class="fig-value">{{ suppliers.categories_covered }}</div><div class="fig-label">Categories with an approved supplier</div></td>
+    </tr></table>
+
+    <!-- Both lists are short (a handful of statuses), so they sit side by side. -->
+    <table class="split" width="100%"><tr>
+      <td class="half">
+        <h3>BAC decisions in the period</h3>
+        <table class="data" cellspacing="0">
+          <tr><th>Decision</th><th class="num">Count</th></tr>
+          {% for row in suppliers.decisions %}
+          <tr><td>{{ row.label }}</td><td class="num">{{ row.count }}</td></tr>
+          {% endfor %}
+        </table>
+      </td>
+      <td class="gap"></td>
+      <td class="half">
+        <h3>All suppliers by current status</h3>
+        <table class="data" cellspacing="0">
+          <tr><th>Status</th><th class="num">Suppliers</th></tr>
+          {% for row in suppliers.current %}
+          <tr><td>{{ row.label }}</td><td class="num">{{ row.count }}</td></tr>
+          {% empty %}
+          <tr><td colspan="2" class="empty">No suppliers registered.</td></tr>
+          {% endfor %}
+        </table>
+      </td>
+    </tr></table>
+
+    <h3>Approved suppliers per category (as of today)</h3>
+    {% if suppliers.category_rows %}
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th width="38%">Category</th><th class="num" width="10%">Approved</th><th width="4%"></th><th width="38%">Category</th><th class="num" width="10%">Approved</th></tr>
+      {% for left, right in suppliers.category_rows %}
+      <tr>
+        <td>{{ left.label }}</td><td class="num">{{ left.count }}</td><td></td>
+        <td>{% if right %}{{ right.label }}{% endif %}</td><td class="num">{% if right %}{{ right.count }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="empty">No category has an approved supplier yet.</p>
+    {% endif %}
+    {% if suppliers.categories_uncovered %}
+    <p class="note">{{ suppliers.categories_uncovered }} other categor{{ suppliers.categories_uncovered|pluralize:"y,ies" }} {{ suppliers.categories_uncovered|pluralize:"has,have" }} no approved supplier yet.</p>
+    {% endif %}
+
+    <!-- 5. Flags -->
+    <h2>5. Items for review</h2>
+    <h3>RFQs issued with a contract-splitting justification</h3>
+    {% if splitting %}
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th>RFQ No.</th><th>PR No.</th><th>Category</th><th>Justified by</th><th>Date</th><th>Justification</th></tr>
+      {% for row in splitting %}
+      <tr><td>{{ row.rfq_no }}</td><td>{{ row.pr_no }}</td><td>{{ row.category }}</td><td>{{ row.by }}</td><td>{{ row.at }}</td><td>{{ row.justification }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="empty">None in this period.</p>
+    {% endif %}
+
+    <h3>Signatures verified by the BAC instead of the detector</h3>
+    {% if signature_flags %}
+    <table class="data" cellspacing="0" repeat="1">
+      <tr><th>PR No.</th><th>Office / Section</th><th>Signatures</th><th>Verified by</th></tr>
+      {% for row in signature_flags %}
+      <tr><td>{{ row.pr_no }}</td><td>{{ row.office }}</td><td>{{ row.signatures }}</td><td>{{ row.by }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="empty">None among the Purchase Requests uploaded in this period.</p>
+    {% endif %}
+  </body>
+</html>

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from io import BytesIO
 
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.core.mail import EmailMessage
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -2790,6 +2790,53 @@ def admin_export_purchase_requests(request):
         'Edited Fields',
     ]
     return _csv_stream_response('purchase_requests.csv', header, rows())
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_procurement_summary_pdf(request):
+    """The Procurement Activity Summary PDF for ``date_from``..``date_to``
+    (inclusive calendar days in the viewer's ``tz``; either may be left out)."""
+    from .reports import procurement_summary
+
+    tz = _request_timezone(request)
+    date_from = _safe_parse_date(request.GET.get('date_from'))
+    date_to = _safe_parse_date(request.GET.get('date_to'))
+    if date_from and date_to and date_from > date_to:
+        return json_error('The start date must be on or before the end date.', 400)
+
+    start = datetime.combine(date_from, datetime.min.time(), tzinfo=tz) if date_from else None
+    end = datetime.combine(date_to + timedelta(days=1), datetime.min.time(), tzinfo=tz) if date_to else None
+
+    def long_date(value):
+        return f'{value.day} {value:%B %Y}'
+
+    if date_from and date_to:
+        period_label = long_date(date_from) if date_from == date_to else f'{long_date(date_from)} to {long_date(date_to)}'
+    elif date_from:
+        period_label = f'From {long_date(date_from)}'
+    elif date_to:
+        period_label = f'Up to {long_date(date_to)}'
+    else:
+        period_label = 'All records'
+
+    user = getattr(request, 'auth_user', None)
+    name = (getattr(user, 'full_name', '') or getattr(user, 'username', '') or 'BAC Secretariat')
+    role = _role_label(user) if user is not None else ''
+    context = procurement_summary.build_summary(
+        start=start, end=end, tz=tz, period_label=period_label,
+        generated_by=f'{name} ({role})' if role else name,
+    )
+    try:
+        pdf = procurement_summary.render_pdf(context)
+    except ValueError:
+        logger.exception('Procurement summary PDF failed to render')
+        return json_error('The summary PDF could not be generated.', 500)
+
+    stamp = '_'.join(d.isoformat() for d in (date_from, date_to) if d) or 'all'
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="procurement_summary_{stamp}.pdf"'
+    return response
 
 
 def _item_text(values):

@@ -79,7 +79,7 @@ import ProcurementStepper from './components/ui/ProcurementStepper'
 import useTableControls from './components/ui/useTableControls'
 import { DateRangeFields, Pagination, SortableHeader, TableToolbar } from './components/ui/TableParts'
 import { apiFetch } from './lib/apiClient'
-import { exportQuery, withinDateRange } from './lib/dateRange'
+import { exportQuery, localDateKey, withinDateRange } from './lib/dateRange'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
 
@@ -202,12 +202,18 @@ const MonthlyTrendChart = ({ data, emptyLabel = 'No purchase requests yet.' }) =
 
 const EMPTY_DATE_RANGE = { from: '', to: '' }
 
-// Streams a CSV export from an admin endpoint and triggers a browser download.
-// `path` may carry a query string (see exportQuery in lib/dateRange).
-const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
+// Fetches a file (CSV export, PDF report) from an admin endpoint and triggers
+// a browser download. `path` may carry a query string (see exportQuery in
+// lib/dateRange). A JSON error from the server is shown as its message.
+const downloadFile = async (apiBaseUrl, path, filename, onError) => {
   try {
     const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}${path}`)
-    if (!res.ok) throw new Error('Failed to export CSV.')
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.message || (res.status >= 500
+        ? `The server hit an error preparing this file (HTTP ${res.status}). Please try again; if it keeps happening, check the backend log.`
+        : `The download failed (HTTP ${res.status}). Please try again.`))
+    }
     const blob = await res.blob()
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -219,7 +225,7 @@ const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
     window.URL.revokeObjectURL(url)
   } catch (error) {
     console.error(error)
-    if (onError) onError(error?.message || 'Failed to export CSV.')
+    if (onError) onError(error?.message || 'The download failed. Please try again.')
   }
 }
 
@@ -2852,7 +2858,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
   const runExport = async (params, filename) => {
     setExportError('')
     setExporting(true)
-    await downloadCsvExport(apiBaseUrl, `/api/admin/export/rfqs/${exportQuery(params)}`, filename, setExportError)
+    await downloadFile(apiBaseUrl, `/api/admin/export/rfqs/${exportQuery(params)}`, filename, setExportError)
     setExporting(false)
   }
   // The list: same filters as on screen.
@@ -3135,6 +3141,13 @@ const Admin = () => {
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = React.useState(null)
+  // Procurement summary PDF: defaults to this month so far.
+  const [summaryRange, setSummaryRange] = React.useState(() => {
+    const today = localDateKey(new Date())
+    return { from: `${today.slice(0, 8)}01`, to: today }
+  })
+  const [summaryBusy, setSummaryBusy] = React.useState(false)
+  const [summaryError, setSummaryError] = React.useState('')
   // The filename being exported, or '' - one export per page at a time.
   const [exportingSuppliers, setExportingSuppliers] = React.useState('')
   const [exportingPrs, setExportingPrs] = React.useState('')
@@ -4100,7 +4113,7 @@ const Admin = () => {
   const runExport = async (path, filename, setBusy) => {
     setExportError('')
     setBusy(filename)
-    await downloadCsvExport(apiBaseUrl, path, filename, setExportError)
+    await downloadFile(apiBaseUrl, path, filename, setExportError)
     setBusy('')
   }
   const supplierFilterQuery = () => exportQuery({
@@ -4124,6 +4137,19 @@ const Admin = () => {
   const handleExportPurchaseRequests = () => runExport(
     `/api/admin/export/purchase-requests/${prFilterQuery()}`, 'purchase_requests.csv', setExportingPrs,
   )
+  const handleDownloadSummary = async () => {
+    setSummaryError('')
+    setSummaryBusy(true)
+    const { from, to } = summaryRange
+    const stamp = [from, to].filter(Boolean).join('_') || 'all'
+    await downloadFile(
+      apiBaseUrl,
+      `/api/admin/reports/procurement-summary/${exportQuery({ date_from: from, date_to: to })}`,
+      `procurement_summary_${stamp}.pdf`,
+      setSummaryError,
+    )
+    setSummaryBusy(false)
+  }
   const handleExportPrAuditTrail = () => runExport(
     `/api/admin/export/pr-audit-trail/${prFilterQuery()}`, 'pr_audit_trail.csv', setExportingPrs,
   )
@@ -4281,6 +4307,21 @@ const Admin = () => {
                 <button type="button" className="link-like" onClick={loadDashboardStats}>Try again</button>
               </div>
             )}
+
+            <section className="dash-report" aria-labelledby="dash-report-title">
+              <div className="dash-report-text">
+                <h2 id="dash-report-title">Procurement summary</h2>
+                <p>A printable PDF of Purchase Requests, RFQs and responses, timeliness, suppliers and items for review in a period.</p>
+              </div>
+              <div className="data-toolbar dash-report-controls">
+                <DateRangeFields label="Period" value={summaryRange} onChange={setSummaryRange} />
+                <button type="button" className="btn-sm btn-primary" onClick={handleDownloadSummary} disabled={summaryBusy}>
+                  <Download size={14} aria-hidden="true" />
+                  {summaryBusy ? 'Preparing PDF...' : 'Download summary (PDF)'}
+                </button>
+              </div>
+              {summaryError && <div className="alert alert-error" role="alert">{summaryError}</div>}
+            </section>
 
             <section className="dash-line" aria-labelledby="dash-line-title">
               <div className="dash-line-head">
