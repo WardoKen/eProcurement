@@ -1,6 +1,6 @@
 import React from 'react'
 import { apiFetch } from '../lib/apiClient'
-import { CheckCircle } from 'lucide-react'
+import { Check, CheckCircle } from 'lucide-react'
 import Modal from './ui/Modal'
 import { FieldError, RequiredLegend, RequiredMark } from './ui/FormParts'
 import PhoneField from './ui/PhoneField'
@@ -357,13 +357,17 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
 
   const renderStepIndicator = () => (
     <div className="wizard-steps" role="list" aria-label="Registration progress">
-      {[1, 2, 3, 4].map((item) => (
-        <div key={item} className={`wizard-step ${step >= item ? 'active' : ''}`} role="listitem" aria-current={step === item && !submitted ? 'step' : undefined}>
-          <span className="wizard-step-number" aria-hidden="true">{String(item).padStart(2, '0')}</span>
+      {[1, 2, 3, 4].map((item) => {
+        const done = step > item || submitted
+        const current = step === item && !submitted
+        return (
+        <div key={item} className={`wizard-step ${done ? 'is-done' : current ? 'is-current' : 'is-upcoming'}`} role="listitem" aria-current={current ? 'step' : undefined}>
+          <span className="wizard-step-number" aria-hidden="true">{done ? <Check size={14} strokeWidth={3} /> : String(item).padStart(2, '0')}</span>
           <span className="wizard-step-label">{['Company & Account Setup', 'Products & Services', 'Document Uploads', 'Review & Submit'][item - 1]}</span>
-          <span className="sr-only">{step > item || submitted ? ' (completed)' : step === item ? ` (current step, ${item} of 4)` : ''}</span>
+          <span className="sr-only">{done ? ' (completed)' : current ? ` (current step, ${item} of 4)` : ''}</span>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 
@@ -389,7 +393,6 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         <section className="section-card">
           <div className="section-header">
             <h2>Company Information</h2>
-            <span className="section-badge">Step 1</span>
           </div>
           <RequiredLegend />
           <div className="field-grid">
@@ -458,7 +461,6 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         <section className="section-card account-setup-card">
           <div className="section-header">
             <h2>Account Setup</h2>
-            <span className="section-badge">Login Details</span>
           </div>
           <p className="helper-text">Create the login credentials you will use to access the supplier portal.</p>
           <div className="field-grid account-setup-fields">
@@ -498,7 +500,6 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         <section className="section-card">
           <div className="section-header">
             <h2>Products / Services</h2>
-            <span className="section-badge">Step 2</span>
           </div>
           <label className="form-field">
             {fieldLabel('productsServices', 'Products / Services')}
@@ -579,7 +580,6 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
         <section className="section-card">
           <div className="section-header">
             <h2>Document Uploads</h2>
-            <span className="section-badge">Step 3</span>
           </div>
           <div className={`doc-checklist-summary${allAttached ? ' is-complete' : ''}`}>
             <div className="doc-checklist-summary-text">
@@ -637,7 +637,6 @@ export default function SupplierRegistration({ apiBase = DEFAULT_API_BASE }) {
       <section className="section-card">
         <div className="section-header">
           <h2>Review & Submit</h2>
-          <span className="section-badge">Step 4</span>
         </div>
         <p className="helper-text">Please confirm your account setup and details before submitting for BAC review.</p>
         <div className="review-grid">

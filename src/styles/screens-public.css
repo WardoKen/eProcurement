@@ -322,3 +322,121 @@ main > .page-content:not(.home) {
 /* Supplier registration: the hero is ink on the page, no dark band */
 .registration-hero, .registration-hero h1 { color: var(--ink); }
 .registration-hero p { color: var(--ink-2); }
+
+/* ── Supplier registration form: one rhythm for all four steps ──────────
+   The legacy rules (index.css, legacy layer) gave this page bold field text,
+   two label sizes, stray field margins and section content inset 24px from
+   the title and stepper. These rules set it once:
+   - sections, fields and the Back/Continue buttons share the page edges;
+   - 16px between fields, 16px inside a section, 32px between sections;
+   - every text control the same height; typed text at normal weight. */
+.registration-page { gap: var(--s-5); }
+.registration-page .registration-form { gap: var(--s-6); }
+
+/* Stepper: done (check), current (jade), upcoming (plain). */
+.registration-page .wizard-steps { gap: var(--s-2); }
+.registration-page .wizard-step {
+  gap: var(--s-2);
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.registration-page .wizard-step-number {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--input-line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.registration-page .wizard-step.is-done { color: var(--ink); }
+.registration-page .wizard-step.is-done .wizard-step-number { border-color: var(--jade); background: var(--jade-wash); color: var(--jade); }
+.registration-page .wizard-step.is-current { border-color: var(--jade); background: var(--jade-wash); color: var(--ink); font-weight: 600; }
+.registration-page .wizard-step.is-current .wizard-step-number { border-color: var(--jade); background: var(--jade); color: var(--on-jade); }
+.registration-page .wizard-step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Sections: no box, so no inset; a rule and a stack with one gap. */
+.registration-page .section-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0;
+  padding: var(--s-5) 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+}
+.registration-page .section-card > * { margin: 0; }
+.registration-page .section-header { margin: 0; padding: 0; border: 0; }
+.registration-page .section-header h2 { font-size: var(--text-section); }
+.registration-page .section-card > :is(.helper-text, .required-legend) { margin-top: calc(var(--s-2) * -1); }
+
+/* Fields */
+.registration-page .field-grid { gap: var(--s-4); }
+.registration-page .form-field { gap: 6px; margin: 0; font-weight: 400; }
+.registration-page .form-field > span:first-child {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.registration-page .form-field :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  font-weight: 400;
+}
+.registration-page .form-field :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select) {
+  box-sizing: border-box;
+  height: 48px;
+  min-height: 48px;
+  padding-block: 0;
+}
+.registration-page .form-field .helper-text { margin: 0; }
+
+/* Account setup: Username on its own row, the two passwords side by side,
+   in the same two-column grid as Company Information. */
+.registration-page .account-setup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.registration-page .account-setup-fields > .form-field:first-child {
+  grid-column: 1 / -1;
+  width: calc((100% - var(--s-4)) / 2);
+}
+.registration-page .password-input-wrapper input { padding-right: 72px; }
+.registration-page .password-toggle {
+  right: 6px;
+  width: auto;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Categories: two columns of options, and no tall empty box before any is chosen. */
+.registration-page .category-search { margin: 0; }
+.registration-page .category-groups { gap: var(--s-3); }
+.registration-page .form-field .multi-select {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-content: start;
+  gap: 2px var(--s-3);
+  padding: var(--s-2);
+}
+.registration-page .form-field .selected-category-list { min-height: 0; }
+.registration-page .category-option { padding: 6px 8px; font-weight: 400; }
+.registration-page .multi-select > .helper-text { padding: 6px 8px; }
+
+/* Review */
+.registration-page .review-grid { gap: var(--s-4); }
+.registration-page .review-block h3 { margin: 0 0 var(--s-2); font-size: 15px; }
+.registration-page .review-block :is(p, li) { margin: 0 0 4px; }
+
+/* Actions line up with the right edge of the fields above. */
+.registration-page .wizard-actions { margin: 0; padding-top: var(--s-5); border-top: 1px solid var(--rule); }
+
+@media (max-width: 900px) {
+  .registration-page .account-setup-fields { grid-template-columns: minmax(0, 1fr); }
+  .registration-page .account-setup-fields > .form-field:first-child { width: auto; }
+}

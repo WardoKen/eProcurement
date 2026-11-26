@@ -139,17 +139,6 @@ summary:focus-visible {
   color: var(--ink-3);
 }
 
-/* Keep account credentials in the intended vertical order. */
-.account-setup-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) !important;
-  grid-auto-flow: row;
-  max-width: 520px;
-}
-
-.account-setup-fields > .form-field:nth-child(1) { order: 1; }
-.account-setup-fields > .form-field:nth-child(2) { order: 2; }
-.account-setup-fields > .form-field:nth-child(3) { order: 3; }
 
 .register-form {
   display: flex;
