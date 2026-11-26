@@ -19,13 +19,16 @@ import { withViewTransition } from '../lib/viewTransition'
 //
 // The component keeps its old name so every portal imports it unchanged.
 
+// The eProcure mark ("scan-line e", see docs/brand/README.md). Drawn with the
+// design tokens so it follows light and dark mode. At top-bar size the
+// corner brackets of the full logo are left out so the "e" stays crisp.
 export const BrandMark = ({ size = 30 }) => (
-  <svg className="brand-mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <rect width="32" height="32" rx="8" fill="var(--jade)" />
-    <path d="M6 20h20" stroke="var(--on-jade)" strokeWidth="3" strokeLinecap="round" />
-    <circle cx="10" cy="20" r="3.4" fill="var(--jade)" stroke="var(--on-jade)" strokeWidth="2.4" />
-    <circle cx="22" cy="20" r="3.4" fill="var(--marigold)" stroke="var(--marigold)" strokeWidth="2.4" />
-    <path d="M10 11.5h12" stroke="var(--on-jade)" strokeOpacity="0.55" strokeWidth="2.4" strokeLinecap="round" />
+  <svg className="brand-mark" width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+    <rect width="120" height="120" rx="30" fill="var(--jade)" />
+    <g transform="translate(60 60) scale(1.25) translate(-60 -60)">
+      <path d="M86 60 A26 26 0 1 0 78.4 78.4" fill="none" stroke="var(--on-jade)" strokeWidth="13" strokeLinecap="round" />
+      <path d="M26 60 H92" stroke="var(--marigold)" strokeWidth="9" strokeLinecap="round" />
+    </g>
   </svg>
 )
 
