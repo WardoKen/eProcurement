@@ -136,6 +136,173 @@ class AdminExportEndpointAuthTests(TestCase):
         self.assertNotIn('2026-09-011', body)
 
 
+def _csv_body(response):
+    return b''.join(response.streaming_content).decode()
+
+
+class AdminExportFilterTests(TestCase):
+    """The table filters (search, date range, Pending Review) carried into the exports."""
+
+    def setUp(self):
+        _login_as(self.client, 'admin')
+
+    def _set_created(self, model, obj, iso):
+        from django.utils.dateparse import parse_datetime
+        model.objects.filter(pk=obj.pk).update(created_at=parse_datetime(iso))
+
+    def test_supplier_export_search_matches_the_table_fields(self):
+        Supplier.objects.create(company_name='Acme Corp', email='a@example.com', contact_person='Jo Reyes', status='Approved')
+        Supplier.objects.create(company_name='Beta Trading', email='b@example.com', status='Approved')
+        body = _csv_body(self.client.get('/api/admin/export/suppliers/?search=reyes'))
+        self.assertIn('Acme Corp', body)
+        self.assertNotIn('Beta Trading', body)
+
+    def test_pending_review_filter_includes_a_blank_status_like_the_table(self):
+        Supplier.objects.create(company_name='Blank Co', email='blank@example.com', status='')
+        Supplier.objects.create(company_name='Approved Co', email='ok@example.com', status='Approved')
+        body = _csv_body(self.client.get('/api/admin/export/suppliers/?status=Pending%20Review'))
+        self.assertIn('Blank Co', body)
+        self.assertNotIn('Approved Co', body)
+
+    def test_pr_export_search(self):
+        PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-09-010', office_section='ICT Office')
+        PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-09-011', office_section='Registrar')
+        body = _csv_body(self.client.get('/api/admin/export/purchase-requests/?search=ict'))
+        self.assertIn('2026-09-010', body)
+        self.assertNotIn('2026-09-011', body)
+
+    def test_date_range_uses_the_viewers_timezone(self):
+        # 23:30 UTC on Nov 1 is 07:30 on Nov 2 in Manila.
+        early = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-001')
+        self._set_created(PurchaseRequest, early, '2026-11-01T23:30:00+00:00')
+        other = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-002')
+        self._set_created(PurchaseRequest, other, '2026-11-01T10:00:00+00:00')
+
+        body = _csv_body(self.client.get(
+            '/api/admin/export/purchase-requests/?date_from=2026-11-02&date_to=2026-11-02&tz=Asia/Manila'
+        ))
+        self.assertIn('2026-11-001', body)
+        self.assertNotIn('2026-11-002', body)
+        # The timestamp is written in the same zone.
+        self.assertIn('2026-11-02 07:30', body)
+
+    def test_unknown_timezone_and_impossible_dates_are_ignored(self):
+        PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-003')
+        response = self.client.get(
+            '/api/admin/export/purchase-requests/?date_from=2026-02-30&tz=Not/AZone'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('2026-11-003', _csv_body(response))
+
+    def test_text_that_looks_like_a_formula_is_neutralised(self):
+        Supplier.objects.create(company_name='=HYPERLINK("http://x")', email='f@example.com', status='Approved')
+        body = _csv_body(self.client.get('/api/admin/export/suppliers/'))
+        self.assertIn('\'=HYPERLINK', body)
+        self.assertNotIn(',=HYPERLINK', body)
+
+
+class AdminRfqExportTests(TestCase):
+    """admin_export_rfqs: one CSV row per issued RFQ, filtered like RFQ Management."""
+
+    def setUp(self):
+        from django.utils import timezone
+        from api.models import RFQ
+
+        self.RFQ = RFQ
+        self.category = Category.objects.create(name='IT Equipment')
+        self.pr = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-005', office_section='ICT Office')
+        self.acme = Supplier.objects.create(company_name='Acme Corp', email='acme@example.com', status='Approved')
+        self.beta = Supplier.objects.create(company_name='Beta Trading', email='beta@example.com', status='Approved')
+        now = timezone.now()
+        self.answered = RFQ.objects.create(
+            rfq_no='RFQ-2026-11-005:01', purchase_request=self.pr, category=self.category,
+            supplier=self.acme, subject='RFQ', message='m', mode_of_procurement='Small Value Procurement',
+            abc='50,000.00', status=RFQ.STATUS_QUOTATION_RECEIVED, sent_at=now, submitted_at=now,
+            submitted_pdf='uploads/acme.pdf',
+        )
+        Quotation.objects.create(
+            supplier=self.acme, purchase_request=self.pr, rfq=self.answered, quoted_amount='48250.00',
+            estimated_delivery_days=7, warranty_months=12, status=Quotation.STATUS_SUBMITTED,
+        )
+        self.awaiting = RFQ.objects.create(
+            rfq_no='RFQ-2026-11-005:02', purchase_request=self.pr, category=self.category,
+            supplier=self.beta, subject='RFQ', message='m', status=RFQ.STATUS_SENT, sent_at=now,
+        )
+        RFQ.objects.create(purchase_request=self.pr, supplier=self.beta, subject='Draft', message='m')
+
+    def _rows(self, query=''):
+        import csv
+        response = self.client.get(f'/api/admin/export/rfqs/{query}')
+        self.assertEqual(response.status_code, 200)
+        return list(csv.reader(_csv_body(response).splitlines()))
+
+    def test_requires_admin(self):
+        self.assertEqual(self.client.get('/api/admin/export/rfqs/').status_code, 401)
+        _login_as(self.client, 'buyer')
+        self.assertEqual(self.client.get('/api/admin/export/rfqs/').status_code, 403)
+
+    def test_one_row_per_issued_rfq_with_its_quotation(self):
+        _login_as(self.client, 'admin')
+        header, *rows = self._rows()
+        self.assertEqual(len(rows), 2)  # the draft is left out
+        answered = dict(zip(header, rows[0]))
+        self.assertEqual(answered['RFQ No.'], 'RFQ-2026-11-005:01')
+        self.assertEqual(answered['PR No.'], '2026-11-005')
+        self.assertEqual(answered['Category'], 'IT Equipment')
+        self.assertEqual(answered['Supplier'], 'Acme Corp')
+        self.assertEqual(answered['ABC'], '50,000.00')
+        self.assertEqual(answered['Response Document'], 'Yes')
+        self.assertEqual(answered['Quoted Amount'], '48250.00')
+        self.assertEqual(answered['Delivery (Days)'], '7')
+        self.assertEqual(answered['Quotation Status'], 'Submitted')
+        awaiting = dict(zip(header, rows[1]))
+        self.assertEqual(awaiting['Status'], 'Awaiting Supplier Response')
+        self.assertEqual(awaiting['Quoted Amount'], '')
+
+    def test_draft_quotations_are_not_reported(self):
+        Quotation.objects.create(
+            supplier=self.beta, purchase_request=self.pr, rfq=self.awaiting, quoted_amount='1.00',
+            status=Quotation.STATUS_DRAFT,
+        )
+        _login_as(self.client, 'admin')
+        header, *rows = self._rows('?status=awaiting')
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(dict(zip(header, rows[0]))['Quoted Amount'], '')
+
+    def test_filters_match_rfq_management(self):
+        _login_as(self.client, 'admin')
+        _, *received = self._rows('?status=received')
+        self.assertEqual([row[0] for row in received], ['RFQ-2026-11-005:01'])
+        _, *searched = self._rows('?search=beta')
+        self.assertEqual([row[0] for row in searched], ['RFQ-2026-11-005:02'])
+
+    def test_date_range_is_on_the_sent_date(self):
+        from django.utils.dateparse import parse_datetime
+        self.RFQ.objects.filter(pk=self.awaiting.pk).update(sent_at=parse_datetime('2026-10-15T02:00:00+00:00'))
+        _login_as(self.client, 'admin')
+        _, *rows = self._rows('?date_from=2026-10-01&date_to=2026-10-31&tz=Asia/Manila')
+        self.assertEqual([row[0] for row in rows], ['RFQ-2026-11-005:02'])
+
+    def test_pr_id_limits_the_export_to_one_purchase_request(self):
+        other_pr = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-0050')
+        self.RFQ.objects.create(
+            rfq_no='RFQ-2026-11-0050:01', purchase_request=other_pr, supplier=self.acme,
+            subject='RFQ', message='m', status=self.RFQ.STATUS_SENT,
+        )
+        _login_as(self.client, 'admin')
+        _, *rows = self._rows(f'?pr_id={self.pr.id}')
+        self.assertEqual([row[0] for row in rows], ['RFQ-2026-11-005:01', 'RFQ-2026-11-005:02'])
+        _, *none = self._rows('?pr_id=abc')
+        self.assertEqual(none, [])
+
+    def test_rfq_management_list_takes_the_same_date_range(self):
+        from django.utils.dateparse import parse_datetime
+        self.RFQ.objects.filter(pk=self.awaiting.pk).update(sent_at=parse_datetime('2026-10-15T02:00:00+00:00'))
+        _login_as(self.client, 'admin')
+        payload = self.client.get('/api/rfqs/responses/?date_from=2026-10-01&date_to=2026-10-31').json()
+        self.assertEqual([r['rfq_no'] for r in payload['rfqs']], ['RFQ-2026-11-005:02'])
+
+
 class AdminPrNumberFormatEndpointAuthTests(TestCase):
     """admin_pr_number_format (GET/PATCH): admin-only PR numbering settings."""
 
@@ -678,3 +845,175 @@ class EndUserWelcomeEmailTests(TestCase):
         response = self._create(username='second-admin', role='admin')
 
         self.assertEqual(response.status_code, 400)
+
+    def test_a_mail_server_timeout_is_retried_once(self):
+        from unittest.mock import patch
+
+        with patch('api.views.EmailMessage.send', side_effect=[TimeoutError('timed out'), 1]) as send, \
+                patch('api.views.time.sleep'), self.assertLogs('api.views', level='WARNING'):
+            response = self._create()
+
+        self.assertEqual(send.call_count, 2)
+        self.assertTrue(response.json()['welcome_email_sent'])
+
+    def test_an_authentication_failure_is_not_retried(self):
+        import smtplib
+        from unittest.mock import patch
+
+        with patch('api.views.EmailMessage.send', side_effect=smtplib.SMTPAuthenticationError(535, b'bad')) as send, \
+                patch('api.views.time.sleep'), self.assertLogs('api.views', level='ERROR'):
+            response = self._create()
+
+        self.assertEqual(send.call_count, 1)
+        self.assertFalse(response.json()['welcome_email_sent'])
+
+    def test_two_timeouts_give_up_and_report_the_failure(self):
+        from unittest.mock import patch
+
+        with patch('api.views.EmailMessage.send', side_effect=TimeoutError('timed out')) as send, \
+                patch('api.views.time.sleep'), self.assertLogs('api.views', level='WARNING'):
+            response = self._create()
+
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()['welcome_email_sent'])
+
+    def _resend(self, user_id):
+        return self.client.post(f'/api/buyer-accounts/{user_id}/resend-setup/')
+
+    def test_resend_setup_sends_a_new_link_and_the_old_one_stops_working(self):
+        from django.core import mail
+
+        self._create()
+        old_token = self._token_from(mail.outbox[0].body)
+        user = User.objects.get(username='ana.cruz')
+
+        response = self._resend(user.id)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['welcome_email_sent'])
+        self.assertEqual(len(mail.outbox), 2)
+        new_token = self._token_from(mail.outbox[1].body)
+        self.assertNotEqual(new_token, old_token)
+
+        self.client.logout()
+        stale = self.client.post('/api/reset-password/', data=json.dumps({'token': old_token, 'new_password': 'MyOwnPass9'}), content_type='application/json')
+        self.assertEqual(stale.status_code, 400)
+        fresh = self.client.post('/api/reset-password/', data=json.dumps({'token': new_token, 'new_password': 'MyOwnPass9'}), content_type='application/json')
+        self.assertEqual(fresh.status_code, 200, fresh.content)
+
+    def test_resend_is_only_for_accounts_that_never_signed_in(self):
+        from django.utils import timezone
+
+        self._create()
+        user = User.objects.get(username='ana.cruz')
+        listed = self.client.get('/api/buyer-accounts/').json()
+        self.assertTrue(next(a for a in listed if a['id'] == user.id)['setup_pending'])
+
+        User.objects.filter(pk=user.pk).update(last_login=timezone.now())
+        self.assertEqual(self._resend(user.id).status_code, 409)
+        listed = self.client.get('/api/buyer-accounts/').json()
+        self.assertFalse(next(a for a in listed if a['id'] == user.id)['setup_pending'])
+
+    def test_resend_requires_admin_and_an_end_user_account(self):
+        self._create()
+        user = User.objects.get(username='ana.cruz')
+        admin = User.objects.exclude(pk=user.pk).first()
+
+        self.assertEqual(self._resend(admin.id).status_code, 404)  # not an End User
+        self.client.logout()
+        self.assertEqual(self._resend(user.id).status_code, 401)
+        _login_as(self.client, 'buyer')
+        self.assertEqual(self._resend(user.id).status_code, 403)
+
+
+class AdminAuditTrailExportTests(TestCase):
+    """admin_export_pr_audit_trail / admin_export_supplier_change_log."""
+
+    def setUp(self):
+        import json as _json
+        from api.models import PRAuditLog, PRPostingLog, PurchaseRequestItem, SupplierChangeLog
+
+        self.admin = _login_as(self.client, 'admin')
+        self.pr = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-010', office_section='ICT Office')
+        self.other = PurchaseRequest.objects.create(entity_name='CTU', pr_no='2026-11-011', office_section='Registrar')
+        item = PurchaseRequestItem.objects.create(
+            purchase_request=self.pr, item_description='Laptop, 16GB RAM', unit='pc', quantity=2, unit_cost=1000,
+        )
+        PRAuditLog.objects.create(
+            pr=self.pr, field_name='purpose', old_value='Old purpose', new_value='New purpose',
+            edited_by=self.admin, edited_by_username=self.admin.username, reason='Typo on the form',
+        )
+        PRAuditLog.objects.create(
+            pr=self.pr, item_id=item.id, field_name='quantity', old_value='1.00', new_value='2.00',
+            edited_by=self.admin, edited_by_username=self.admin.username, reason='Per end user',
+        )
+        PRAuditLog.objects.create(
+            pr=self.pr, item_id=999, field_name='item', event_type=PRAuditLog.EVENT_ITEM_REMOVED,
+            old_value=_json.dumps({'item_description': 'Mouse', 'quantity': '3.00', 'unit': 'pc', 'unit_cost': '250.00'}),
+            edited_by=self.admin, edited_by_username=self.admin.username, reason='Duplicate line',
+        )
+        PRPostingLog.objects.create(
+            pr=self.pr, action=PRPostingLog.ACTION_POSTED, changed_by=self.admin,
+            changed_by_username=self.admin.username,
+        )
+        PRPostingLog.objects.create(pr=self.pr, action=PRPostingLog.ACTION_UNPOSTED, automatic=True, reason='Status changed')
+        PRAuditLog.objects.create(
+            pr=self.other, field_name='purpose', old_value='a', new_value='b',
+            edited_by=self.admin, edited_by_username=self.admin.username, reason='x',
+        )
+
+        self.acme = Supplier.objects.create(company_name='Acme Corp', email='acme@example.com', status='Approved')
+        self.beta = Supplier.objects.create(company_name='Beta Trading', email='beta@example.com', status='Rejected')
+        SupplierChangeLog.objects.create(
+            supplier=self.acme, event_type=SupplierChangeLog.EVENT_FIELD_EDIT, field_name='contact_person',
+            old_value='Jo', new_value='Jo Reyes', changed_by_username='acme', changed_by_role='supplier',
+        )
+        SupplierChangeLog.objects.create(
+            supplier=self.acme, event_type=SupplierChangeLog.EVENT_STATUS, field_name='status',
+            old_value='Pending Review', new_value='Approved', note='Complete', changed_by_username='bac',
+            changed_by_role='admin',
+        )
+        SupplierChangeLog.objects.create(
+            supplier=self.beta, event_type=SupplierChangeLog.EVENT_STATUS, field_name='status',
+            old_value='Pending Review', new_value='Rejected', changed_by_username='bac', changed_by_role='admin',
+        )
+
+    def _rows(self, url):
+        import csv
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        header, *rows = list(csv.reader(_csv_body(response).splitlines()))
+        return [dict(zip(header, row)) for row in rows]
+
+    def test_both_require_admin(self):
+        self.client.logout()
+        for url in ('/api/admin/export/pr-audit-trail/', '/api/admin/export/supplier-change-log/'):
+            self.assertEqual(self.client.get(url).status_code, 401)
+        _login_as(self.client, 'buyer')
+        for url in ('/api/admin/export/pr-audit-trail/', '/api/admin/export/supplier-change-log/'):
+            self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_pr_audit_trail_lists_edits_and_postings_with_labels(self):
+        rows = self._rows('/api/admin/export/pr-audit-trail/?search=ict')
+        self.assertEqual({row['PR No.'] for row in rows}, {'2026-11-010'})  # filtered like the table
+        events = [row['Event'] for row in rows]
+        self.assertEqual(events, ['Field edited', 'Field edited', 'Item removed', 'Posted', 'Taken down (automatic)'])
+
+        purpose, quantity, removed, posted, unposted = rows
+        self.assertEqual((purpose['Field'], purpose['Old Value'], purpose['New Value']), ('Purpose', 'Old purpose', 'New purpose'))
+        self.assertEqual(purpose['Reason'], 'Typo on the form')
+        self.assertEqual(purpose['Role'], 'BAC Secretariat')
+        self.assertEqual((quantity['Field'], quantity['Item']), ('Quantity', 'Laptop, 16GB RAM'))
+        self.assertEqual(removed['Item'], 'Mouse')
+        self.assertEqual(removed['Old Value'], 'Mouse · 3.00 pc @ 250.00')
+        self.assertEqual(posted['By'], self.admin.username)
+        self.assertEqual((unposted['By'], unposted['Reason']), ('System', 'Status changed'))
+
+    def test_supplier_change_log_is_filtered_like_the_table(self):
+        rows = self._rows('/api/admin/export/supplier-change-log/?status=Approved')
+        self.assertEqual({row['Supplier'] for row in rows}, {'Acme Corp'})
+        edit, decision = rows
+        self.assertEqual((edit['Event'], edit['Field'], edit['New Value']), ('Profile field edited', 'Contact Person', 'Jo Reyes'))
+        self.assertEqual(edit['Role'], 'Supplier')
+        self.assertEqual((decision['Event'], decision['Note'], decision['Role']), ('Status changed', 'Complete', 'BAC Secretariat'))

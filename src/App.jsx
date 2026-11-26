@@ -77,8 +77,9 @@ import { FieldError, RequiredLegend, RequiredMark } from './components/ui/FormPa
 import KpiTile from './components/ui/KpiTile'
 import ProcurementStepper from './components/ui/ProcurementStepper'
 import useTableControls from './components/ui/useTableControls'
-import { Pagination, SortableHeader, TableToolbar } from './components/ui/TableParts'
+import { DateRangeFields, Pagination, SortableHeader, TableToolbar } from './components/ui/TableParts'
 import { apiFetch } from './lib/apiClient'
+import { exportQuery, withinDateRange } from './lib/dateRange'
 import { UPLOAD_KINDS, acceptAttr, acceptedTypesLabel, fileTypeLabel, formatFileSize, validateFile } from './lib/fileValidation'
 import './index.css'
 
@@ -199,7 +200,10 @@ const MonthlyTrendChart = ({ data, emptyLabel = 'No purchase requests yet.' }) =
   )
 }
 
+const EMPTY_DATE_RANGE = { from: '', to: '' }
+
 // Streams a CSV export from an admin endpoint and triggers a browser download.
+// `path` may carry a query string (see exportQuery in lib/dateRange).
 const downloadCsvExport = async (apiBaseUrl, path, filename, onError) => {
   try {
     const res = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}${path}`)
@@ -2449,7 +2453,7 @@ const RFQDocumentViewerModal = ({ viewer, onClose }) => {
   )
 }
 
-const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
+const PRResponsesView = ({ group, onBack, onOpenRfq, onView, onExport, exporting = false }) => {
   const pr = group.purchase_request
   const summary = group.rfq_summary
   const responded = group.rfqs.filter((rfq) => rfq.has_response)
@@ -2469,6 +2473,11 @@ const PRResponsesView = ({ group, onBack, onOpenRfq, onView }) => {
       <div className="rfq-mgmt-progress" style={{ marginBottom: 16 }}>
         <span className="rfq-resp-indicator received"><StatusGlyph kind="received" /> {summary.responses_received} Response{summary.responses_received !== 1 ? 's' : ''} Received</span>
         <span className="rfq-resp-indicator awaiting"><StatusGlyph kind="awaiting" /> {summary.awaiting_response} Awaiting Response</span>
+        {onExport && (
+          <button type="button" className="btn-sm btn-secondary" onClick={onExport} disabled={exporting}>
+            <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting...' : 'Export Responses'}
+          </button>
+        )}
       </div>
 
       {responded.length === 0 ? (
@@ -2798,6 +2807,9 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
   const [sort, setSort] = React.useState('newest_pr')
   const [searchInput, setSearchInput] = React.useState('')
   const [search, setSearch] = React.useState('')
+  const [sentRange, setSentRange] = React.useState(EMPTY_DATE_RANGE)
+  const [exporting, setExporting] = React.useState(false)
+  const [exportError, setExportError] = React.useState('')
   const [expandedPrId, setExpandedPrId] = React.useState(null)
   const [viewer, setViewer] = React.useState(null)
   const [detail, setDetail] = React.useState(null) // { mode: 'pr' | 'rfq', group, rfq? }
@@ -2813,10 +2825,15 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ group_by: 'pr', sort })
-      if (filter !== 'all') params.set('status', filter)
-      if (search) params.set('search', search)
-      const response = await apiFetch(`${base}/api/rfqs/responses/?${params.toString()}`)
+      const query = exportQuery({
+        group_by: 'pr',
+        sort,
+        status: filter,
+        search,
+        date_from: sentRange.from,
+        date_to: sentRange.to,
+      })
+      const response = await apiFetch(`${base}/api/rfqs/responses/${query}`)
       if (!response.ok) throw new Error('Unable to load RFQ Management data.')
       const data = await response.json()
       setGroups(Array.isArray(data.purchase_requests) ? data.purchase_requests : [])
@@ -2825,11 +2842,29 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
     } finally {
       setLoading(false)
     }
-  }, [base, filter, sort, search])
+  }, [base, filter, sort, search, sentRange])
 
-  // Refetch when the filter, sort, or search changes; load() owns its loading state.
+  // Refetch when the filter, sort, search or date range changes; load() owns its loading state.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   React.useEffect(() => { load() }, [load])
+
+  // One CSV row per RFQ sent.
+  const runExport = async (params, filename) => {
+    setExportError('')
+    setExporting(true)
+    await downloadCsvExport(apiBaseUrl, `/api/admin/export/rfqs/${exportQuery(params)}`, filename, setExportError)
+    setExporting(false)
+  }
+  // The list: same filters as on screen.
+  const handleExport = () => runExport(
+    { status: filter, search, date_from: sentRange.from, date_to: sentRange.to },
+    'rfqs.csv',
+  )
+  // One PR's responses screen: every RFQ on that PR, whatever the list filter.
+  const handleExportPr = (pr) => runExport(
+    { pr_id: String(pr.id) },
+    `rfqs_${String(pr.pr_no || pr.id).replace(/[^\w-]+/g, '_')}.csv`,
+  )
 
   const openDocument = (url, title) => setViewer({ url: bustCache(url), title })
   const closeViewer = () => setViewer(null)
@@ -2851,6 +2886,8 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
         onBack={() => setDetail(null)}
         onOpenRfq={(rfq) => setDetail({ mode: 'rfq', group: detail.group, rfq })}
         onView={openDocument}
+        onExport={() => handleExportPr(detail.group.purchase_request)}
+        exporting={exporting}
       />
     )
   } else {
@@ -2878,7 +2915,14 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
             <button type="button" className="btn-sm btn-secondary" onClick={load} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
             </button>
+            <button type="button" className="btn-sm btn-secondary" onClick={handleExport} disabled={exporting}>
+              <Download size={14} aria-hidden="true" /> {exporting ? 'Exporting...' : 'Export Report'}
+            </button>
           </div>
+        </div>
+
+        <div className="data-toolbar rfq-mgmt-dates">
+          <DateRangeFields label="Sent" value={sentRange} onChange={setSentRange} />
         </div>
 
         {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
@@ -2887,7 +2931,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
           <div className="empty-state">
             <FileText size={48} />
             <h3>No RFQs found</h3>
-            <p>{search || filter !== 'all' ? 'No Purchase Requests match the current filters.' : 'No RFQs have been generated yet.'}</p>
+            <p>{search || filter !== 'all' || sentRange.from || sentRange.to ? 'No Purchase Requests match the current filters.' : 'No RFQs have been generated yet.'}</p>
           </div>
         ) : (
           <div className="rfq-mgmt-groups">
@@ -2988,6 +3032,7 @@ const AdminRFQManagement = ({ apiBaseUrl }) => {
 
   return (
     <div className="supplier-section">
+      {exportError && <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>{exportError}</div>}
       {content}
       <RFQDocumentViewerModal viewer={viewer} onClose={closeViewer} />
     </div>
@@ -3060,6 +3105,7 @@ const Admin = () => {
   const [prDeleteConfirmId, setPrDeleteConfirmId] = React.useState(null)
   const [viewingPr, setViewingPr] = React.useState(null)
   const [prStatusFilter, setPrStatusFilter] = React.useState('all')
+  const [prDateRange, setPrDateRange] = React.useState(EMPTY_DATE_RANGE)
   const [expandedPrId, setExpandedPrId] = React.useState(null)
   const [density, setDensity] = useDensity()
   const [editingPr, setEditingPr] = React.useState(null)
@@ -3089,8 +3135,9 @@ const Admin = () => {
   const [dashboardLoading, setDashboardLoading] = React.useState(false)
   const [dashboardError, setDashboardError] = React.useState('')
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = React.useState(null)
-  const [exportingSuppliers, setExportingSuppliers] = React.useState(false)
-  const [exportingPrs, setExportingPrs] = React.useState(false)
+  // The filename being exported, or '' - one export per page at a time.
+  const [exportingSuppliers, setExportingSuppliers] = React.useState('')
+  const [exportingPrs, setExportingPrs] = React.useState('')
   const [exportError, setExportError] = React.useState('')
   const [prNumberFormat, setPrNumberFormat] = React.useState(null)
   const [prNumberFormatDraft, setPrNumberFormatDraft] = React.useState(null)
@@ -3110,6 +3157,7 @@ const Admin = () => {
   const [supplierError, setSupplierError] = React.useState('')
   const [supplierActioningId, setSupplierActioningId] = React.useState(null)
   const [supplierStatusFilter, setSupplierStatusFilter] = React.useState('all')
+  const [supplierDateRange, setSupplierDateRange] = React.useState(EMPTY_DATE_RANGE)
   const [supplierDetails, setSupplierDetails] = React.useState({})
   const [selectedSupplierId, setSelectedSupplierId] = React.useState(null)
   const [selectedSupplierDetails, setSelectedSupplierDetails] = React.useState(null)
@@ -3130,6 +3178,7 @@ const Admin = () => {
   const [buyerAccounts, setBuyerAccounts] = React.useState([])
   const [buyerAccountsLoading, setBuyerAccountsLoading] = React.useState(false)
   const [buyerAccountActionId, setBuyerAccountActionId] = React.useState(null)
+  const [resendingSetupId, setResendingSetupId] = React.useState(null)
   const [buyerDeleteConfirm, setBuyerDeleteConfirm] = React.useState(null)
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
   // Change history for the PR open in the review modal (BAC edits vs. the
@@ -3190,10 +3239,10 @@ const Admin = () => {
       if (!response.ok) throw new Error(result.message || 'Unable to create End User account.')
       const createdName = buyerAccountForm.fullName.trim() || buyerAccountForm.username.trim()
       if (result.welcome_email_sent === false) {
-        // The account exists; only the email failed. "Forgot password" on the
-        // sign-in page sends a fresh link once email works again.
-        setBuyerAccountMessage(`End User account created, but the setup email to ${result.email} could not be sent. Ask them to use "Forgot password" on the sign-in page once email is working.`)
-        toast.error(`Account created for ${createdName}, but the setup email could not be sent.`)
+        // The account exists; only the email failed. "Resend setup email" on
+        // the account sends a fresh link once email works again.
+        setBuyerAccountMessage(`End User account created, but the setup email to ${result.email} could not be sent. Use "Resend setup email" on the account to try again.`)
+        toast.error(`Account created for ${createdName}, but the setup email could not be sent. Use "Resend setup email" to try again.`)
       } else {
         setBuyerAccountMessage(`End User account created. A setup email was sent to ${result.email || buyerAccountForm.email.trim()}.`)
         toast.success(`End User account created for ${createdName}. Setup email sent.`)
@@ -3212,6 +3261,30 @@ const Admin = () => {
     pageSize: 10,
   })
   const filteredBuyerAccounts = buyerAccountTable.rows
+
+  // A new set-password link for an account that has never signed in. Any
+  // earlier link stops working.
+  const handleResendSetupEmail = async (account) => {
+    const name = account.full_name || account.username
+    setResendingSetupId(account.id)
+    setBuyerAccountError('')
+    try {
+      const response = await apiFetch(`${apiBaseUrl.replace(/\/$/, '')}/api/buyer-accounts/${account.id}/resend-setup/`, {
+        method: 'POST',
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.message || 'Unable to resend the setup email.')
+      if (result.welcome_email_sent === false) {
+        toast.error(`The setup email to ${result.email} could not be sent. Check the connection and try again.`)
+      } else {
+        toast.success(`Setup email sent to ${name} (${result.email}). The new link replaces any earlier one.`)
+      }
+    } catch (error) {
+      toast.error(error?.message || 'Unable to resend the setup email.')
+    } finally {
+      setResendingSetupId(null)
+    }
+  }
 
   const handleDeleteBuyerAccount = async (account) => {
     setBuyerAccountActionId(account.id)
@@ -3270,20 +3343,6 @@ const Admin = () => {
     } finally {
       setDashboardLoading(false)
     }
-  }, [apiBaseUrl])
-
-  const handleExportSuppliers = React.useCallback(async () => {
-    setExportError('')
-    setExportingSuppliers(true)
-    await downloadCsvExport(apiBaseUrl, '/api/admin/export/suppliers/', 'suppliers.csv', setExportError)
-    setExportingSuppliers(false)
-  }, [apiBaseUrl])
-
-  const handleExportPurchaseRequests = React.useCallback(async () => {
-    setExportError('')
-    setExportingPrs(true)
-    await downloadCsvExport(apiBaseUrl, '/api/admin/export/purchase-requests/', 'purchase_requests.csv', setExportError)
-    setExportingPrs(false)
   }, [apiBaseUrl])
 
   const loadPrNumberFormat = React.useCallback(async () => {
@@ -3598,9 +3657,10 @@ const Admin = () => {
       supplier.business_type,
       supplier.categories?.join(' '),
     ],
-    filter: supplierStatusFilter === 'all'
-      ? undefined
-      : (supplier) => (supplier.status || 'Pending Review') === supplierStatusFilter,
+    filter: (supplier) => (
+      (supplierStatusFilter === 'all' || (supplier.status || 'Pending Review') === supplierStatusFilter)
+      && withinDateRange(supplier.created_at, supplierDateRange.from, supplierDateRange.to)
+    ),
     sorters: {
       newest: (supplier) => -Number(supplier.id || 0),
       name: (supplier) => supplier.company_name,
@@ -4017,7 +4077,10 @@ const Admin = () => {
   const numberedPrRecords = prRecords.filter((pr) => pr.pr_no?.trim())
   const prMonitorTable = useTableControls(numberedPrRecords, {
     search: (pr) => [pr.pr_no, pr.entity_name, pr.office_section, pr.category],
-    filter: prStatusFilter === 'all' ? undefined : (pr) => pr.status === prStatusFilter,
+    filter: (pr) => (
+      (prStatusFilter === 'all' || pr.status === prStatusFilter)
+      && withinDateRange(pr.created_at, prDateRange.from, prDateRange.to)
+    ),
     sorters: {
       id: (pr) => pr.id,
       pr_no: (pr) => pr.pr_no,
@@ -4030,6 +4093,40 @@ const Admin = () => {
     },
     pageSize: 10,
   })
+
+  // Exports carry the table's current status, search and date range, so the
+  // file covers the rows on screen (all pages), not the whole database. The
+  // audit-trail exports list every logged change to those same records.
+  const runExport = async (path, filename, setBusy) => {
+    setExportError('')
+    setBusy(filename)
+    await downloadCsvExport(apiBaseUrl, path, filename, setExportError)
+    setBusy('')
+  }
+  const supplierFilterQuery = () => exportQuery({
+    status: supplierStatusFilter,
+    search: supplierTable.query,
+    date_from: supplierDateRange.from,
+    date_to: supplierDateRange.to,
+  })
+  const prFilterQuery = () => exportQuery({
+    status: prStatusFilter,
+    search: prMonitorTable.query,
+    date_from: prDateRange.from,
+    date_to: prDateRange.to,
+  })
+  const handleExportSuppliers = () => runExport(
+    `/api/admin/export/suppliers/${supplierFilterQuery()}`, 'suppliers.csv', setExportingSuppliers,
+  )
+  const handleExportSupplierChangeLog = () => runExport(
+    `/api/admin/export/supplier-change-log/${supplierFilterQuery()}`, 'supplier_change_log.csv', setExportingSuppliers,
+  )
+  const handleExportPurchaseRequests = () => runExport(
+    `/api/admin/export/purchase-requests/${prFilterQuery()}`, 'purchase_requests.csv', setExportingPrs,
+  )
+  const handleExportPrAuditTrail = () => runExport(
+    `/api/admin/export/pr-audit-trail/${prFilterQuery()}`, 'pr_audit_trail.csv', setExportingPrs,
+  )
 
   const editPrLocked = Boolean(editPrForm?.pr_no)
   const editPrChangeMap = editPrChanges.data.changes || {}
@@ -4342,15 +4439,27 @@ const Admin = () => {
                     <h3 id="supplier-registrations-heading">Supplier Registrations</h3>
                     <p>Search and select a supplier to review.</p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-sm btn-secondary"
-                    onClick={handleExportSuppliers}
-                    disabled={exportingSuppliers}
-                  >
-                    <Download size={14} aria-hidden="true" />
-                    {exportingSuppliers ? 'Exporting...' : 'Export Report'}
-                  </button>
+                  <div className="supplier-export-actions">
+                    <button
+                      type="button"
+                      className="btn-sm btn-secondary"
+                      onClick={handleExportSuppliers}
+                      disabled={Boolean(exportingSuppliers)}
+                    >
+                      <Download size={14} aria-hidden="true" />
+                      {exportingSuppliers === 'suppliers.csv' ? 'Exporting...' : 'Export Report'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-sm btn-secondary"
+                      onClick={handleExportSupplierChangeLog}
+                      disabled={Boolean(exportingSuppliers)}
+                      title="Every profile edit, category change, document resubmission and status decision for the suppliers listed"
+                    >
+                      <Download size={14} aria-hidden="true" />
+                      {exportingSuppliers === 'supplier_change_log.csv' ? 'Exporting...' : 'Export Change Log'}
+                    </button>
+                  </div>
                 </div>
 
                 <TableToolbar table={supplierTable} searchLabel="Search suppliers" searchPlaceholder="Company, contact, email, business type or category" noun="supplier">
@@ -4364,6 +4473,11 @@ const Admin = () => {
                       <option value="Rejected">Rejected</option>
                     </select>
                   </div>
+                  <DateRangeFields
+                    label="Registered"
+                    value={supplierDateRange}
+                    onChange={(range) => { setSupplierDateRange(range); supplierTable.resetPage() }}
+                  />
                   <div className="data-toolbar-field">
                     <label htmlFor="supplier-sort">Sort by</label>
                     <select
@@ -4752,8 +4866,21 @@ const Admin = () => {
                           <strong>{account.full_name || account.username}</strong>
                           <span>@{account.username}</span>
                           <small>{account.unit_office || 'Office not specified'} · {account.email || 'No email'}</small>
+                          {account.setup_pending && <small className="buyer-account-pending">Not signed in yet</small>}
                         </div>
                         <div className="buyer-account-record-actions">
+                          {account.setup_pending && account.email && (
+                            <button
+                              type="button"
+                              className="btn-sm btn-secondary"
+                              onClick={() => handleResendSetupEmail(account)}
+                              disabled={resendingSetupId === account.id}
+                              aria-label={`Resend setup email to ${account.username}`}
+                            >
+                              <Mail size={14} aria-hidden="true" />
+                              {resendingSetupId === account.id ? 'Sending...' : 'Resend setup email'}
+                            </button>
+                          )}
                           <button type="button" className="btn-sm btn-danger" onClick={() => setBuyerDeleteConfirm(account)} disabled={buyerAccountActionId === account.id} aria-label={`Delete account ${account.username}`}>
                             <Trash2 size={14} aria-hidden="true" />
                             {buyerAccountActionId === account.id ? 'Deleting...' : 'Delete'}
@@ -4996,10 +5123,20 @@ const Admin = () => {
                 type="button"
                 className="btn-sm btn-secondary"
                 onClick={handleExportPurchaseRequests}
-                disabled={exportingPrs}
+                disabled={Boolean(exportingPrs)}
               >
                 <Download size={14} />
-                {exportingPrs ? 'Exporting...' : 'Export Report'}
+                {exportingPrs === 'purchase_requests.csv' ? 'Exporting...' : 'Export Report'}
+              </button>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={handleExportPrAuditTrail}
+                disabled={Boolean(exportingPrs)}
+                title="Every BAC edit and every post or take-down for the Purchase Requests listed"
+              >
+                <Download size={14} aria-hidden="true" />
+                {exportingPrs === 'pr_audit_trail.csv' ? 'Exporting...' : 'Export Audit Trail'}
               </button>
             </div>
 
@@ -5068,6 +5205,11 @@ const Admin = () => {
                   {prStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </div>
+              <DateRangeFields
+                label="Created"
+                value={prDateRange}
+                onChange={(range) => { setPrDateRange(range); prMonitorTable.resetPage() }}
+              />
             </TableToolbar>
             <div className="table-scroll" data-density={density}>
               <table className="data-table pr-table responsive-table" aria-labelledby="pr-monitor-heading">

@@ -458,6 +458,15 @@
 .buyer-account-panel > .panel-header { margin: 0 0 var(--s-4); padding: 14px 0 0; }
 .buyer-account-panel > .panel-header h2 { font-size: 22px; }
 .buyer-account-panel > .panel-header .supplier-subtext { margin: 4px 0 0; font-size: 13px; }
+/* The form is a two-column grid of fields. Everything that isn't a field
+   takes a full row, so the fields pair up (Full Name | Username,
+   Email | Unit / Office) and the note and button line up with them. */
+.buyer-account-form > :is(.required-legend, .buyer-account-invite-note, .alert, .form-actions) { grid-column: 1 / -1; }
+.buyer-account-form > .required-legend { margin: 0; }
+.buyer-account-form > .buyer-account-invite-note { max-width: none; }
+.buyer-account-form > .alert { margin: 0; }
+.buyer-account-form > .form-actions { justify-content: flex-start; }
+.buyer-account-record-main .buyer-account-pending { color: var(--ink-2); font-style: italic; }
 
 .settings-toggle-list { display: flex; flex-direction: column; margin: 0 0 var(--s-4); padding: 0; border-top: 1px solid var(--rule); }
 .settings-toggle-row {
@@ -863,6 +872,7 @@ select.dropdown-control { cursor: pointer; }
 .supplier-verification-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-3); }
 .supplier-verification-toolbar h3 { font-size: 22px; font-weight: 720; font-variation-settings: "wdth" 106; letter-spacing: -0.015em; }
 .supplier-verification-toolbar p { margin-top: 4px; color: var(--ink-2); font-size: 13.5px; }
+.supplier-export-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
 /* PR numbering preview (settings and the review sheet) */
 .number-preview { display: grid; gap: 4px; margin-top: var(--s-3); }

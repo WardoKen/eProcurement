@@ -4,8 +4,10 @@ import json
 import logging
 import re
 import secrets
+import smtplib
 import sys
 import time
+import zoneinfo
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +21,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Case, Count, Exists, F, IntegerField, Min, OuterRef, Q, Value, When
+from django.db.models import Avg, Case, Count, Exists, F, IntegerField, Min, OuterRef, Prefetch, Q, Value, When
 from django.db.models.functions import TruncMonth
 from django.conf import settings
 from django.utils.text import slugify
@@ -56,6 +58,7 @@ from . import pr_changes, pr_posting, signature_review, supplier_changes, suppli
 from .rfq import procurement_checks
 from .file_validation import UploadKind, FileValidationError, validate_upload
 from .supplier_registration import (
+    REQUIRED_DOCUMENTS,
     REQUIRED_UPLOAD_KEYS,
     OPTIONAL_UPLOAD_KEYS,
     MAX_UPLOAD_SIZE,
@@ -1959,12 +1962,7 @@ def register(request):
                 is_active=True,
             )
             if role_name == 'buyer' and email:
-                raw_token = secrets.token_urlsafe(32)
-                PasswordResetToken.objects.create(
-                    user=user,
-                    token_hash=hashlib.sha256(raw_token.encode('utf-8')).hexdigest(),
-                    expires_at=timezone.now() + ACCOUNT_SETUP_TOKEN_TTL,
-                )
+                raw_token = _issue_account_setup_token(user)
     except IntegrityError:
         return json_error('Username already exists', 409)
 
@@ -1979,6 +1977,47 @@ def register(request):
 # How long the set-password link in an End User's welcome email stays valid.
 # Longer than a reset link (30 minutes): a new user may not read it right away.
 ACCOUNT_SETUP_TOKEN_TTL = timedelta(days=3)
+
+# A slow or dropped connection to the mail server is worth one more try. An
+# authentication, sender or recipient error would fail the same way again, so
+# those are not retried. (smtplib's own errors subclass OSError, which is why
+# this lists the network cases instead of catching OSError.)
+_TRANSIENT_EMAIL_ERRORS = (
+    TimeoutError, ConnectionError, smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
+)
+EMAIL_SEND_ATTEMPTS = 2
+EMAIL_RETRY_DELAY_SECONDS = 1.0
+
+
+def _send_email(email, *, attempts=EMAIL_SEND_ATTEMPTS) -> bool:
+    """Send ``email``, retrying a transient network failure. Returns whether the
+    mail server accepted it; raises the last error if every attempt failed."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return email.send(fail_silently=False) > 0
+        except _TRANSIENT_EMAIL_ERRORS as error:
+            if attempt == attempts:
+                raise
+            logger.warning(
+                'Email to %s failed (%s: %s); retrying (attempt %d of %d)',
+                ', '.join(email.to), type(error).__name__, error, attempt + 1, attempts,
+            )
+            time.sleep(EMAIL_RETRY_DELAY_SECONDS)
+    return False
+
+
+def _issue_account_setup_token(user) -> str:
+    """A fresh one-time set-password link token for ``user``. Any earlier
+    unused link stops working, so only the newest email's link is valid."""
+    raw_token = secrets.token_urlsafe(32)
+    with transaction.atomic():
+        PasswordResetToken.objects.filter(user=user, used=False).update(used=True)
+        PasswordResetToken.objects.create(
+            user=user,
+            token_hash=hashlib.sha256(raw_token.encode('utf-8')).hexdigest(),
+            expires_at=timezone.now() + ACCOUNT_SETUP_TOKEN_TTL,
+        )
+    return raw_token
 
 
 def _send_end_user_welcome_email(user, raw_token) -> bool:
@@ -2010,7 +2049,7 @@ def _send_end_user_welcome_email(user, raw_token) -> bool:
         to=[user.email],
     )
     try:
-        return email.send(fail_silently=False) > 0
+        return _send_email(email)
     except Exception:
         logger.exception('Failed to send welcome email to user %s', user.username)
         return False
@@ -2028,8 +2067,35 @@ def buyer_account_list(request):
         'unit_office': account.unit_office,
         'created_at': account.created_at,
         'last_login': account.last_login,
+        # Never signed in: the setup email can be sent again.
+        'setup_pending': account.last_login is None,
     } for account in accounts]
     return JsonResponse(payload, safe=False)
+
+
+@csrf_exempt
+@require_POST
+@require_auth(role='admin')
+def buyer_account_resend_setup(request, user_id: int):
+    """Send an End User a new set-password link, for when the first email
+    failed or the link expired. Only for accounts that have never signed in;
+    after that, the user resets their own password with "Forgot password"."""
+    account = User.objects.filter(id=user_id, role__name='buyer').first()
+    if not account:
+        return json_error('End User account not found', 404)
+    if not account.is_active:
+        return json_error('This account is deactivated.', 409)
+    if not account.email:
+        return json_error('This account has no email address to send the setup link to.', 400)
+    if account.last_login is not None:
+        return json_error(
+            f'{account.username} has already signed in. They can use "Forgot password" on the sign-in page.',
+            409,
+        )
+
+    raw_token = _issue_account_setup_token(account)
+    sent = _send_end_user_welcome_email(account, raw_token)
+    return JsonResponse({'success': True, 'welcome_email_sent': sent, 'email': account.email})
 
 
 @csrf_exempt
@@ -2197,7 +2263,7 @@ def forgot_password(request):
         to=[user.email],
     )
     try:
-        email.send(fail_silently=True)
+        _send_email(email)
     except Exception:
         logger.exception("Failed to send password reset email for user %s", user.username)
 
@@ -2505,16 +2571,52 @@ def admin_dashboard_summary(request):
     })
 
 
-def _parse_date_range(request):
-    """Parse ``date_from``/``date_to`` (YYYY-MM-DD) query params into a Q filter, or None."""
-    date_from = parse_date(request.GET.get('date_from', '') or '')
-    date_to = parse_date(request.GET.get('date_to', '') or '')
+def _safe_parse_date(value):
+    try:
+        return parse_date(value or '')
+    except ValueError:  # well-formed but impossible, e.g. 2026-02-30
+        return None
+
+
+def _request_timezone(request):
+    """The viewer's IANA timezone from the ``tz`` query param (the browser sends
+    it), else the server's. Calendar dates in filters and exports are read in
+    this zone, so a date range means the same days the viewer saw on screen."""
+    name = (request.GET.get('tz') or '').strip()
+    if name:
+        try:
+            return zoneinfo.ZoneInfo(name)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+            pass
+    return timezone.get_current_timezone()
+
+
+def _parse_date_range(request, field='created_at'):
+    """Parse ``date_from``/``date_to`` (YYYY-MM-DD, inclusive) query params into a
+    Q filter on the datetime ``field``, with day boundaries in the request's
+    timezone. Missing or invalid bounds are ignored."""
+    tz = _request_timezone(request)
+    date_from = _safe_parse_date(request.GET.get('date_from'))
+    date_to = _safe_parse_date(request.GET.get('date_to'))
     q = Q()
     if date_from:
-        q &= Q(created_at__date__gte=date_from)
+        q &= Q(**{f'{field}__gte': datetime.combine(date_from, datetime.min.time(), tzinfo=tz)})
     if date_to:
-        q &= Q(created_at__date__lte=date_to)
+        next_day = datetime.combine(date_to + timedelta(days=1), datetime.min.time(), tzinfo=tz)
+        q &= Q(**{f'{field}__lt': next_day})
     return q
+
+
+def _search_q(term, fields):
+    """OR of case-insensitive ``icontains`` over ``fields``; empty Q for no term."""
+    q = Q()
+    for field in fields:
+        q |= Q(**{f'{field}__icontains': term})
+    return q if term else Q()
+
+
+def _local_stamp(value, tz=None, fmt='%Y-%m-%d %H:%M'):
+    return timezone.localtime(value, tz).strftime(fmt) if value else ''
 
 
 class _Echo:
@@ -2524,24 +2626,60 @@ class _Echo:
         return value
 
 
+_CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+
+
+def _csv_safe(value):
+    """Keep spreadsheet apps from running supplier- or user-typed text such as
+    ``=HYPERLINK(...)`` as a formula: a text cell starting with a formula
+    character is prefixed with an apostrophe. Numbers are left as they are."""
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _csv_stream_response(filename, header, rows):
     writer = csv.writer(_Echo())
 
     def generate():
         yield writer.writerow(header)
         for row in rows:
-            yield writer.writerow(row)
+            yield writer.writerow([_csv_safe(value) for value in row])
 
     response = StreamingHttpResponse(generate(), content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 
-@require_GET
-@require_auth(role='admin')
-def admin_export_suppliers(request):
-    """Stream a CSV of suppliers, optionally filtered by status/category/date range."""
-    queryset = Supplier.objects.all().order_by('company_name')
+def _filtered_suppliers(request):
+    """Suppliers narrowed by ``status``, ``category``, ``search`` and a
+    registration date range. ``status`` and ``search`` match the Supplier
+    Registrations table, so an export taken with the table filtered covers the
+    suppliers the table shows."""
+    queryset = Supplier.objects.all()
+
+    status = request.GET.get('status', '').strip()
+    if status == 'Pending Review':
+        # The table shows a blank status as "Pending Review".
+        queryset = queryset.filter(Q(status='Pending Review') | Q(status='') | Q(status__isnull=True))
+    elif status:
+        queryset = queryset.filter(status=status)
+
+    category = request.GET.get('category', '').strip()
+    if category:
+        queryset = queryset.filter(supplier_categories__category__name=category)
+
+    queryset = queryset.filter(_search_q(request.GET.get('search', '').strip(), [
+        'company_name', 'contact_person', 'email', 'business_type',
+        'supplier_categories__category__name',
+    ]))
+    return queryset.filter(_parse_date_range(request)).distinct()
+
+
+def _filtered_purchase_requests(request):
+    """Purchase Requests narrowed by ``status``, ``category``, ``search`` and a
+    creation date range, matching the Purchase Requests table."""
+    queryset = PurchaseRequest.objects.all()
 
     status = request.GET.get('status', '').strip()
     if status:
@@ -2549,10 +2687,31 @@ def admin_export_suppliers(request):
 
     category = request.GET.get('category', '').strip()
     if category:
-        queryset = queryset.filter(supplier_categories__category__name=category)
+        queryset = queryset.filter(category=category)
 
-    queryset = queryset.filter(_parse_date_range(request)).distinct()
-    queryset = queryset.prefetch_related('supplier_categories__category')
+    queryset = queryset.filter(_search_q(request.GET.get('search', '').strip(), [
+        'pr_no', 'entity_name', 'office_section', 'category',
+    ]))
+    return queryset.filter(_parse_date_range(request))
+
+
+def _role_label(user=None, role=''):
+    """A role as people see it ("BAC Secretariat"), from a user or a stored key."""
+    if not role and user is not None and user.role_id:
+        role = user.role.name
+    return pr_changes.ROLE_LABELS.get(role, role or '')
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_suppliers(request):
+    """Stream a CSV of suppliers, filtered like the Supplier Registrations table."""
+    queryset = (
+        _filtered_suppliers(request)
+        .order_by('company_name')
+        .prefetch_related('supplier_categories__category')
+    )
+    tz = _request_timezone(request)
 
     def rows():
         for supplier in queryset.iterator(chunk_size=200):
@@ -2568,7 +2727,7 @@ def admin_export_suppliers(request):
                 supplier.status,
                 categories,
                 supplier.business_address,
-                supplier.created_at.strftime('%Y-%m-%d %H:%M') if supplier.created_at else '',
+                _local_stamp(supplier.created_at, tz),
             ]
 
     header = [
@@ -2603,18 +2762,9 @@ def _edited_fields_notice(pr):
 @require_GET
 @require_auth(role='admin')
 def admin_export_purchase_requests(request):
-    """Stream a CSV of purchase requests, optionally filtered by status/category/date range."""
-    queryset = PurchaseRequest.objects.all().order_by('-created_at')
-
-    status = request.GET.get('status', '').strip()
-    if status:
-        queryset = queryset.filter(status=status)
-
-    category = request.GET.get('category', '').strip()
-    if category:
-        queryset = queryset.filter(category=category)
-
-    queryset = queryset.filter(_parse_date_range(request))
+    """Stream a CSV of purchase requests, filtered like the Purchase Requests table."""
+    queryset = _filtered_purchase_requests(request).order_by('-created_at')
+    tz = _request_timezone(request)
 
     def rows():
         for pr in queryset.iterator():
@@ -2628,8 +2778,8 @@ def admin_export_purchase_requests(request):
                 pr.grand_total,
                 pr.requested_by or '',
                 pr.date.strftime('%Y-%m-%d') if pr.date else '',
-                pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else '',
-                timezone.localtime(pr.posted_at).strftime('%Y-%m-%d %H:%M') if pr.posted_at else '',
+                _local_stamp(pr.created_at, tz),
+                _local_stamp(pr.posted_at, tz),
                 pr.posted_by or '',
                 _edited_fields_notice(pr),
             ]
@@ -2640,6 +2790,135 @@ def admin_export_purchase_requests(request):
         'Edited Fields',
     ]
     return _csv_stream_response('purchase_requests.csv', header, rows())
+
+
+def _item_text(values):
+    """One line for an item added/removed event: "Laptop · 2 pc @ 1000.00"."""
+    description = values.get('item_description') or 'Item'
+    quantity = ' '.join(part for part in (values.get('quantity'), values.get('unit')) if part)
+    cost = values.get('unit_cost')
+    detail = f'{quantity} @ {cost}' if quantity and cost else quantity or cost or ''
+    return f'{description} · {detail}' if detail else description
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_pr_audit_trail(request):
+    """Stream the audit trail of the Purchase Requests the table shows (same
+    filters as the PR export): every BAC edit (``PRAuditLog``) and every post
+    or take-down (``PRPostingLog``), oldest first. One row per logged event."""
+    prs = _filtered_purchase_requests(request)
+    tz = _request_timezone(request)
+
+    edit_logs = list(
+        PRAuditLog.objects.filter(pr__in=prs)
+        .select_related('pr', 'edited_by__role')
+        .order_by('edited_at', 'id')
+    )
+    posting_logs = list(
+        PRPostingLog.objects.filter(pr__in=prs)
+        .select_related('pr', 'changed_by__role')
+        .order_by('changed_at', 'id')
+    )
+
+    # Item descriptions for item-level edits: the item as it is now, or, for
+    # an item removed since, the summary its removal recorded.
+    item_ids = {log.item_id for log in edit_logs if log.item_id}
+    item_labels = dict(
+        PurchaseRequestItem.objects.filter(id__in=item_ids).values_list('id', 'item_description')
+    )
+    for log in edit_logs:
+        if log.event_type != PRAuditLog.EVENT_FIELD_EDIT and log.item_id and not item_labels.get(log.item_id):
+            try:
+                values = json.loads((log.new_value or log.old_value) or '{}')
+            except (TypeError, ValueError):
+                values = {}
+            item_labels[log.item_id] = values.get('item_description', '')
+
+    def item_values(raw):
+        try:
+            return json.loads(raw or '{}')
+        except (TypeError, ValueError):
+            return {}
+
+    events = []
+    for log in edit_logs:
+        if log.event_type == PRAuditLog.EVENT_FIELD_EDIT:
+            labels = pr_changes.ITEM_FIELD_LABELS if log.item_id else pr_changes.PR_FIELD_LABELS
+            field = labels.get(log.field_name, log.field_name.replace('_', ' ').title())
+            old, new = log.old_value or '', log.new_value or ''
+        else:
+            field = ''
+            old = _item_text(item_values(log.old_value)) if log.event_type == PRAuditLog.EVENT_ITEM_REMOVED else ''
+            new = _item_text(item_values(log.new_value)) if log.event_type == PRAuditLog.EVENT_ITEM_ADDED else ''
+        events.append((log.edited_at, 0, log.id, [
+            _local_stamp(log.edited_at, tz),
+            log.pr.pr_no or f'PR-{log.pr_id}',
+            log.get_event_type_display(),
+            field,
+            (item_labels.get(log.item_id) or f'Item {log.item_id}') if log.item_id else '',
+            old,
+            new,
+            log.reason,
+            log.edited_by_username or getattr(log.edited_by, 'username', '') or '',
+            _role_label(log.edited_by),
+        ]))
+    for log in posting_logs:
+        action = 'Posted' if log.action == PRPostingLog.ACTION_POSTED else 'Taken down'
+        events.append((log.changed_at, 1, log.id, [
+            _local_stamp(log.changed_at, tz),
+            log.pr.pr_no or f'PR-{log.pr_id}',
+            f'{action} (automatic)' if log.automatic else action,
+            '', '', '', '',
+            log.reason,
+            log.changed_by_username or ('System' if log.automatic else ''),
+            _role_label(log.changed_by) if log.changed_by_id else '',
+        ]))
+    events.sort(key=lambda event: event[:3])
+
+    header = [
+        'When', 'PR No.', 'Event', 'Field', 'Item', 'Old Value', 'New Value', 'Reason', 'By', 'Role',
+    ]
+    return _csv_stream_response('pr_audit_trail.csv', header, (event[3] for event in events))
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_supplier_change_log(request):
+    """Stream the change log of the suppliers the table shows (same filters as
+    the supplier export): profile edits, category changes, document
+    resubmissions and status decisions, oldest first."""
+    tz = _request_timezone(request)
+    logs = (
+        SupplierChangeLog.objects.filter(supplier__in=_filtered_suppliers(request))
+        .select_related('supplier')
+        .order_by('changed_at', 'id')
+    )
+    event_labels = dict(SupplierChangeLog.EVENT_CHOICES)
+
+    def field_label(log):
+        if log.event_type == SupplierChangeLog.EVENT_DOCUMENT:
+            return REQUIRED_DOCUMENTS.get(log.field_name) or log.field_name.replace('_', ' ').title()
+        return supplier_changes.SUPPLIER_FIELD_LABELS.get(
+            log.field_name, log.field_name.replace('_', ' ').title()
+        )
+
+    def rows():
+        for log in logs.iterator(chunk_size=500):
+            yield [
+                _local_stamp(log.changed_at, tz),
+                log.supplier.company_name,
+                event_labels.get(log.event_type, log.event_type),
+                field_label(log),
+                log.old_value,
+                log.new_value,
+                log.note,
+                log.changed_by_username,
+                _role_label(role=log.changed_by_role),
+            ]
+
+    header = ['When', 'Supplier', 'Event', 'Field', 'Old Value', 'New Value', 'Note', 'By', 'Role']
+    return _csv_stream_response('supplier_change_log.csv', header, rows())
 
 
 @csrf_exempt
@@ -4698,6 +4977,89 @@ def supplier_rfq_response(request, supplier_id, rfq_id):
     return JsonResponse({'success': True, 'replaced': is_replacement, **_rfq_payload(rfq, request)})
 
 
+def _filtered_issued_rfqs(request):
+    """Issued (non-draft) RFQs narrowed by the RFQ Management filters:
+    ``status`` (awaiting | received), ``search``, a ``date_from``/``date_to``
+    range on the date the RFQ was sent, and ``pr_id`` for one Purchase
+    Request. Shared by the screen and its export so the two always agree."""
+    status_filter = (request.GET.get('status') or '').strip().lower()
+    search = (request.GET.get('search') or '').strip()
+
+    rfqs = RFQ.objects.exclude(status=RFQ.STATUS_DRAFT)
+    pr_id = (request.GET.get('pr_id') or '').strip()
+    if pr_id:
+        rfqs = rfqs.filter(purchase_request_id=int(pr_id)) if pr_id.isdigit() else rfqs.none()
+    if status_filter == 'awaiting':
+        rfqs = rfqs.filter(status=RFQ.STATUS_SENT)
+    elif status_filter == 'received':
+        # "Responses Received" covers every RFQ the supplier has answered. The
+        # ``completed`` status (post-evaluation, not implemented in this capstone)
+        # is included here so it never needs a separate filter.
+        rfqs = rfqs.filter(status__in=[RFQ.STATUS_QUOTATION_RECEIVED, RFQ.STATUS_COMPLETED], submitted_pdf__gt='')
+
+    rfqs = rfqs.filter(_search_q(search, [
+        'rfq_no', 'purchase_request__pr_no', 'supplier__company_name', 'manual_supplier_name',
+    ]))
+    return rfqs.filter(_parse_date_range(request, field='sent_at'))
+
+
+@require_GET
+@require_auth(role='admin')
+def admin_export_rfqs(request):
+    """Stream a CSV with one row per issued RFQ (one supplier, one category
+    group), with the supplier's response and any quotation figures alongside.
+
+    It records what was sent and received only. Quotations are not ranked or
+    compared, because evaluation and award are outside eProcure's scope.
+    """
+    rfqs = (
+        _filtered_issued_rfqs(request)
+        .select_related('purchase_request', 'supplier', 'category')
+        .prefetch_related(Prefetch(
+            'quotations',
+            queryset=Quotation.objects.exclude(status=Quotation.STATUS_DRAFT).order_by('-updated_at'),
+        ))
+        .order_by('purchase_request__pr_no', 'rfq_no')
+    )
+
+    quotation_status_labels = dict(Quotation.STATUS_CHOICES)
+    tz = _request_timezone(request)
+
+    def rows():
+        for rfq in rfqs.iterator(chunk_size=200):
+            pr = rfq.purchase_request
+            quotation = next(iter(rfq.quotations.all()), None)
+            yield [
+                rfq.rfq_no or '',
+                pr.pr_no or '',
+                pr.office_section or '',
+                rfq.category.name if rfq.category_id else (pr.category or ''),
+                rfq.supplier_display_name,
+                'Manual' if rfq.is_manual else 'System',
+                rfq.get_selection_type_display(),
+                rfq.mode_of_procurement,
+                rfq.abc,
+                rfq.get_quotation_basis_display(),
+                RFQ_STATUS_LABELS.get(rfq.status, rfq.status),
+                _local_stamp(rfq.sent_at, tz),
+                _local_stamp(rfq.submitted_at, tz),
+                'Yes' if rfq.submitted_pdf else 'No',
+                quotation.quoted_amount if quotation else '',
+                quotation.estimated_delivery_days if quotation and quotation.estimated_delivery_days is not None else '',
+                quotation.warranty_months if quotation and quotation.warranty_months is not None else '',
+                quotation_status_labels.get(quotation.status, quotation.status) if quotation else '',
+                rfq.splitting_justified_by_username if rfq.splitting_justification else '',
+            ]
+
+    header = [
+        'RFQ No.', 'PR No.', 'Office/Section', 'Category', 'Supplier', 'Delivery',
+        'Supplier Selection', 'Mode of Procurement', 'ABC', 'Quotation Basis', 'Status',
+        'Sent At', 'Response Submitted At', 'Response Document', 'Quoted Amount',
+        'Delivery (Days)', 'Warranty (Months)', 'Quotation Status', 'Splitting Justified By',
+    ]
+    return _csv_stream_response('rfqs.csv', header, rows())
+
+
 @require_GET
 @require_auth(role='admin')
 def admin_rfq_responses(request):
@@ -4709,33 +5071,15 @@ def admin_rfq_responses(request):
     sent / received / awaiting counts, which is what the PR-centered RFQ
     Management interface consumes.
     """
-    status_filter = (request.GET.get('status') or '').strip().lower()
-    search = (request.GET.get('search') or '').strip()
     group_by = (request.GET.get('group_by') or '').strip().lower()
     sort = (request.GET.get('sort') or '').strip().lower()
 
     rfqs = (
-        RFQ.objects
-        .exclude(status=RFQ.STATUS_DRAFT)
+        _filtered_issued_rfqs(request)
         .select_related('purchase_request', 'supplier', 'category')
         .prefetch_related('purchase_request__line_items', 'rfq_items')
         .order_by('-sent_at', '-created_at')
     )
-    if status_filter == 'awaiting':
-        rfqs = rfqs.filter(status=RFQ.STATUS_SENT)
-    elif status_filter == 'received':
-        # "Responses Received" covers every RFQ the supplier has answered. The
-        # ``completed`` status (post-evaluation, not implemented in this capstone)
-        # is included here so it never needs a separate filter.
-        rfqs = rfqs.filter(status__in=[RFQ.STATUS_QUOTATION_RECEIVED, RFQ.STATUS_COMPLETED], submitted_pdf__gt='')
-
-    if search:
-        rfqs = rfqs.filter(
-            Q(rfq_no__icontains=search)
-            | Q(purchase_request__pr_no__icontains=search)
-            | Q(supplier__company_name__icontains=search)
-            | Q(manual_supplier_name__icontains=search)
-        )
 
     rfq_list = list(rfqs)
 

@@ -64,6 +64,37 @@ export function TableToolbar({ table, searchLabel, searchPlaceholder, children, 
   )
 }
 
+// "From" / "To" calendar-day fields for a toolbar. `value` is { from, to }
+// (YYYY-MM-DD or ''); each field limits the other so the range can't invert.
+export function DateRangeFields({ value, onChange, label = 'Date' }) {
+  const fromId = useId()
+  const toId = useId()
+  return (
+    <>
+      <div className="data-toolbar-field data-toolbar-date">
+        <label htmlFor={fromId}>{label} from</label>
+        <input
+          id={fromId}
+          type="date"
+          value={value.from}
+          max={value.to || undefined}
+          onChange={(event) => onChange({ ...value, from: event.target.value })}
+        />
+      </div>
+      <div className="data-toolbar-field data-toolbar-date">
+        <label htmlFor={toId}>{label} to</label>
+        <input
+          id={toId}
+          type="date"
+          value={value.to}
+          min={value.from || undefined}
+          onChange={(event) => onChange({ ...value, to: event.target.value })}
+        />
+      </div>
+    </>
+  )
+}
+
 export function Pagination({ table, label = 'Pagination', pageSizes = [10, 25, 50] }) {
   const sizeId = useId()
   if (table.unfilteredTotal <= pageSizes[0]) return null
