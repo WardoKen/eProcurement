@@ -7,7 +7,11 @@ Each password is the same as the username. Choose the matching role in
 |---|---|---|---|
 | Admin | `admintest` | `admintest` | `/admin` (BAC Secretariat) |
 | End User | `endusertest` | `endusertest` | `/enduser` |
-| Supplier | `emailtest` | `emailtest` | `/supplier` |
+| Supplier | `suppliertest` | `suppliertest` | `/supplier` |
+
+The supplier account was called `emailtest` before. Running the seed command
+renames an existing `emailtest` account to `suppliertest`, keeping its linked
+supplier, and sets its password to `suppliertest`.
 
 Create the accounts, or reset their passwords, with:
 
@@ -17,7 +21,7 @@ python manage.py seed_test_accounts
 ```
 
 The command is safe to re-run. It only resets these three accounts'
-passwords and reactivates them. If no supplier is linked to `emailtest`, it
+passwords and reactivates them. If no supplier is linked to `suppliertest`, it
 creates an approved demo supplier with verified documents. It refuses to run
 when `DEBUG` is off.
 

@@ -2,12 +2,18 @@
 
     python manage.py seed_test_accounts
 
-Each account's password is its username. Re-running resets the passwords
-and reactivates the accounts; nothing else about existing records changes.
-The supplier account is linked to a Supplier the same way login links one
-(the supplier's email contains the username, or its contact person equals
-the account's full name). If no supplier links yet, an approved demo
-supplier with verified documents is created so the portal is usable.
+Each account has a fixed test password (see TEST_ACCOUNTS.md). Re-running
+resets the passwords and reactivates the accounts; nothing else about
+existing records changes. The supplier account is linked to a Supplier the
+same way login links one (the supplier's email contains the username, or its
+contact person equals the account's full name). If no supplier links yet, an
+approved demo supplier with verified documents is created so the portal is
+usable.
+
+The supplier account used to be called ``emailtest``. If that account exists
+and ``suppliertest`` does not, it is renamed in place (and its password reset
+like the others), keeping its supplier link: its full name, which login
+matches, is unchanged.
 
 Refuses to run when DEBUG is off, so these weak passwords never reach a
 production database by accident.
@@ -21,18 +27,23 @@ from api.supplier_registration import REQUIRED_UPLOAD_KEYS, get_required_busines
 from api.views import hash_password
 
 TEST_ACCOUNTS = [
-    # (username, role, full name, email)
-    ('admintest', 'admin', 'BAC Secretariat (test)', ''),
-    ('endusertest', 'buyer', 'End User (test)', ''),
-    ('emailtest', 'supplier', 'emailtest', 'emailtest@demo-vendors.test'),
+    # (username, password, role, full name, email)
+    ('admintest', 'admintest', 'admin', 'BAC Secretariat (test)', ''),
+    ('endusertest', 'endusertest', 'buyer', 'End User (test)', ''),
+    # Renamed from ``emailtest``. It keeps that full name, which is what
+    # links it to its supplier at login.
+    ('suppliertest', 'suppliertest', 'supplier', 'emailtest', 'emailtest@demo-vendors.test'),
 ]
+
+# Old username -> new username, applied once when only the old one exists.
+RENAMED_ACCOUNTS = {'emailtest': 'suppliertest'}
 
 DEMO_SUPPLIER_CATEGORIES = ['Advertising Agency Services', 'Janitorial Supplies']
 DEMO_DOCUMENT_FILE = 'seed_demo_eligibility_document.pdf'
 
 
 class Command(BaseCommand):
-    help = 'Create or reset the local test accounts; each password is its username.'
+    help = 'Create or reset the local test accounts (passwords in TEST_ACCOUNTS.md).'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -45,7 +56,13 @@ class Command(BaseCommand):
             raise CommandError('DEBUG is off. Test accounts with weak passwords are for local development only.')
 
         with transaction.atomic():
-            for username, role_name, full_name, email in TEST_ACCOUNTS:
+            for old, new in RENAMED_ACCOUNTS.items():
+                if not User.objects.filter(username=new).exists():
+                    renamed = User.objects.filter(username=old).update(username=new)
+                    if renamed:
+                        self.stdout.write(f'Renamed account {old} to {new}')
+
+            for username, password, role_name, full_name, email in TEST_ACCOUNTS:
                 role, _ = Role.objects.get_or_create(name=role_name)
                 user = User.objects.filter(username=username).first()
                 created = user is None
@@ -53,7 +70,7 @@ class Command(BaseCommand):
                     user = User(username=username, role=role, full_name=full_name, email=email)
                 elif user.role_id != role.id:
                     raise CommandError(f'{username} exists with role "{user.role.name}", expected "{role_name}". Not changed.')
-                user.password_hash = hash_password(username)
+                user.password_hash = hash_password(password)
                 user.is_active = True
                 user.save()
                 self.stdout.write(f'{"Created" if created else "Reset"} {role_name} account {username}')
@@ -61,7 +78,7 @@ class Command(BaseCommand):
                 if role_name == 'supplier':
                     self._ensure_supplier(user)
 
-        self.stdout.write(self.style.SUCCESS('Test accounts ready. Each password is the same as its username.'))
+        self.stdout.write(self.style.SUCCESS('Test accounts ready. Passwords are listed in TEST_ACCOUNTS.md.'))
 
     def _ensure_supplier(self, user):
         supplier = Supplier.objects.filter(email__icontains=user.username).order_by('-created_at').first()
